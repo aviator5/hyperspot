@@ -99,19 +99,18 @@ A **Module** is a logical component that provides a specific set of functionalit
 
 **Module categories**
 
-- **Regular Module** — Regular modules are typically independent, expose their own versioned public API, and are responsible for their own domain end-to-end, including module business logic, data storage, migrations, and module API documentation.
-- **Host Module** — Host modules are Regular Modules that define a **plugin contract** and route requests to one or more Plugin Modules at runtime. They expose a public API and delegate execution to the selected plugin based on configuration or context. See [MODKIT_PLUGINS.md](MODKIT_PLUGINS.md) for the Gateway + Plugin pattern.
-- **Plugin Module** — Plugins are special modules identified by a **GTS instance ID** that implement a host-module-defined contract. They do not expose their own **public API** and act as pluggable workers. Plugins register themselves in the types-registry for runtime discovery — see [MODKIT_PLUGINS.md](MODKIT_PLUGINS.md) for details.
+- **Regular Module** — Regular modules are typically independent, expose their own versioned public API, and are responsible for their own domain end-to-end, including module business logic, data storage, migrations, and module API documentation. A Regular Module may optionally define a **plugin SDK** (to allow pluggable implementations) and/or consume plugins from other SDKs.
+- **Plugin Module** — Plugins are special modules identified by a **GTS instance ID** that implement a plugin contract defined in an SDK crate. They do not expose their own **public API** and act as pluggable workers. Plugins register themselves in the types-registry for runtime discovery — see [MODKIT_PLUGINS.md](MODKIT_PLUGINS.md) for details.
 
 **Module structure:**
 
-| Module layer | Regular module | Host module | Plugin module |
-| --- | --- | --- | --- |
-| API layer @ api/ | Yes | Yes | No |
-| Business logic layer @ domain/ | Yes | Yes (contract, router) | Yes, main logic |
-| Infrastructure layer @ infrastructure/ | Likely | Rare | Likely |
-| Gateway layer @ gateways/ | Yes, if depends on other modules | Yes, workers connectors | Yes, clients to some service |
-| Examples | Any CRUD module (TODO) | file_parser, (TODO) | file_parser_tika, (TODO) |
+| Module layer | Regular module | Plugin module |
+| --- | --- | --- |
+| API layer @ api/ | Yes (optional) | No public API |
+| Business logic layer @ domain/ | Yes | Yes, main logic |
+| Infrastructure layer @ infra/ | Likely | Likely |
+| SDK crate @ `-sdk/` | Optional (defines plugin contract if hosting plugins) | Depends on host SDK |
+| Examples | chat, file_parser (gateway) | file_parser_tika |
 
 See below typical modules categories, internal layout and typical modules relationship:
 
