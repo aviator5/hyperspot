@@ -40,7 +40,8 @@
     - [Scenario 13: Create in Child Tenant (Cross-Tenant)](#scenario-13-create-in-child-tenant-cross-tenant)
     - [Scenario 14: Create Denied (No Permission)](#scenario-14-create-denied-no-permission)
     - [Scenario 15: Multiple Alternatives with Explicit Resource IDs (OR Logic)](#scenario-15-multiple-alternatives-with-explicit-resource-ids-or-logic)
-- [Scenario 16: Explicit Tenant Set Intent](#scenario-16-explicit-tenant-set-intent)
+- [Scenario 16: Filter-Narrowed Tenant Scope Intent](#scenario-16-filter-narrowed-tenant-scope-intent)
+    - [Scenario 17: Attribute Filtering with Self-Managed Barrier](#scenario-17-attribute-filtering-with-self-managed-barrier)
 
 ## Context
 
@@ -267,7 +268,7 @@ This section defines the contract for `ResolveAccessConstraints` exposed by **Au
 - The PDP returns a decision artifact:
   - `alternatives[]` combined with `combine="OR"`
   - Each alternative is a conjunctive constraint set (AND):
-    `tenant_scope AND group_scope AND resource_scope`
+    `effective_tenant_scope AND effective_group_scope AND effective_resource_scope`
   - Decision vs alternatives (Normative)
     - `decision="deny"` means final deny. The response MAY omit alternatives. If alternatives are present, they MUST be ignored by the PEP.
     - `decision="allow"` means conditionally allow, subject to enforcement:
@@ -294,7 +295,156 @@ This section defines the contract for `ResolveAccessConstraints` exposed by **Au
 
 > **Note on Actions**: The `action` field (`read`, `list`, `create`, `update`, `delete`) is passed to the PDP and influences policy evaluation, but the constraint response format and PEP enforcement mechanism are identical across all actions.
 >
-> **Create operations**: Since the resource doesn't exist yet, `resource_ids` is omitted in the request. The returned constraints define which tenant(s) and/or resource group(s) the subject is authorized to create resources within.
+> **Create operations**: Since the resource doesn't exist yet, `intent_resource_scope` is omitted in the request. The returned constraints define which tenant(s) and/or resource group(s) the subject is authorized to create resources within.
+
+#### Filter Intersection Logic
+
+Filters narrow the base scope using AND semantics:
+
+```
+effective_scope = base_scope ∩ ids ∩ attributes_filter.status
+```
+
+**Example:**
+```jsonc
+"intent_tenant_scope": {
+  "mode": "context_tenant_and_descendants",
+  "attributes_filter": {
+    "status": ["active", "grace_period"]
+  }
+},
+"intent_resource_scope": {
+  "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+},
+```
+
+This means: "I want to access tenants within the context tenant's subtree, but only those with `active` status."
+
+The PDP evaluates:
+1. Start with the authorized tenant subtree (based on permission policy)
+2. Intersect with any `ids` (if provided)
+3. Filter by `attributes_filter.status` (if provided)
+4. Return the resulting effective scope
+
+#### Self-Managed Barrier Semantics
+
+`management_mode` is NOT a simple filter. It acts as a **barrier** in hierarchy traversal:
+
+```
+Tenant A (managed)
+├── Tenant B (self-managed)  ← BARRIER
+│   ├── Tenant C (managed)   ← Hidden from A
+│   └── Tenant D (managed)   ← Hidden from A
+└── Tenant E (managed)       ← Visible to A
+    └── Tenant F (managed)   ← Visible to A
+```
+
+**Barrier rule**: When traversing from `context_tenant_id`, stop at self-managed tenants. The self-managed tenant AND its entire subtree are hidden by default.
+
+**`include_self_managed` flag**: Callers can explicitly opt-in to cross the self-managed barrier by setting `include_self_managed: true` in the request. However, the PDP has final say based on permission policy — some permissions may never allow crossing the barrier.
+
+**Permission-dependent visibility**: Some permissions (e.g., "view usage billing") may ignore the barrier and see through to self-managed subtrees. The PDP determines this based on permission policy.
+
+**Implementation options for barrier:**
+1. **Closure table approach**: Add `barrier_ancestor_id` column that tracks the nearest self-managed ancestor (NULL if none). Query filters on this.
+2. **Separate closure tables**: `tenant_closure_full` (all relationships) vs `tenant_closure_managed` (stops at self-managed barriers).
+3. **Runtime CTE**: Recursive query that stops at self-managed boundaries.
+
+#### PEP SQL Compilation
+
+**For closure-based result (with barrier):**
+```sql
+-- Option 1: Using barrier_ancestor_id column
+WHERE owner_tenant_id IN (
+  SELECT tc.descendant_id
+  FROM tenant_closure tc
+  JOIN tenant_projection tp ON tc.descendant_id = tp.tenant_id
+  WHERE tc.ancestor_id = :context_tenant_id
+    AND tc.barrier_ancestor_id IS NULL  -- no self-managed in path
+    AND tp.status IN ('active')
+)
+
+-- Option 2: Using separate managed-only closure table
+WHERE owner_tenant_id IN (
+  SELECT tc.descendant_id
+  FROM tenant_closure_managed tc
+  WHERE tc.ancestor_id = :context_tenant_id
+)
+```
+
+**For `ids` narrowing:**
+```sql
+-- With closure + explicit IDs
+WHERE owner_tenant_id IN (
+  SELECT tc.descendant_id
+  FROM tenant_closure tc
+  WHERE tc.ancestor_id = :context_tenant_id
+    AND tc.barrier_ancestor_id IS NULL
+    AND tc.descendant_id IN (:id1, :id2, :id3)  -- ids
+)
+```
+
+#### Group Scope SQL Compilation
+
+Groups are constraints, not context. The PEP compiles `effective_group_scope` based on which fields are present:
+
+| effective_group_scope | SQL |
+|----------------------|-----|
+| `{ "ids": [...] }` | `WHERE group_id IN (:id1, :id2)` |
+| `{ "root_id": "X" }` | `WHERE group_id IN (SELECT descendant_id FROM resource_group_closure WHERE ancestor_id = 'X')` |
+| `{ "root_id": "X", "ids": [...] }` | Intersection: `WHERE group_id IN (:ids) AND group_id IN (SELECT descendant_id FROM resource_group_closure WHERE ancestor_id = 'X')` |
+| `null / absent` | No group constraint |
+
+**Explicit group IDs:**
+```sql
+-- effective_group_scope.ids = ["group-1", "group-2"]
+AND resource_id IN (
+  SELECT resource_id FROM resource_group_membership
+  WHERE group_id IN ('group-1', 'group-2')
+)
+```
+
+**Hierarchy root (all descendants via closure):**
+```sql
+-- effective_group_scope.root_id = "dept-123"
+AND resource_id IN (
+  SELECT m.resource_id
+  FROM resource_group_membership m
+  WHERE m.group_id IN (
+    SELECT descendant_id FROM resource_group_closure
+    WHERE ancestor_id = 'dept-123'
+  )
+)
+```
+
+**Combined (intersection):**
+```sql
+-- effective_group_scope = { root_id: "dept-123", ids: ["team-alpha", "team-beta"] }
+AND resource_id IN (
+  SELECT m.resource_id
+  FROM resource_group_membership m
+  WHERE m.group_id IN ('team-alpha', 'team-beta')
+    AND m.group_id IN (
+      SELECT descendant_id FROM resource_group_closure
+      WHERE ancestor_id = 'dept-123'
+    )
+)
+```
+
+#### Resource Scope SQL Compilation
+
+Resources are simple constraints. The PEP compiles `effective_resource_scope` directly:
+
+| effective_resource_scope | SQL |
+|-------------------------|-----|
+| `{ "ids": [...] }` | `AND resource_id IN (:id1, :id2)` |
+| `null / absent` | No additional resource constraint |
+
+**Explicit resource IDs:**
+```sql
+-- effective_resource_scope.ids = ["res-1", "res-2"]
+AND resource_id IN ('res-1', 'res-2')
+```
 
 ---
 
@@ -309,33 +459,55 @@ This section defines the contract for `ResolveAccessConstraints` exposed by **Au
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
 
-  // Requested permission
+  // Permission - resource type without embedded selectors
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
 
-  // Resource context
+  // Tenant context - anchor point for the operation
   "context_tenant_id": "93953299-bcf0-4952-bc64-3b90880d6beb",
-  "resource_ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"], // OPTIONAL
-  
-  // Intent means what the subject wants to do
+
+  // Intent scopes (what caller wants)
   "intent_tenant_scope": {
-    "mode": "context_tenant_only", // context_tenant_only, context_tenant_and_descendants, explicit_set
-    "tenant_ids": ["..."]          // Required when mode is explicit_set
+    "mode": "context_tenant_only",           // context_tenant_only | context_tenant_and_descendants
+    "include_self_managed": false,           // OPTIONAL - default false (respects self-managed barrier)
+    "ids": ["..."],                          // OPTIONAL - intersection with these tenant IDs
+    "attributes_filter": {                   // OPTIONAL - attribute-based filtering (AND semantics)
+      "status": ["active"]                   // e.g., ["active", "suspended"]
+    }
   },
 
-  // Capabilities means what the PEP can enforce
+  // Group scope constraint - OPTIONAL (groups are constraints, not context)
+  // Fields can be combined with AND semantics:
+  //   - root_id alone: all groups in subtree
+  //   - ids alone: exactly these groups
+  //   - root_id + ids: intersection (ids must be within root_id subtree)
+  "intent_group_scope": {
+    "root_id": "aaa11111-1111-1111-1111-department111",  // OPTIONAL - hierarchy root
+    "ids": ["bbb22222-...", "ccc33333-..."]              // OPTIONAL - explicit groups
+  },
+  // OR omit intent_group_scope entirely if no group constraint needed
+
+  // Resource scope constraint - OPTIONAL
+  // Fields can be combined with AND semantics
+  "intent_resource_scope": {
+    "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],     // OPTIONAL - specific resource IDs
+    "attributes_filter": {                               // OPTIONAL - attribute-based filtering
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+    }
+  },
+  // OR omit intent_resource_scope if no specific resource constraint
+
+  // Capabilities (what the PEP can enforce)
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true   // barrier handling is implicit in closure
     },
     "group_scope": {
       "supports_membership_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     }
   }
 }
@@ -343,53 +515,66 @@ This section defines the contract for `ResolveAccessConstraints` exposed by **Au
 
 ### Output
 
-```json
+```jsonc
 {
   "schema_id": "gts.x.security.resolve_access_constraints.response.v1~",
   "issued_at": "2026-01-19T10:00:00Z",
   "ttl_seconds": 60,
+  "decision": "allow",                       // allow | deny
 
-  "decision": "allow", // allow, deny
-
-  // Subject context (from the request)
+  // Subject context (echoed from request)
   "subject_id": "a254d252-7129-4240-bae5-847c59008fb6",
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
 
-  // Requested permission
+  // Permission (echoed from request)
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
 
-  // Resource context (from the request)
+  // Tenant context (echoed from request)
   "context_tenant_id": "93953299-bcf0-4952-bc64-3b90880d6beb",
-  "resource_ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"], // OPTIONAL
 
+  // Echo intents (for auditability)
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
+  "intent_group_scope": { "ids": ["..."] },                                     // OPTIONAL
+  "intent_resource_scope": {                                                    // OPTIONAL
+    "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
+
+  // Enforceable constraints (PEP applies these)
   "alternatives": [
     {
-      "tenant_scope": {
-        "mode": "context_tenant_only", // context_tenant_only, context_tenant_and_descendants, explicit_set, not_applicable
-        "tenant_ids": ["..."]          // Required when mode is explicit_set
+      // Tenant scope: mode defines base, ids and attributes_filter narrow
+      // context_tenant_id at response root provides the anchor
+      "effective_tenant_scope": {
+        "mode": "context_tenant_only",       // context_tenant_only | context_tenant_and_descendants | not_applicable
+        "include_self_managed": false,       // was barrier applied?
+        "ids": ["..."],                      // OPTIONAL - resolved allowed tenant IDs
+        "attributes_filter": {               // OPTIONAL - attribute-based filtering
+          "status": ["active"]               // tenant status filter applied
+        }
       },
-      "group_scope": {
-        "mode": "not_applicable" // resource_group_only, resource_group_and_descendants, explicit_set, not_applicable
+
+      // Group scope: constraint, not context (omit if no group constraint)
+      // Fields can be combined with AND semantics (intersection)
+      "effective_group_scope": {
+        "root_id": "aaa11111-1111-1111-1111-department111",  // OPTIONAL - hierarchy root
+        "ids": ["bbb22222-...", "ccc33333-..."]              // OPTIONAL - explicit groups
       },
-      "resource_scope": {
-        "mode": "not_applicable" // explicit_set, not_applicable
+      // OR null/absent = no group constraint
+
+      // Resource scope: constraint (omit if no specific resource constraint)
+      // Fields can be combined with AND semantics
+      "effective_resource_scope": {
+        "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],     // OPTIONAL - specific resources
+        "attributes_filter": {                               // OPTIONAL - attribute-based filtering
+          "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+        }
       }
-    },
-    {
-      "tenant_scope": {
-        "mode": "not_applicable"
-      },
-      "group_scope": {
-        "mode": "not_applicable"
-      },
-      "resource_scope": {
-        "mode": "explicit_set",
-        "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"]
-      }
+      // OR null/absent = all resources matching other constraints
     }
   ]
 }
@@ -496,7 +681,7 @@ This approach:
 AuthZEN is designed for **access checks** (yes/no for a specific resource), while HyperSpot needs **access constraints** (predicates for filtering queries). Consider a LIST operation over 1 million resources:
 
 - **AuthZEN approach:** Call Access Evaluation 1M times, or use batch API (still returns 1M booleans)
-- **HyperSpot approach:** Single `ResolveAccessConstraints` call returns `tenant_scope.mode = "context_tenant_and_descendants"`, PEP generates `WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure ...)`
+- **HyperSpot approach:** Single `ResolveAccessConstraints` call returns `effective_tenant_scope.mode = "context_tenant_and_descendants"`, PEP generates `WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure ...)`
 
 **Potential alignment:**
 
@@ -536,7 +721,10 @@ HyperSpot could align field naming where practical:
 ## Open Questions
 
 1. **Auth Resolver Authentication**: How does Auth Resolver (PDP) authenticate the calling module (PEP)? Options include mTLS, service tokens, or network-level isolation. This affects trust boundaries and constraint integrity guarantees.
-2. **Managed vs Self-Managed Tenants**: Need to decide whether this logic belongs in the PDP (policy) or PEP (enforcement).
+
+## Resolved Questions
+
+1. **Managed vs Self-Managed Tenants**: Self-managed tenants act as a **barrier** in hierarchy traversal, not a simple filter. The barrier is controlled via the `include_self_managed` flag in requests. The PDP evaluates the permission policy to determine whether crossing the barrier is allowed. Implementation options include barrier-aware closure tables (`barrier_ancestor_id` column), separate closure tables for managed-only hierarchies, or runtime CTEs. See Scenario 17 for details.
 
 ## Validation
 
@@ -579,20 +767,25 @@ For efficient ancestor/descendant queries (subtree semantics in authorization):
 
 ```sql
 CREATE TABLE tenant_closure (
-    ancestor_id     UUID NOT NULL,
-    descendant_id   UUID NOT NULL,
-    depth           INT NOT NULL,             -- 0 = self, 1 = direct child, etc.
-    
+    ancestor_id         UUID NOT NULL,
+    descendant_id       UUID NOT NULL,
+    depth               INT NOT NULL,             -- 0 = self, 1 = direct child, etc.
+    barrier_ancestor_id UUID NULL,                -- OPTIONAL: nearest self-managed ancestor in path (NULL if none)
+
     PRIMARY KEY (ancestor_id, descendant_id),
     FOREIGN KEY (ancestor_id) REFERENCES tenant_projection(tenant_id),
-    FOREIGN KEY (descendant_id) REFERENCES tenant_projection(tenant_id)
+    FOREIGN KEY (descendant_id) REFERENCES tenant_projection(tenant_id),
+    FOREIGN KEY (barrier_ancestor_id) REFERENCES tenant_projection(tenant_id)
 );
 
 CREATE INDEX idx_tenant_closure_ancestor ON tenant_closure(ancestor_id);
 CREATE INDEX idx_tenant_closure_descendant ON tenant_closure(descendant_id);
+CREATE INDEX idx_tenant_closure_barrier ON tenant_closure(barrier_ancestor_id) WHERE barrier_ancestor_id IS NOT NULL;
 ```
 
 The closure table includes self-referencing entries `(T, T, 0)` for every tenant, enabling "tenant or descendants" queries without special-casing.
+
+**Note on `barrier_ancestor_id`:** This optional column enables efficient self-managed barrier handling. When a tenant is self-managed, all closure entries where that tenant is in the path have `barrier_ancestor_id` set to the self-managed tenant's ID. Queries can then filter with `WHERE barrier_ancestor_id IS NULL` to exclude self-managed tenants and their subtrees. See Scenario 17 for usage example.
 
 #### Resource Group Projection Table
 
@@ -688,24 +881,27 @@ Subject reads an event within their own tenant (subject_tenant_id = context_tena
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
+  },
+  "intent_resource_scope": {
+    "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
+    "attributes_filter": {
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+    }
   },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -726,16 +922,22 @@ Verify Subject belongs to `context_tenant_id` (or has cross-tenant delegation). 
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
+  "intent_resource_scope": {
+    "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_resource_scope": {
+        "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -751,7 +953,7 @@ WHERE e.id = 'e81307e5-5ee8-4c0a-8d1f-bd98a65c517e'
   AND e.owner_tenant_id = '51f18034-3b2f-4bfa-bb99-22113bddee68'
 ```
 
-The constraint `tenant_scope.mode = "context_tenant_only"` translates to `owner_tenant_id = :context_tenant_id`.
+The constraint `effective_tenant_scope.mode = "context_tenant_only"` translates to `owner_tenant_id = :context_tenant_id`.
 
 #### Scenario 2: Same-Tenant Access (List)
 
@@ -771,23 +973,26 @@ Subject lists events within their own tenant (no context_tenant_id in request; d
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+    "attributes_filter": {
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+    }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -808,15 +1013,20 @@ Verify Subject belongs to `context_tenant_id` (or has cross-tenant delegation). 
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -827,11 +1037,12 @@ Verify Subject belongs to `context_tenant_id` (or has cross-tenant delegation). 
 ```sql
 SELECT e.*
 FROM events e
+WHERE e.topic_id = '<uuid5-from-gts-topic-id>' -- from effective_resource_scope.attributes_filter.topic_id
 WHERE e.topic_id = '<uuid5-from-gts-topic-id>'
   AND e.owner_tenant_id = '51f18034-3b2f-4bfa-bb99-22113bddee68'
 ```
 
-Same constraint translation as Scenario 1: `tenant_scope.mode = "context_tenant_only"` → `owner_tenant_id = :context_tenant_id`.
+Same constraint translation as Scenario 1: `effective_tenant_scope.mode = "context_tenant_only"` → `owner_tenant_id = :context_tenant_id`.
 
 #### Scenario 3: Tenant Subtree Access (Read One)
 
@@ -860,24 +1071,27 @@ Subject/Context Tenant (51f18034-...) ← parent, request scope root
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
   "intent_tenant_scope": {
     "mode": "context_tenant_and_descendants"
+  },
+  "intent_resource_scope": {
+    "ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
+    "attributes_filter": {
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+    }
   },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -900,16 +1114,19 @@ Auth Resolver confirms the subject can access resources in their tenant and desc
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
+  "intent_tenant_scope": { "mode": "context_tenant_and_descendants" },
+  "intent_resource_scope": { "ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"] },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_and_descendants" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_tenant_scope": { "mode": "context_tenant_and_descendants" },
+      "effective_resource_scope": {
+        "ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -930,7 +1147,7 @@ WHERE e.id = 'f92418e6-6ff9-4d1b-9e2f-ce09a76d628f'
   )
 ```
 
-The constraint `tenant_scope.mode = "context_tenant_and_descendants"` translates to a closure table lookup: `owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = :context_tenant_id)`.
+The constraint `effective_tenant_scope.mode = "context_tenant_and_descendants"` translates to a closure table lookup: `owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = :context_tenant_id)`.
 
 #### Scenario 4: Tenant Subtree Access Without Closure (Read One)
 
@@ -961,35 +1178,36 @@ PEP declares it does **not** support descendants via closure:
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
   "intent_tenant_scope": {
     "mode": "context_tenant_and_descendants"
+  },
+  "intent_resource_scope": {
+    "ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
   },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": false
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Verify Subject has `read` permission on `resource_type` with scope `context_tenant_and_descendants`. PEP capability `supports_descendants_via_closure=false`, so PDP *expands* the tenant subtree into an explicit list of IDs (`context_tenant` + children) and returns `mode: "explicit_set"`.
+Verify Subject has `read` permission on `resource_type` with scope `context_tenant_and_descendants`. PEP capability `supports_descendants_via_closure=false`, so PDP *expands* the tenant subtree into an explicit list of IDs (`context_tenant` + children) and returns them in `effective_tenant_scope.ids`.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
-Auth Resolver sees the PEP cannot do closure-based enforcement, so it **expands the subtree into an explicit set** of tenant IDs:
+Auth Resolver sees the PEP cannot do closure-based enforcement, so it **expands the subtree into `ids`**:
 
 ```json
 {
@@ -1001,22 +1219,25 @@ Auth Resolver sees the PEP cannot do closure-based enforcement, so it **expands 
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
+  "intent_tenant_scope": { "mode": "context_tenant_and_descendants" },
+  "intent_resource_scope": { "ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"] },
   "alternatives": [
     {
-      "tenant_scope": {
-        "mode": "explicit_set",
+      "effective_tenant_scope": {
+        "mode": "context_tenant_and_descendants",
         "ids": [
           "51f18034-3b2f-4bfa-bb99-22113bddee68",
           "93953299-bcf0-4952-bc64-3b90880d6beb"
         ]
       },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "ids": ["f92418e6-6ff9-4d1b-9e2f-ce09a76d628f"],
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1066,23 +1287,24 @@ Subject/Context Tenant (51f18034-...) ← parent
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_and_descendants"
   },
+  "intent_resource_scope": {
+     "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -1103,15 +1325,17 @@ Verify Subject has `list` permission on `resource_type` with scope `context_tena
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_and_descendants" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_and_descendants" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_tenant_scope": { "mode": "context_tenant_and_descendants" },
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1158,34 +1382,35 @@ Subject/Context Tenant (51f18034-...) ← parent
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_and_descendants"
   },
+  "intent_resource_scope": {
+     "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": false
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Verify Subject has `list` permission on `resource_type` with scope `context_tenant_and_descendants`. PEP capability `supports_descendants_via_closure=false`, so PDP *expands* the tenant subtree into an explicit list of IDs.
+Verify Subject has `list` permission on `resource_type` with scope `context_tenant_and_descendants`. PEP capability `supports_descendants_via_closure=false`, so PDP *expands* the tenant subtree into `ids`.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
-Auth Resolver expands subtree into explicit set:
+Auth Resolver expands subtree into `ids`:
 
 ```json
 {
@@ -1197,22 +1422,24 @@ Auth Resolver expands subtree into explicit set:
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_and_descendants" },
   "alternatives": [
     {
-      "tenant_scope": {
-        "mode": "explicit_set",
+      "effective_tenant_scope": {
+        "mode": "context_tenant_and_descendants",
         "ids": [
           "51f18034-3b2f-4bfa-bb99-22113bddee68",
           "93953299-bcf0-4952-bc64-3b90880d6beb",
           "7a8b9c0d-1234-5678-9abc-def012345678"
         ]
       },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1260,31 +1487,32 @@ Resource Group: "Project Alpha" (group_id: d4e5f6a7-1234-5678-9abc-projectalpha1
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["a1b2c3d4-5678-90ab-cdef-111222333444"],
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
+  },
+  "intent_resource_scope": {
+    "ids": ["a1b2c3d4-5678-90ab-cdef-111222333444"],
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
   },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Verify Subject has `read` permission. Policy restricts access to specific Resource Groups (e.g., "Project Alpha"). PEP supports membership projection. Return `group_scope.mode="explicit_set"` with allowed group IDs.
+Verify Subject has `read` permission. Policy restricts access to specific Resource Groups (e.g., "Project Alpha"). PEP supports membership projection. Return `effective_group_scope.ids` containing allowed group IDs.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
@@ -1300,19 +1528,22 @@ Auth Resolver determines that subject's policy grants access only to resources i
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "read"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-  "resource_ids": ["a1b2c3d4-5678-90ab-cdef-111222333444"],
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
+  "intent_resource_scope": { "ids": ["a1b2c3d4-5678-90ab-cdef-111222333444"] },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": {
-        "mode": "explicit_set",
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_group_scope": {
         "ids": ["d4e5f6a7-1234-5678-9abc-projectalpha1"]
       },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "ids": ["a1b2c3d4-5678-90ab-cdef-111222333444"],
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1365,34 +1596,35 @@ Event D is NOT in any authorized group
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+     "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Verify Subject has `list` permission. Policy grants access to resources in multiple Resource Groups ("Project Alpha", "Project Beta"). PEP supports membership projection. Return set of all allowed group IDs.
+Verify Subject has `list` permission. Policy grants access to resources in multiple Resource Groups ("Project Alpha", "Project Beta"). PEP supports membership projection. Return set of all allowed group IDs in `effective_group_scope.ids`.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
-Auth Resolver returns access to multiple groups as explicit set:
+Auth Resolver returns access to multiple groups in `effective_group_scope.ids`:
 
 ```json
 {
@@ -1404,21 +1636,23 @@ Auth Resolver returns access to multiple groups as explicit set:
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": {
-        "mode": "explicit_set",
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_group_scope": {
         "ids": [
           "d4e5f6a7-1234-5678-9abc-projectalpha1",
           "e5f6a7b8-2345-6789-abcd-projectbeta22"
         ]
       },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1478,30 +1712,31 @@ Event 3 (Child B) is NOT in Project Alpha
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_and_descendants"
   },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Verify Subject has broad subtree access (Tenant Scope) AND Group restrictions. Returns combined constraints: `tenant_scope.mode="context_tenant_and_descendants"` AND `group_scope.mode="explicit_set"`.
+Verify Subject has broad subtree access (Tenant Scope) AND Group restrictions. Returns combined constraints: `effective_tenant_scope.mode="context_tenant_and_descendants"` AND `effective_group_scope.ids`.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
@@ -1517,18 +1752,20 @@ Auth Resolver grants Tenant Subtree Access but only for resources in "Project Al
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_and_descendants" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_and_descendants" },
-      "group_scope": {
-        "mode": "explicit_set",
+      "effective_tenant_scope": { "mode": "context_tenant_and_descendants" },
+      "effective_group_scope": {
         "ids": ["d4e5f6a7-1234-5678-9abc-projectalpha1"]
       },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1590,30 +1827,34 @@ Resource Group: "Other Department" (ddd44444-...)
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_group_scope": {
+    "root_id": "aaa11111-1111-1111-1111-department111"
+  },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Policy grants access to a Group and its descendants. PEP supports group closure (`supports_descendants_via_closure=true`). Return `group_scope.mode="resource_group_and_descendants"`.
+Policy grants access to the "Department" group and its descendants. PEP supports group closure (`supports_descendants_via_closure=true`). Return `effective_group_scope.root_id` to enable closure-based enforcement.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
@@ -1629,18 +1870,21 @@ Auth Resolver grants access to "Department" group and all its descendants:
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
+  "intent_group_scope": { "root_id": "aaa11111-1111-1111-1111-department111" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": {
-        "mode": "resource_group_and_descendants",
-        "root_group_ids": ["aaa11111-1111-1111-1111-department111"]
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_group_scope": {
+        "root_id": "aaa11111-1111-1111-1111-department111"
       },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1648,7 +1892,7 @@ Auth Resolver grants access to "Department" group and all its descendants:
 
 **Step 3: Domain Module generates SQL**
 
-Uses `resource_group_closure` table to expand the group hierarchy:
+Uses `resource_group_closure` table to expand the group hierarchy. The `effective_group_scope.root_id` translates directly to a closure table lookup:
 
 ```sql
 SELECT e.*
@@ -1656,11 +1900,11 @@ FROM events e
 WHERE e.topic_id = '<uuid5-from-gts-topic-id>'
   AND e.owner_tenant_id = '51f18034-3b2f-4bfa-bb99-22113bddee68'
   AND e.id IN (
-      SELECT m.resource_id 
+      SELECT m.resource_id
       FROM resource_group_membership m
       WHERE m.group_id IN (
           SELECT descendant_id FROM resource_group_closure
-          WHERE ancestor_id IN ('aaa11111-1111-1111-1111-department111')
+          WHERE ancestor_id = 'aaa11111-1111-1111-1111-department111'  -- root_id
       )
   )
 ```
@@ -1690,7 +1934,7 @@ Subject lists events. Policy checks grant access via "Project Alpha".
 
 **Step 1: Domain Module → Auth Resolver (ResolveAccessConstraints)**
 
-PEP declares it does **not** support membership projection, but supports explicit sets:
+PEP declares it does **not** support membership projection:
 
 ```json
 {
@@ -1699,36 +1943,37 @@ PEP declares it does **not** support membership projection, but supports explici
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
-      "supports_membership_projection": false, 
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_membership_projection": false,
+      "supports_descendants_via_closure": false
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Policy grants access via Group. PEP *cannot* join group membership (`supports_membership_projection=false`). PDP *expands* group membership into `resource_ids` and returns `resource_scope.mode="explicit_set"`.
+Policy grants access via Group. PEP *cannot* join group membership (`supports_membership_projection=false`). PDP *expands* group membership into resource IDs and returns them in `effective_resource_scope.ids`.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
 Auth Resolver sees the PEP cannot join on groups.
 It calculates the *expansion* of "Project Alpha": finds all resources in that group (Resource ID 111, 222).
-It returns these as a `resource_scope` explicit set.
+It returns these in `effective_resource_scope.ids` (group scope is omitted since it's not applicable).
 
 ```json
 {
@@ -1740,21 +1985,17 @@ It returns these as a `resource_scope` explicit set.
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
   "alternatives": [
     {
-      "tenant_scope": { 
-        "mode": "context_tenant_only" 
-      },
-      "group_scope": { 
-        "mode": "not_applicable" 
-      },
-      "resource_scope": { 
-        "mode": "explicit_set",
-        "ids": ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"]
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_resource_scope": {
+        "ids": ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"],
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
       }
     }
   ]
@@ -1801,23 +2042,24 @@ Subject creates a new event within their own tenant. The resource does not exist
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "create"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -1840,15 +2082,17 @@ Auth Resolver confirms the subject can create resources in their own tenant:
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "create"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -1860,7 +2104,7 @@ The PEP validates that the target `owner_tenant_id` matches the constraint befor
 
 ```sql
 -- PEP validates: target owner_tenant_id must equal context_tenant_id
--- If constraint is tenant_scope.mode = "context_tenant_only"
+-- If constraint is effective_tenant_scope.mode = "context_tenant_only"
 -- then owner_tenant_id MUST be '51f18034-3b2f-4bfa-bb99-22113bddee68'
 
 INSERT INTO events (id, owner_tenant_id, topic_id, payload, created_at, creator_subject_id, creator_tenant_id)
@@ -1909,23 +2153,24 @@ The `context_tenant_id` is the target (child) tenant where the resource will be 
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "create"
   },
   "context_tenant_id": "93953299-bcf0-4952-bc64-3b90880d6beb",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -1948,15 +2193,17 @@ Auth Resolver evaluates whether subject from parent tenant can create in child t
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "create"
   },
   "context_tenant_id": "93953299-bcf0-4952-bc64-3b90880d6beb",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -2005,23 +2252,24 @@ Subject attempts to create an event but has no `create` permission for this reso
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.restricted_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "create"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.restricted_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": false,
-      "supports_descendants_via_closure": false,
-      "supports_explicit_set": false
+      "supports_descendants_via_closure": false
     }
   }
 }
@@ -2044,10 +2292,14 @@ Auth Resolver denies — no policy grants this permission:
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.restricted_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "create"
   },
-  "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68"
+  "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.restricted_topic.v1" }
+  }
 }
 ```
 
@@ -2109,23 +2361,24 @@ Event E (eee55555-...) — neither in Project Alpha nor directly shared
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
     "mode": "context_tenant_only"
   },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     },
     "group_scope": {
       "supports_membership_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
     }
   }
 }
@@ -2148,25 +2401,26 @@ Auth Resolver returns **two alternatives** — the subject can access resources 
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": { "mode": "context_tenant_only" },
   "alternatives": [
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": {
-        "mode": "explicit_set",
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_group_scope": {
         "ids": ["d4e5f6a7-1234-5678-9abc-projectalpha1"]
       },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     },
     {
-      "tenant_scope": { "mode": "context_tenant_only" },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": {
-        "mode": "explicit_set",
-        "ids": ["ccc33333-3333-3333-3333-333333333333", "ddd44444-4444-4444-4444-444444444444"]
+      "effective_tenant_scope": { "mode": "context_tenant_only" },
+      "effective_resource_scope": {
+        "ids": ["ccc33333-3333-3333-3333-333333333333", "ddd44444-4444-4444-4444-444444444444"],
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
       }
     }
   ]
@@ -2205,18 +2459,18 @@ WHERE e.topic_id = '<uuid5-from-gts-topic-id>'
 
 **Key points:**
 - **Alternatives are OR'ed:** A resource is accessible if it matches *any* alternative
-- **Within each alternative, scopes are AND'ed:** `tenant_scope AND group_scope AND resource_scope`
-- **`resource_scope.mode = "explicit_set"`** enables direct resource grants without requiring group membership
+- **Within each alternative, scopes are AND'ed:** `effective_tenant_scope AND effective_group_scope AND effective_resource_scope`
+- **`effective_resource_scope.ids`** enables direct resource grants without requiring group membership
 - **Tenant constraint remains in both alternatives** as defense-in-depth (resource must still be in authorized tenant)
 - This pattern supports hybrid access models: role-based (via groups) + direct sharing (via resource IDs)
 
 **SQL optimization note:** For large explicit ID sets, consider using a CTE or temporary table instead of inline `IN (...)` clause.
 
-#### Scenario 16: Explicit Tenant Set Intent
+#### Scenario 16: Filter-Narrowed Tenant Scope Intent
 
 **Context:**
 
-Subject explicitly requests access to a specific set of tenants (e.g., selecting "Tenant A" and "Tenant B" from a multi-tenant dashboard). The intent is to limit the scope to these specific tenants.
+Subject explicitly requests access to a specific set of tenants within their authorized scope (e.g., selecting "Tenant A" and "Tenant B" from a multi-tenant dashboard). The intent uses `intent_tenant_scope.ids` to narrow the base scope to these specific tenants.
 
 **Request:**
 
@@ -2232,34 +2486,40 @@ Subject explicitly requests access to a specific set of tenants (e.g., selecting
   "subject_type": "gts.x.core.security.subject.user.v1~",
   "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "permission": {
-    "resource_type": "gts.x.events.event.v1~[topic_id=\"gts.x.core.events.topic.v1~z.app._.some_topic.v1\"]",
+    "resource_type": "gts.x.events.event.v1~",
     "action": "list"
   },
   "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
   "intent_tenant_scope": {
-    "mode": "explicit_set",
-    "tenant_ids": [
-        "93953299-bcf0-4952-bc64-3b90880d6beb", 
-        "d4e5f6a7-1234-5678-9abc-projectalpha1"
+    "mode": "context_tenant_and_descendants",
+    "ids": [
+      "93953299-bcf0-4952-bc64-3b90880d6beb",
+      "d4e5f6a7-1234-5678-9abc-childtenant01"
     ]
+  },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
   },
   "capabilities": {
     "tenant_scope": {
       "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true,
-      "supports_explicit_set": true
+      "supports_descendants_via_closure": true
+    },
+    "group_scope": {
+      "supports_membership_projection": false,
+      "supports_descendants_via_closure": false
     }
   }
 }
 ```
 
 **Logic (PDP Check):**
-Compute the intersection of the requested tenant set with the tenants the Subject is authorized to access. Return the authorized subset. If the intersection is empty, deny.
+Compute the intersection of the requested tenant set (`intent_tenant_scope.ids`) with the tenants the Subject is authorized to access within the base scope. Return the authorized subset. If the intersection is empty, deny.
 
 **Step 2: Auth Resolver → Domain Module (Response)**
 
-Auth Resolver checks if the subject has access to the requested tenants.
-- If allowed to both: returns both.
+Auth Resolver checks if the subject has access to the requested tenants within the context tenant's subtree.
+- If allowed to both: returns both in `effective_tenant_scope.ids`.
 - If allowed only one: returns only the allowed one.
 - If allowed neither: returns empty/deny.
 
@@ -2268,18 +2528,36 @@ Assuming Subject has access to both:
 ```json
 {
   "schema_id": "gts.x.security.resolve_access_constraints.response.v1~",
+  "issued_at": "2026-01-19T10:00:00Z",
+  "ttl_seconds": 60,
   "decision": "allow",
+  "subject_id": "a254d252-7129-4240-bae5-847c59008fb6",
+  "subject_type": "gts.x.core.security.subject.user.v1~",
+  "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "permission": {
+    "resource_type": "gts.x.events.event.v1~",
+    "action": "list"
+  },
+  "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": {
+    "mode": "context_tenant_and_descendants",
+    "ids": [
+      "93953299-bcf0-4952-bc64-3b90880d6beb",
+      "d4e5f6a7-1234-5678-9abc-childtenant01"
+    ]
+  },
   "alternatives": [
     {
-      "tenant_scope": { 
-          "mode": "explicit_set",
-          "tenant_ids": [
-              "93953299-bcf0-4952-bc64-3b90880d6beb", 
-              "d4e5f6a7-1234-5678-9abc-projectalpha1"
-          ] 
+      "effective_tenant_scope": {
+        "mode": "context_tenant_and_descendants",
+        "ids": [
+          "93953299-bcf0-4952-bc64-3b90880d6beb",
+          "d4e5f6a7-1234-5678-9abc-childtenant01"
+        ]
       },
-      "group_scope": { "mode": "not_applicable" },
-      "resource_scope": { "mode": "not_applicable" }
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
     }
   ]
 }
@@ -2293,7 +2571,183 @@ FROM events e
 WHERE e.topic_id = '<uuid5-from-gts-topic-id>'
   AND e.owner_tenant_id IN (
     '93953299-bcf0-4952-bc64-3b90880d6beb',
-    'd4e5f6a7-1234-5678-9abc-projectalpha1'
-)
+    'd4e5f6a7-1234-5678-9abc-childtenant01'
+  )
 ```
+
+**Key point:** The `ids` field narrows the effective scope. The PEP compiles `effective_tenant_scope.ids` directly into an `IN` clause, which is the intersection of the requested IDs and the authorized scope.
+
+#### Scenario 17: Attribute Filtering with Self-Managed Barrier
+
+**Context:**
+
+Subject lists events from their tenant subtree, but only from `active` managed tenants. Self-managed tenants act as a barrier — the self-managed tenant and its entire subtree are hidden from the parent tenant.
+
+**Tenant Hierarchy:**
+```
+Context Tenant (51f18034-..., managed, active)
+├── Child A (93953299-..., managed, active)      ← Visible
+├── Child B (7a8b9c0d-..., self-managed, active) ← BARRIER (hidden + subtree hidden)
+│   └── Grandchild C (aaa11111-..., managed, active) ← Hidden (behind barrier)
+└── Child D (bbb22222-..., managed, suspended)   ← Hidden (status filter)
+```
+
+**Request:**
+
+`GET /events?topic={topic_id}`
+`topic_id` = `gts.x.core.events.topic.v1~z.app._.some_topic.v1`
+
+Subject wants events from active managed child tenants only.
+
+**Step 1: Domain Module → Auth Resolver (ResolveAccessConstraints)**
+
+```json
+{
+  "schema_id": "gts.x.security.resolve_access_constraints.request.v1~",
+  "subject_id": "a254d252-7129-4240-bae5-847c59008fb6",
+  "subject_type": "gts.x.core.security.subject.user.v1~",
+  "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "permission": {
+    "resource_type": "gts.x.events.event.v1~",
+    "action": "list"
+  },
+  "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": {
+    "mode": "context_tenant_and_descendants",
+    "include_self_managed": false,
+    "attributes_filter": {
+      "status": ["active"]
+    }
+  },
+  "intent_resource_scope": {
+    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  },
+  "capabilities": {
+    "tenant_scope": {
+      "supports_tenants_projection": true,
+      "supports_descendants_via_closure": true
+    },
+    "group_scope": {
+      "supports_membership_projection": false,
+      "supports_descendants_via_closure": false
+    }
+  }
+}
+```
+
+**Logic (PDP Check):**
+1. Start with the authorized tenant subtree for this permission
+2. Apply self-managed barrier (exclude self-managed tenants and their subtrees)
+3. Filter by `status = ["active"]`
+4. Return the effective scope
+
+**Step 2: Auth Resolver → Domain Module (Response)**
+
+Auth Resolver applies the barrier and status filter:
+
+```json
+{
+  "schema_id": "gts.x.security.resolve_access_constraints.response.v1~",
+  "issued_at": "2026-01-19T10:00:00Z",
+  "ttl_seconds": 60,
+  "decision": "allow",
+  "subject_id": "a254d252-7129-4240-bae5-847c59008fb6",
+  "subject_type": "gts.x.core.security.subject.user.v1~",
+  "subject_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "permission": {
+    "resource_type": "gts.x.events.event.v1~",
+    "action": "list"
+  },
+  "context_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+  "intent_tenant_scope": {
+    "mode": "context_tenant_and_descendants",
+    "include_self_managed": false,
+    "attributes_filter": { "status": ["active"] }
+  },
+  "alternatives": [
+    {
+      "effective_tenant_scope": {
+        "mode": "context_tenant_and_descendants",
+        "include_self_managed": false,
+        "attributes_filter": {
+          "status": ["active"]
+        }
+      },
+      "effective_resource_scope": {
+        "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+      }
+    }
+  ]
+}
+```
+
+**Step 3: Domain Module generates SQL**
+
+PEP compiles the constraint using the closure table with barrier awareness and tenant projection for status filtering:
+
+```sql
+SELECT e.*
+FROM events e
+WHERE e.topic_id = '<uuid5-from-gts-topic-id>'
+  AND e.owner_tenant_id IN (
+      SELECT tc.descendant_id
+      FROM tenant_closure tc
+      JOIN tenant_projection tp ON tc.descendant_id = tp.tenant_id
+      WHERE tc.ancestor_id = '51f18034-3b2f-4bfa-bb99-22113bddee68'
+        AND tc.barrier_ancestor_id IS NULL  -- no self-managed tenant in path (barrier)
+        AND tp.status IN ('active')         -- status filter
+  )
+```
+
+**Result:** Returns events from Context Tenant and Child A only.
+- Child B is excluded (self-managed barrier)
+- Grandchild C is excluded (behind the self-managed barrier)
+- Child D is excluded (status filter: suspended)
+
+**Key points:**
+- **`include_self_managed: false`** respects the self-managed barrier (default behavior)
+- **`filter.status`** applies additional attribute filtering on tenants
+- The barrier is implemented via `barrier_ancestor_id IS NULL` in the closure table
+- Both constraints are AND'ed: barrier AND status filter
+
+**Alternative: Crossing the Self-Managed Barrier**
+
+If the subject explicitly sets `include_self_managed: true` and the permission policy allows it:
+
+```json
+"intent_tenant_scope": {
+  "mode": "context_tenant_and_descendants",
+  "include_self_managed": true,
+  "attributes_filter": { "status": ["active"] }
+}
+```
+
+The PDP may respond with:
+
+```json
+"effective_tenant_scope": {
+  "mode": "context_tenant_and_descendants",
+  "include_self_managed": true,
+  "attributes_filter": { "status": ["active"] }
+}
+```
+
+And the SQL would omit the barrier check:
+
+```sql
+SELECT e.*
+FROM events e
+WHERE e.topic_id = '<uuid5-from-gts-topic-id>'
+  AND e.owner_tenant_id IN (
+      SELECT tc.descendant_id
+      FROM tenant_closure tc
+      JOIN tenant_projection tp ON tc.descendant_id = tp.tenant_id
+      WHERE tc.ancestor_id = '51f18034-3b2f-4bfa-bb99-22113bddee68'
+        AND tp.status IN ('active')  -- only status filter, no barrier
+  )
+```
+
+This would include Grandchild C (active, behind self-managed parent), but still exclude Child B (self-managed but active) and Child D (suspended).
+
+**Note:** Whether crossing the barrier is allowed depends on the permission policy configured in the vendor's authorization system. The PDP has final authority.
 
