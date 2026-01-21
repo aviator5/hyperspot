@@ -468,47 +468,32 @@ AND resource_id IN ('res-1', 'res-2')
   // Tenant context - anchor point for the operation
   "context_tenant_id": "93953299-bcf0-4952-bc64-3b90880d6beb",
 
-  // Intent scopes (what caller wants)
+  // Intent tenant scope (what caller wants)
   "intent_tenant_scope": {
-    "mode": "context_tenant_only",           // context_tenant_only | context_tenant_and_descendants
-    "include_self_managed": false,           // OPTIONAL - default false (respects self-managed barrier)
-    "ids": ["..."],                          // OPTIONAL - intersection with these tenant IDs
-    "attributes_filter": {                   // OPTIONAL - attribute-based filtering (AND semantics)
-      "status": ["active"]                   // e.g., ["active", "suspended"]
+    "mode": "context_tenant_only",        // context_tenant_only | context_tenant_and_descendants
+    "ignore_self_managed_barrier": true,   // OPTIONAL - default false (respects self-managed barrier)
+    "attributes_filter": {                 // OPTIONAL - attribute-based filtering (AND semantics)
+      "status": ["active"]                 // e.g., ["active", "suspended"]
     }
   },
-
-  // Group scope constraint - OPTIONAL (groups are constraints, not context)
-  // Fields can be combined with AND semantics:
-  //   - root_id alone: all groups in subtree
-  //   - ids alone: exactly these groups
-  //   - root_id + ids: intersection (ids must be within root_id subtree)
-  "intent_group_scope": {
-    "root_id": "aaa11111-1111-1111-1111-department111",  // OPTIONAL - hierarchy root
-    "ids": ["bbb22222-...", "ccc33333-..."]              // OPTIONAL - explicit groups
-  },
-  // OR omit intent_group_scope entirely if no group constraint needed
 
   // Resource scope constraint - OPTIONAL
   // Fields can be combined with AND semantics
   "intent_resource_scope": {
     "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],     // OPTIONAL - specific resource IDs
     "attributes_filter": {                               // OPTIONAL - attribute-based filtering
-      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1",
+      "owner_tenant_id": ["..."] // OPTIONAL - additional filter by owners
     }
   },
   // OR omit intent_resource_scope if no specific resource constraint
 
   // Capabilities (what the PEP can enforce)
   "capabilities": {
-    "tenant_scope": {
-      "supports_tenants_projection": true,
-      "supports_descendants_via_closure": true   // barrier handling is implicit in closure
-    },
-    "group_scope": {
-      "supports_membership_projection": true,
-      "supports_descendants_via_closure": true
-    }
+    "tenant_attributes_filter_support": true,
+    "tenant_closure_support": true,
+    "resource_group_membership_support": true,
+    "resource_group_closure_support": true
   }
 }
 ```
@@ -537,11 +522,19 @@ AND resource_id IN ('res-1', 'res-2')
   "context_tenant_id": "93953299-bcf0-4952-bc64-3b90880d6beb",
 
   // Echo intents (for auditability)
-  "intent_tenant_scope": { "mode": "context_tenant_only" },
-  "intent_group_scope": { "ids": ["..."] },                                     // OPTIONAL
-  "intent_resource_scope": {                                                    // OPTIONAL
-    "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],
-    "attributes_filter": { "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1" }
+  "intent_tenant_scope": {
+    "mode": "context_tenant_only",        // context_tenant_only | context_tenant_and_descendants
+    "ignore_self_managed_barrier": true,   // OPTIONAL - default false (respects self-managed barrier)
+    "attributes_filter": {                 // OPTIONAL - attribute-based filtering (AND semantics)
+      "status": ["active"]                 // e.g., ["active", "suspended"]
+    }
+  },
+  "intent_resource_scope": {
+    "ids": ["e81307e5-5ee8-4c0a-8d1f-bd98a65c517e"],     // OPTIONAL - specific resource IDs
+    "attributes_filter": {                               // OPTIONAL - attribute-based filtering
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1",
+      "owner_tenant_id": ["..."] // OPTIONAL - additional filter by owners
+    }
   },
 
   // Enforceable constraints (PEP applies these)
@@ -550,7 +543,8 @@ AND resource_id IN ('res-1', 'res-2')
       // Tenant scope: mode defines base, ids and attributes_filter narrow
       // context_tenant_id at response root provides the anchor
       "effective_tenant_scope": {
-        "mode": "context_tenant_only",       // context_tenant_only | context_tenant_and_descendants | not_applicable
+        "mode": "context_tenant_only",       // context_tenant_only | context_tenant_and_descendants_via_closure | not_applicable
+        "ignore_self_managed_barrier": true,   // OPTIONAL - default false (respects self-managed barrier)
         "include_self_managed": false,       // was barrier applied?
         "ids": ["..."],                      // OPTIONAL - resolved allowed tenant IDs
         "attributes_filter": {               // OPTIONAL - attribute-based filtering
