@@ -123,13 +123,12 @@ sequenceDiagram
   "context": {
     "constraints": [{
       "filters": [
-        // PDP uses logical field name (DSL), not physical column
-        { "type": "field", "field": "resource.owner_tenant_id", "op": "in_closure", "ancestor_id": "tenant-123", "respect_barrier": true }
+        // Tenant ownership filter - uses local tenant_closure table
+        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-123", "respect_barrier": true }
       ]
     }]
   }
 }
-// PEP maps resource.owner_tenant_id -> owner_tenant_id column
 // PEP compiles to: WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'tenant-123')
 // Now: SELECT * FROM events WHERE (constraints) LIMIT 10 - correct pagination!
 ```
@@ -298,7 +297,7 @@ Content-Type: application/json
       "include_self": true,
       "depth": "descendants",      // "none" | "children" | "descendants"
       "respect_barrier": true,     // honor self_managed barrier in hierarchy traversal
-      "status": ["active", "suspended"]  // optional, filters by tenant status
+      "tenant_status": ["active", "suspended"]  // optional, filters by tenant status
     },
 
     // PEP capabilities: what the caller can enforce locally
@@ -325,13 +324,12 @@ The response contains a `decision` and, when `decision: true`, optional `context
       // Filters within a constraint are AND'd together
       "filters": [
         {
-          // Tenant closure filter - uses local tenant_closure table
-          "type": "field",
-          "field": "resource.owner_tenant_id",
+          // Tenant ownership filter - uses local tenant_closure table
+          "type": "tenant_ownership",
           "op": "in_closure",
           "ancestor_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
           "respect_barrier": true,
-          "status": ["active", "suspended"]
+          "tenant_status": ["active", "suspended"]
         },
         {
           // Simple column equality from resource properties
@@ -392,7 +390,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
   "context": {
     "constraints": [{
       "filters": [
-        { "type": "field", "field": "resource.owner_tenant_id", "op": "in_closure", "ancestor_id": "tenant-A", "respect_barrier": true }
+        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-A", "respect_barrier": true }
       ]
     }]
   }
@@ -416,7 +414,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
   "context": {
     "constraints": [{
       "filters": [
-        { "type": "field", "field": "resource.owner_tenant_id", "op": "in_closure", "ancestor_id": "tenant-A", "respect_barrier": true }
+        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-A", "respect_barrier": true }
       ]
     }]
   }
@@ -435,8 +433,8 @@ The response contains a `decision` and, when `decision: true`, optional `context
     "constraints": [{
       "filters": [
         {
-          "type": "field",
-          "field": "resource.owner_tenant_id",
+          // Tenant ownership filter
+          "type": "tenant_ownership",
           "op": "in_closure",
           "ancestor_id": "tenant-A",
           "respect_barrier": true
@@ -465,17 +463,24 @@ The response contains a `decision` and, when `decision: true`, optional `context
 
 ## Filter Types Reference
 
-The following filter types can appear in the `filters` array. Filter fields use **logical names** (DSL), not physical column names. PEP maps logical fields to actual database columns.
+The following filter types can appear in the `filters` array. There are **three distinct filter types**, each with specific semantics:
 
-| Filter | Type | Op | Parameters | Example Field | SQL Mapping |
-|--------|------|-----|------------|---------------|-------------|
-| Field equality | `field` | `eq` | `field`, `value` | `resource.owner_tenant_id` | `owner_tenant_id = :value` |
-| Field IN | `field` | `in` | `field`, `values[]` | `resource.status` | `status IN (:values)` |
-| Tenant closure | `field` | `in_closure` | `field`, `ancestor_id`, `respect_barrier?`, `status?` | `resource.owner_tenant_id` | Subquery to `tenant_closure` |
-| Group membership IN | `group_membership` | `in` | `values[]` | - | Subquery to `resource_group_membership` |
-| Group membership closure | `group_membership` | `in_closure` | `ancestor_id` | - | Nested subquery to membership + closure |
+| Filter Type | Description | Operations |
+|-------------|-------------|------------|
+| `field` | Simple column comparisons on resource properties | `eq`, `in` |
+| `tenant_ownership` | Tenant hierarchy filtering | `in`, `in_closure` |
+| `group_membership` | Resource group membership filtering | `in`, `in_closure` |
 
-### Field Filter (`type: "field"`)
+### 1. Field Filter (`type: "field"`)
+
+Simple operations on resource columns. Filter fields use **logical names** (DSL), not physical column names. PEP maps logical fields to actual database columns.
+
+**Schema:**
+- `type` (required): `"field"`
+- `field` (required): Logical field name in DSL format (`resource.<property>`)
+- `op` (required): `"eq"` | `"in"`
+- `value` (required for `op: eq`): Single value
+- `values` (required for `op: in`): Array of values
 
 ```jsonc
 // Equality
@@ -486,17 +491,41 @@ The following filter types can appear in the `filters` array. Filter fields use 
 // IN list
 { "type": "field", "field": "resource.status", "op": "in", "values": ["active", "pending"] }
 // SQL: status IN ('active', 'pending')
+```
+
+**Field naming convention (DSL):**
+
+| Prefix | Maps To | Example |
+|--------|---------|---------|
+| `resource.<property>` | Resource table column | `resource.topic_id` -> `topic_id` |
+
+PEP maintains mapping from logical field names to physical schema. PDP uses only logical names — **it doesn't know the database schema**.
+
+### 2. Tenant Ownership Filter (`type: "tenant_ownership"`)
+
+Filters resources by tenant hierarchy. The tenant column name in the resource table is configured at the module level when setting up the SQL builder (default: `owner_tenant_id`). Different resources may have different tenant columns (e.g., `owner_tenant_id`, `billing_tenant_id`).
+
+**Schema:**
+- `type` (required): `"tenant_ownership"`
+- `op` (required): `"in"` | `"in_closure"`
+- `values` (required for `op: in`): Array of tenant IDs
+- `ancestor_id` (required for `op: in_closure`): Root of tenant subtree
+- `respect_barrier` (optional for `op: in_closure`): Honor `self_managed` barrier in hierarchy traversal, default `false`
+- `tenant_status` (optional for `op: in_closure`): Filter by tenant status
+
+```jsonc
+// Explicit tenant IDs
+{ "type": "tenant_ownership", "op": "in", "values": ["tenant-1", "tenant-2"] }
+// SQL: owner_tenant_id IN ('tenant-1', 'tenant-2')
 
 // Tenant closure (requires local_tenant_tables capability)
 {
-  "type": "field",
-  "field": "resource.owner_tenant_id",
+  "type": "tenant_ownership",
   "op": "in_closure",
   "ancestor_id": "tenant-A",
   "respect_barrier": true,
-  "status": ["active", "suspended"]
+  "tenant_status": ["active", "suspended"]
 }
-// PEP maps resource.owner_tenant_id -> owner_tenant_id column
 // SQL: owner_tenant_id IN (
 //   SELECT descendant_id FROM tenant_closure
 //   WHERE ancestor_id = 'tenant-A'
@@ -505,25 +534,25 @@ The following filter types can appear in the `filters` array. Filter fields use 
 // )
 ```
 
-**Field naming convention (DSL):**
+### 3. Group Membership Filter (`type: "group_membership"`)
 
-| Prefix | Maps To | Example |
-|--------|---------|---------|
-| `resource.<property>` | Resource table column | `resource.owner_tenant_id` -> `owner_tenant_id` |
+Filters resources by resource group hierarchy. The resource ID column in the resource table is configured at the module level when setting up the SQL builder (default: `id`). The library uses this column for join with `resource_group_membership.resource_id`.
 
-PEP maintains mapping from logical field names to physical schema. PDP uses only logical names — it doesn't know the database schema.
-
-### Group Membership Filter (`type: "group_membership"`)
+**Schema:**
+- `type` (required): `"group_membership"`
+- `op` (required): `"in"` | `"in_closure"`
+- `values` (required for `op: in`): Array of group IDs
+- `ancestor_id` (required for `op: in_closure`): Root of group subtree
 
 ```jsonc
-// Direct membership IN (requires local_resource_group_membership capability)
+// Explicit group IDs (requires local_resource_group_membership capability)
 { "type": "group_membership", "op": "in", "values": ["group-1", "group-2"] }
 // SQL: id IN (
 //   SELECT resource_id FROM resource_group_membership
 //   WHERE group_id IN ('group-1', 'group-2')
 // )
 
-// Group closure membership (requires local_resource_group_closure capability)
+// Group closure (requires local_resource_group_closure capability)
 { "type": "group_membership", "op": "in_closure", "ancestor_id": "root-group" }
 // SQL: id IN (
 //   SELECT resource_id FROM resource_group_membership
@@ -543,9 +572,19 @@ The PEP declares its capabilities in the request. This determines what filter op
 | Capability | When `false` | When `true` |
 |------------|--------------|-------------|
 | `require_constraints` | `decision: true` without constraints = allow | `decision: true` without constraints = **deny** |
-| `local_tenant_tables` | PDP returns `field, op: in` with explicit tenant IDs | PDP can return `op: in_closure` for tenant hierarchy |
-| `local_resource_group_membership` | PDP returns `field, op: in` with explicit resource IDs | PDP can return `type: group_membership` filters |
+| `local_tenant_tables` | PDP returns `tenant_ownership, op: in` with explicit tenant IDs | PDP can return `tenant_ownership, op: in_closure` |
+| `local_resource_group_membership` | PDP cannot return `type: group_membership` filters | PDP can return `group_membership` filters |
 | `local_resource_group_closure` | PDP returns `group_membership, op: in` with explicit group IDs | PDP can return `group_membership, op: in_closure` |
+
+**Filter type availability by capability:**
+
+| Filter Type | Operation | Required Capability |
+|-------------|-----------|---------------------|
+| `field` | `eq`, `in` | (none - always available) |
+| `tenant_ownership` | `in` | (none - always available) |
+| `tenant_ownership` | `in_closure` | `local_tenant_tables` |
+| `group_membership` | `in` | `local_resource_group_membership` |
+| `group_membership` | `in_closure` | `local_resource_group_membership` + `local_resource_group_closure` |
 
 **`require_constraints` usage:**
 - For LIST operations: typically `true` (constraints needed for SQL WHERE)
