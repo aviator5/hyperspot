@@ -91,28 +91,22 @@ In HyperSpot's architecture, resources live in the PEP's database. The PDP knows
 
 **The naive approach without constraints:**
 
-```
+```mermaid
+sequenceDiagram
+    participant Client
+    participant PEP
+    participant DB
+    participant PDP
 
-+----------+         +----------+         +----------+
-|  Client  |         |   PEP    |         |   PDP    |
-+----+-----+         +----+-----+         +----+-----+
-     | GET /events?limit=10                    |
-     +------------------->|                    |
-     |                    |                    |
-     |                    | SELECT * FROM events (millions!)
-     |                    +----------> DB
-     |                    |<----------
-     |                    |                    |
-     |                    | evaluate(evt-1)?   |
-     |                    +------------------->|
-     |                    | evaluate(evt-2)?   |
-     |                    +------------------->|
-     |                    | ... millions more  |
-     |                    |                    |
-     |                    | filter results     |
-     |                    | apply limit=10     |  <- wrong, limit applied AFTER filtering
-     |      response      |
-     |<-------------------+
+    Client->>PEP: GET /events?limit=10
+    PEP->>DB: SELECT * FROM events (millions!)
+    DB-->>PEP: all rows
+    loop For each resource
+        PEP->>PDP: evaluate(evt-N)?
+        PDP-->>PEP: decision
+    end
+    Note over PEP: filter results<br/>apply limit=10<br/>(wrong order!)
+    PEP-->>Client: response
 ```
 
 **Problems:**
@@ -198,6 +192,53 @@ In HyperSpot's architecture, resources live in the PEP's database. The PDP knows
 |  +----------------------------------------------------------------+ |
 +---------------------------------------------------------------------+
 ```
+
+---
+
+## PEP Enforcement
+
+### Unified PEP Flow
+
+All operations (LIST, GET, UPDATE, DELETE) follow the same flow:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant PEP as Module (PEP)
+    participant PDP as Auth Resolver (PDP)
+    participant DB
+
+    Client->>PEP: GET /events
+    PEP->>PDP: evaluation request
+    PDP-->>PEP: decision + constraints
+    PEP->>DB: SQL with constraints
+    DB-->>PEP: filtered results
+    PEP-->>Client: response
+```
+
+The only difference between LIST and point operations (GET/UPDATE/DELETE) is whether `resource.id` is present.
+
+### Constraint Compilation to SQL
+
+When constraints are present, the PEP compiles the `filters` array to SQL WHERE clauses:
+
+1. **Filters within a constraint** are AND'd together
+2. **Multiple constraints** (alternatives) are OR'd together
+3. **Unknown filter types** cause that constraint to be treated as false (fail-closed)
+
+### Fail-Closed Rules
+
+The PEP MUST:
+
+1. **Validate decision** - `decision: false` or missing -> deny all (403 Forbidden)
+2. **Enforce require_constraints** - If `require_constraints: true` and `decision: true` but no `constraints` -> deny all (403 Forbidden)
+3. **Apply constraints when present** - If `constraints` array is present, apply to SQL; if all constraints evaluate to false -> deny all
+4. **Trust decision when constraints not required** - `decision: true` without `constraints` AND `require_constraints: false` -> allow (e.g., CREATE operations)
+5. **Handle unreachable PDP** - Network failure, timeout -> deny all
+6. **Handle unknown filter types** - Treat containing constraint as false; if all constraints false -> deny all
+7. **Handle unknown filter ops** - Treat containing constraint as false
+8. **Handle missing required fields** - Treat containing constraint as false
+9. **Handle unknown field names** - Treat containing constraint as false (PEP doesn't know how to map)
 
 ---
 
@@ -514,255 +555,6 @@ The PEP declares its capabilities in the request. This determines what filter op
 **Capability degradation**: If a PEP lacks a capability, the PDP must either:
 1. Expand the filter to explicit IDs (may be large)
 2. Return `decision: false` if expansion is not feasible
-
----
-
-## PEP Enforcement
-
-### Unified PEP Flow
-
-All operations (LIST, GET, UPDATE, DELETE) follow the same flow:
-
-```
-+----------+         +----------+         +----------+
-|  Client  |         |   PEP    |         |   PDP    |
-+----+-----+         +----+-----+         +----+-----+
-     | GET /events        |                    |
-     +------------------->|                    |
-     |                    | evaluation request |
-     |                    +------------------->|
-     |                    |                    |
-     |                    | decision+constraints
-     |                    |<-------------------+
-     |                    |                    |
-     |                    | SQL with constraints
-     |                    +----------> DB
-     |                    |<----------
-     |      response      |
-     |<-------------------+
-```
-
-The only difference between LIST and point operations (GET/UPDATE/DELETE) is whether `resource.id` is present.
-
-### Constraint Compilation to SQL
-
-When constraints are present, the PEP compiles the `filters` array to SQL WHERE clauses:
-
-1. **Filters within a constraint** are AND'd together
-2. **Multiple constraints** (alternatives) are OR'd together
-3. **Unknown filter types** cause that constraint to be treated as false (fail-closed)
-
-### Example: List Events Across Tenant Hierarchy
-
-**HTTP Request:**
-```
-GET /events/v1/events?topic_id=gts.x.core.events.topic.v1~z.app._.some_topic.v1
-X-Tenant-Context: tenant-A
-```
-
-**PEP -> Auth Resolver Request:**
-```json
-{
-  "subject": {
-    "type": "gts.x.core.security.subject.user.v1~",
-    "id": "alice-uuid",
-    "properties": { "tenant_id": "tenant-A" }
-  },
-  "action": { "name": "list" },
-  "resource": {
-    "type": "gts.x.events.event.v1~",
-    "properties": {
-      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
-    }
-  },
-  "context": {
-    "tenant_scope": {
-      "root_id": "tenant-A",
-      "include_self": true,
-      "depth": "descendants",
-      "respect_barrier": true,
-      "status": ["active", "suspended"]
-    },
-    "capabilities": {
-      "require_constraints": true,
-      "local_tenant_tables": true,
-      "local_resource_group_membership": true,
-      "local_resource_group_closure": true
-    }
-  }
-}
-```
-
-**Auth Resolver -> PEP Response:**
-```json
-{
-  "decision": true,
-  "context": {
-    "constraints": [{
-      "filters": [
-        {
-          "type": "field",
-          "field": "resource.owner_tenant_id",
-          "op": "in_closure",
-          "ancestor_id": "tenant-A",
-          "respect_barrier": true,
-          "status": ["active", "suspended"]
-        },
-        {
-          "type": "field",
-          "field": "resource.topic_id",
-          "op": "eq",
-          "value": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
-        }
-      ]
-    }]
-  }
-}
-```
-
-**PEP Generated SQL:**
-```sql
-SELECT e.*
-FROM events e
-WHERE e.owner_tenant_id IN (
-    SELECT descendant_id FROM tenant_closure
-    WHERE ancestor_id = 'tenant-A'
-      AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'tenant-A')
-      AND status IN ('active', 'suspended')
-  )
-  AND e.topic_id = 'gts.x.core.events.topic.v1~z.app._.some_topic.v1'
-```
-
-### Example: Multiple Access Paths (OR)
-
-When a user has access through multiple independent paths, the PDP returns multiple constraints:
-
-**Response with alternatives:**
-```json
-{
-  "decision": true,
-  "context": {
-    "constraints": [
-      {
-        "filters": [
-          { "type": "field", "field": "resource.owner_tenant_id", "op": "eq", "value": "tenant-A" }
-        ]
-      },
-      {
-        "filters": [
-          { "type": "group_membership", "op": "in_closure", "ancestor_id": "shared-project-group" }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Generated SQL:**
-```sql
-SELECT e.*
-FROM events e
-WHERE (
-    e.owner_tenant_id = 'tenant-A'
-  )
-  OR (
-    e.id IN (
-      SELECT resource_id FROM resource_group_membership
-      WHERE group_id IN (
-        SELECT descendant_id FROM resource_group_closure
-        WHERE ancestor_id = 'shared-project-group'
-      )
-    )
-  )
-```
-
-### Example: Point Operation (GET with SQL Enforcement)
-
-For GET/UPDATE/DELETE, constraints provide SQL-level enforcement to hide unauthorized resource existence:
-
-**HTTP Request:**
-```
-GET /events/v1/events/evt-123
-X-Tenant-Context: tenant-A
-```
-
-**PEP -> Auth Resolver Request:**
-```json
-{
-  "subject": {
-    "type": "gts.x.core.security.subject.user.v1~",
-    "id": "alice-uuid",
-    "properties": { "tenant_id": "tenant-A" }
-  },
-  "action": { "name": "read" },
-  "resource": {
-    "type": "gts.x.events.event.v1~",
-    "id": "evt-123"
-  },
-  "context": {
-    "tenant_scope": {
-      "root_id": "tenant-A",
-      "include_self": true,
-      "depth": "descendants",
-      "respect_barrier": true
-    },
-    "capabilities": {
-      "require_constraints": true,
-      "local_tenant_tables": true,
-      "local_resource_group_membership": true,
-      "local_resource_group_closure": true
-    }
-  }
-}
-```
-
-**Auth Resolver -> PEP Response:**
-```json
-{
-  "decision": true,
-  "context": {
-    "constraints": [{
-      "filters": [
-        {
-          "type": "field",
-          "field": "resource.owner_tenant_id",
-          "op": "in_closure",
-          "ancestor_id": "tenant-A",
-          "respect_barrier": true
-        }
-      ]
-    }]
-  }
-}
-```
-
-**PEP Generated SQL:**
-```sql
-SELECT e.*
-FROM events e
-WHERE e.id = 'evt-123'
-  AND e.owner_tenant_id IN (
-    SELECT descendant_id FROM tenant_closure
-    WHERE ancestor_id = 'tenant-A'
-      AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'tenant-A')
-  )
--- 0 rows -> 404 Not Found (hides resource existence)
--- 1 row -> return resource
-```
-
-### Fail-Closed Rules
-
-The PEP MUST:
-
-1. **Validate decision** - `decision: false` or missing -> deny all (403 Forbidden)
-2. **Enforce require_constraints** - If `require_constraints: true` and `decision: true` but no `constraints` -> deny all (403 Forbidden)
-3. **Apply constraints when present** - If `constraints` array is present, apply to SQL; if all constraints evaluate to false -> deny all
-4. **Trust decision when constraints not required** - `decision: true` without `constraints` AND `require_constraints: false` -> allow (e.g., CREATE operations)
-5. **Handle unreachable PDP** - Network failure, timeout -> deny all
-6. **Handle unknown filter types** - Treat containing constraint as false; if all constraints false -> deny all
-7. **Handle unknown filter ops** - Treat containing constraint as false
-8. **Handle missing required fields** - Treat containing constraint as false
-9. **Handle unknown field names** - Treat containing constraint as false (PEP doesn't know how to map)
 
 ---
 

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: accepted
 date: 2026-01-22
 decision-makers: Cyber Fabric Architects Committee
 ---
@@ -171,7 +171,7 @@ Option E provides a cleaner contract between PDP and PEP with less implementatio
 
 **Technical Specification:**
 
-- [`modules/auth_resolver/docs/DESIGN.md`](../../../modules/auth_resolver/docs/DESIGN.md)
+- [`docs/AUTH.md`](../../AUTH.md)
 
 **Authorization Architecture:**
 
