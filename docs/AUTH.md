@@ -597,6 +597,77 @@ The PEP declares its capabilities in the request. This determines what filter op
 
 ---
 
+## Table Schemas (Local Projections)
+
+These tables are maintained locally by HyperSpot gateway modules (Tenant Resolver, Resource Group Resolver) and used by PEPs to execute constraint queries efficiently without calling back to the vendor platform.
+
+### `tenant_closure`
+
+Denormalized closure table for tenant hierarchy. Enables efficient subtree queries without recursive CTEs.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `ancestor_id` | UUID | No | Parent tenant in the hierarchy |
+| `descendant_id` | UUID | No | Child tenant (the one we check ownership against) |
+| `barrier_ancestor_id` | UUID | Yes | ID of tenant with `self_managed=true` between ancestor and descendant (NULL if no barrier) |
+| `descendant_status` | TEXT | No | Status of descendant tenant (`active`, `suspended`, `deleted`) |
+
+**Notes:**
+- Status is denormalized into closure for query simplicity (avoids JOIN). When a tenant's status changes, all rows where it is `descendant_id` are updated.
+- The `barrier_ancestor_id` column enables `respect_barrier` filtering: when set, only include descendants where `barrier_ancestor_id IS NULL OR barrier_ancestor_id = :ancestor_id`.
+- Self-referential rows exist: each tenant has a row where `ancestor_id = descendant_id`.
+
+**Example query (tenant_ownership with in_closure):**
+```sql
+SELECT * FROM events
+WHERE owner_tenant_id IN (
+  SELECT descendant_id FROM tenant_closure
+  WHERE ancestor_id = :ancestor_id
+    AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = :ancestor_id)  -- respect_barrier
+    AND descendant_status IN ('active', 'suspended')  -- tenant_status filter
+)
+```
+
+### `resource_group_closure`
+
+Closure table for resource group hierarchy. Similar structure to tenant_closure but simpler (no barrier or status).
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `ancestor_id` | UUID | No | Parent group |
+| `descendant_id` | UUID | No | Child group |
+
+**Notes:**
+- Self-referential rows exist: each group has a row where `ancestor_id = descendant_id`.
+- Used for `group_membership, op: in_closure` filter expansion.
+
+### `resource_group_membership`
+
+Association between resources and groups. A resource can belong to multiple groups.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `resource_id` | UUID | No | ID of the resource (FK to resource table) |
+| `group_id` | UUID | No | ID of the group (FK to resource_group_closure) |
+
+**Notes:**
+- The `resource_id` column joins with the resource table's ID column (configurable per module, default `id`).
+- Used for both `group_membership, op: in` and `group_membership, op: in_closure` filters.
+
+**Example query (group_membership with in_closure):**
+```sql
+SELECT * FROM events
+WHERE id IN (
+  SELECT resource_id FROM resource_group_membership
+  WHERE group_id IN (
+    SELECT descendant_id FROM resource_group_closure
+    WHERE ancestor_id = :ancestor_id
+  )
+)
+```
+
+---
+
 ## Open Questions
 
 1. **"Allow all" semantics** - Should there be a way for PDP to express "allow all resources of this type" (e.g., for platform support roles)? Currently, constraints must have concrete filters. Future consideration: `filters: []` with explicit "allow all" semantics.
