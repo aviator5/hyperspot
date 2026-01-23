@@ -303,7 +303,7 @@ Content-Type: application/json
     // PEP capabilities: what the caller can enforce locally
     "capabilities": {
       "require_constraints": true,              // if true, decision without constraints = deny
-      "local_tenant_tables": true,              // can use tenant_closure table
+      "local_tenant_closure": true,              // can use tenant_closure table
       "local_resource_group_membership": true,  // can use resource_group_membership table
       "local_resource_group_closure": true      // can use resource_group_closure table
     }
@@ -518,7 +518,7 @@ Filters resources by tenant hierarchy. The tenant column name in the resource ta
 { "type": "tenant_ownership", "op": "in", "values": ["tenant-1", "tenant-2"] }
 // SQL: owner_tenant_id IN ('tenant-1', 'tenant-2')
 
-// Tenant closure (requires local_tenant_tables capability)
+// Tenant closure (requires local_tenant_closure capability)
 {
   "type": "tenant_ownership",
   "op": "in_closure",
@@ -530,7 +530,7 @@ Filters resources by tenant hierarchy. The tenant column name in the resource ta
 //   SELECT descendant_id FROM tenant_closure
 //   WHERE ancestor_id = 'tenant-A'
 //     AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'tenant-A')
-//     AND status IN ('active', 'suspended')
+//     AND descendant_status IN ('active', 'suspended')
 // )
 ```
 
@@ -572,7 +572,7 @@ The PEP declares its capabilities in the request. This determines what filter op
 | Capability | When `false` | When `true` |
 |------------|--------------|-------------|
 | `require_constraints` | `decision: true` without constraints = allow | `decision: true` without constraints = **deny** |
-| `local_tenant_tables` | PDP returns `tenant_ownership, op: in` with explicit tenant IDs | PDP can return `tenant_ownership, op: in_closure` |
+| `local_tenant_closure` | PDP returns `tenant_ownership, op: in` with explicit tenant IDs | PDP can return `tenant_ownership, op: in_closure` |
 | `local_resource_group_membership` | PDP cannot return `type: group_membership` filters | PDP can return `group_membership` filters |
 | `local_resource_group_closure` | PDP returns `group_membership, op: in` with explicit group IDs | PDP can return `group_membership, op: in_closure` |
 
@@ -582,7 +582,7 @@ The PEP declares its capabilities in the request. This determines what filter op
 |-------------|-----------|---------------------|
 | `field` | `eq`, `in` | (none - always available) |
 | `tenant_ownership` | `in` | (none - always available) |
-| `tenant_ownership` | `in_closure` | `local_tenant_tables` |
+| `tenant_ownership` | `in_closure` | `local_tenant_closure` |
 | `group_membership` | `in` | `local_resource_group_membership` |
 | `group_membership` | `in_closure` | `local_resource_group_membership` + `local_resource_group_closure` |
 
