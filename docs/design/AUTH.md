@@ -1,10 +1,8 @@
 # Auth Resolver Technical Specification
 
-> **Related ADR:** [0001-pdp-pep-authorization-model.md](../../../docs/adrs/authorization/0001-pdp-pep-authorization-model.md)
-
 ## Overview
 
-Auth Resolver is HyperSpot's Policy Decision Point (PDP) integration module. It implements an AuthZEN-based authorization API extended with constraint-based filtering for SQL-level enforcement.
+Auth Resolver is HyperSpot's Policy Decision Point (PDP) integration module. It implements an AuthZEN-based authorization API extended with constraint-based filtering for SQL-level enforcement (see [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for details).
 
 The core problem Auth Resolver solves: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. For LIST operations, we need **constraints** that can filter results, not a boolean decision or enumerated resource IDs.
 
