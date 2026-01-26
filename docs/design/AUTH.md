@@ -6,7 +6,20 @@ This document describes HyperSpot's approach to authentication (AuthN) and autho
 
 **Authentication** verifies the identity of the subject making a request. HyperSpot integrates with vendor's Identity Provider (IdP) to validate access tokens and extract subject identity.
 
-**Authorization** determines what the authenticated subject can do. HyperSpot integrates with vendor's Policy Decision Point (PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the details.
+**Authorization** determines what the authenticated subject can do. HyperSpot uses the Auth Resolver module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the details.
+
+### PDP/PEP Model
+
+This document uses the PDP/PEP authorization model (per NIST SP 800-162):
+
+- **PDP (Policy Decision Point)** — evaluates policies and returns access decisions with constraints
+- **PEP (Policy Enforcement Point)** — enforces PDP decisions at resource access points
+
+In HyperSpot's architecture:
+- **Auth Resolver** (via vendor-specific plugin) serves as the **PDP**
+- **Domain modules** act as **PEPs**, applying constraints to database queries
+
+See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full rationale.
 
 ### Auth Resolver: Gateway + Plugin Architecture
 
@@ -31,9 +44,7 @@ This allows HyperSpot domain modules (PEPs) to use a consistent API regardless o
 - **Resource Group** - Optional container for resources (project/workspace/folder)
 - **Permission** - `{ resource_type, action }` - allowed operation identifier
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
-- **PDP (Policy Decision Point)** - Auth Resolver implementing authorization decisions
-- **PEP (Policy Enforcement Point)** - HyperSpot domain modules applying constraints
-- **Security Context** - Result of successful authentication containing subject identity and tenant information. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`, `token_exp`.
+- **Security Context** - Result of successful authentication containing subject identity and tenant information. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`.
 
 ---
 
@@ -67,10 +78,10 @@ Introspection (RFC 7662) is used in three scenarios:
 2. **JWT enrichment** — JWT lacks HyperSpot-specific claims (`sub_tenant_id`, `sub_type`), plugin fetches additional subject info via introspection
 3. **Revocation checking** — even for valid JWTs, introspection provides central point to check if token was revoked (e.g., user logout, compromised token)
 
-Configuration determines when introspection is triggered:
-- `introspect: always` — all tokens (JWT and opaque) go through introspection
-- `introspect: opaque_only` — only opaque tokens (default)
-- `introspect: never` — JWT local validation only (no revocation check)
+Configuration determines when introspection is triggered via `introspection.mode`:
+- `introspection.mode: always` — all tokens (JWT and opaque) go through introspection
+- `introspection.mode: opaque_only` — only opaque tokens (default)
+- `introspection.mode: never` — JWT local validation only (no revocation check)
 
 ---
 
@@ -85,22 +96,52 @@ HyperSpot leverages OpenID Connect standards for authentication:
 
 ### Issuer Configuration
 
-Trusted issuers are configured in HyperSpot via the `trusted_issuers` map:
+Trusted issuers are configured in HyperSpot via the `jwt.trusted_issuers` map:
 
 ```yaml
 auth:
-  introspect: opaque_only  # never | opaque_only | always (default: opaque_only)
-  trusted_issuers:
-    "https://accounts.google.com":
-      discovery_url: "https://accounts.google.com"
-    "my-corp-idp":
-      discovery_url: "https://idp.corp.example.com"
-      introspection_endpoint: "https://idp.corp.example.com/oauth2/introspect"  # optional
+  jwt:
+    trusted_issuers:
+      "https://accounts.google.com":
+        discovery_url: "https://accounts.google.com"
+      "my-corp-idp":
+        discovery_url: "https://idp.corp.example.com"
+    require_audience: true
+    expected_audience:
+      - "https://*.my-company.com"
+      - "https://api.my-company.com"
+  jwks:
+    cache:
+      ttl: 1h              # JWKS cache TTL (default: 1h)
+  introspection:
+    mode: opaque_only      # never | opaque_only | always (default: opaque_only)
+    endpoint: "https://idp.corp.example.com/oauth2/introspect"  # global introspection endpoint
+    cache:
+      enabled: true
+      max_entries: 10000
+      ttl: 5m
+    endpoint_discovery_cache:
+      enabled: true
+      max_entries: 10000
+      ttl: 1h
 ```
 
-- **Key** — expected `iss` claim value in JWT
-- **`discovery_url`** — base URL for OpenID Discovery (`{value}/.well-known/openid-configuration`)
-- **`introspection_endpoint`** (optional) — explicit introspection URL; if set, discovery is not used for introspection
+**Configuration fields:**
+
+- `auth.jwt.trusted_issuers` — map of issuer identifier to discovery config
+  - **Key** — expected `iss` claim value in JWT
+  - **`discovery_url`** — base URL for OpenID Discovery (`{value}/.well-known/openid-configuration`)
+- `auth.jwt.require_audience` — whether to require `aud` claim validation (default: `false`)
+- `auth.jwt.expected_audience` — list of glob patterns for valid audiences (e.g., `https://*.my-company.com`)
+- `auth.jwks.cache.ttl` — JWKS cache TTL (default: `1h`)
+- `auth.introspection.mode` — when to introspect: `never`, `opaque_only` (default), `always`
+- `auth.introspection.endpoint` — global introspection endpoint URL (applies to all issuers)
+- `auth.introspection.cache.enabled` — enable introspection result caching (default: `true`)
+- `auth.introspection.cache.max_entries` — max cached introspection results (default: `10000`)
+- `auth.introspection.cache.ttl` — introspection result cache TTL (default: `5m`)
+- `auth.introspection.endpoint_discovery_cache.enabled` — cache discovered introspection endpoints (default: `true`)
+- `auth.introspection.endpoint_discovery_cache.max_entries` — max cached endpoints (default: `10000`)
+- `auth.introspection.endpoint_discovery_cache.ttl` — endpoint discovery cache TTL (default: `1h`)
 
 This separation is needed because:
 1. **Trust anchor** — HyperSpot must know which issuers to trust before receiving tokens
@@ -108,9 +149,9 @@ This separation is needed because:
 3. **Bootstrap problem** — to validate JWT, we need JWKS; to get JWKS, we need discovery URL
 
 **Lazy initialization flow:**
-1. Admin configures `trusted_issuers` map
+1. Admin configures `jwt.trusted_issuers` map
 2. On first request, extract `iss` from JWT (unverified)
-3. Look up `iss` in `trusted_issuers` → get discovery URL
+3. Look up `iss` in `jwt.trusted_issuers` → get discovery URL
 4. If not found → reject (untrusted issuer)
 5. Fetch `{discovery_url}/.well-known/openid-configuration`
 6. Validate and cache JWKS, then verify JWT signature
@@ -123,27 +164,29 @@ Discovery is performed lazily on the first authenticated request (not at startup
 - `jwks_uri` — for fetching signing keys
 - `introspection_endpoint` — for opaque token validation (optional)
 
-**Caching:** JWKS is cached for **1 hour** and refreshed automatically on cache expiry or when signature validation fails with unknown `kid`.
+**Caching:** JWKS is cached for `jwks.cache.ttl` (default: **1 hour**) and refreshed automatically on cache expiry or when signature validation fails with unknown `kid`.
 
 ### Introspection Endpoint Resolution
 
 **Resolution order:**
-1. If `introspection_endpoint` is explicitly configured → use it directly
-2. Otherwise → fetch from `{discovery_url}/.well-known/openid-configuration`
+1. If `introspection.endpoint` is configured → use it (global for all issuers)
+2. If `introspection.mode` is `never` → no introspection
+3. For JWTs with `mode: always` → discover endpoint from issuer's OIDC configuration
+4. For opaque tokens without configured endpoint → **401 Unauthorized** (no `iss` to discover)
 
 **Configuration Matrix:**
 
-| Token Type | `introspect` Config | `introspection_endpoint` | Behavior |
-|------------|---------------------|--------------------------|----------|
+| Token Type | `introspection.mode` | `introspection.endpoint` | Behavior |
+|------------|----------------------|--------------------------|----------|
 | JWT | `never` | (any) | Local validation only, no introspection |
 | JWT | `opaque_only` | (any) | Local validation only |
 | JWT | `always` | configured | Use configured endpoint |
-| JWT | `always` | not configured | Use endpoint from discovery (extract `iss` from JWT) |
+| JWT | `always` | not configured | Discover endpoint from issuer's OIDC config |
 | Opaque | `never` | (any) | **401 Unauthorized** (cannot validate opaque without introspection) |
 | Opaque | `opaque_only` / `always` | configured | Use configured endpoint |
 | Opaque | `opaque_only` / `always` | not configured | **401 Unauthorized** (no `iss` claim to discover endpoint) |
 
-**Note:** Discovery requires the `iss` claim to look up the issuer configuration. Opaque tokens don't contain claims, so discovery is only possible for JWTs. For opaque tokens, `introspection_endpoint` must be explicitly configured.
+**Note:** Discovery requires the `iss` claim to look up the issuer configuration. Opaque tokens don't contain claims, so discovery is only possible for JWTs. For opaque tokens, `introspection.endpoint` must be explicitly configured.
 
 ---
 
@@ -156,7 +199,6 @@ SecurityContext {
     subject_id: String,           // from `sub` claim
     subject_type: GtsTypeId,      // vendor-specific subject type (optional)
     subject_tenant_id: TenantId,  // tenant the subject belongs to
-    token_exp: Timestamp,         // token expiration (for caching/TTL)
 }
 ```
 
@@ -167,7 +209,8 @@ SecurityContext {
 | `subject_id` | `sub` claim | Introspection response `sub` |
 | `subject_type` | Custom claim (vendor-defined) | Plugin maps from response |
 | `subject_tenant_id` | Custom claim (vendor-defined) | Plugin maps from response |
-| `token_exp` | `exp` claim | Introspection response `exp` |
+
+**Note:** Token expiration (`exp`) is validated during authentication but not included in SecurityContext. Expiration is token metadata, not identity. The caching layer uses `exp` as upper bound for cache entry TTL.
 
 ---
 
@@ -197,28 +240,18 @@ The `exp` (expiration) claim is always validated:
 
 ### Audience Validation
 
-The `aud` (audience) claim is validated when configured:
-- JWT must include the expected audience value
-- Prevents tokens issued for other services from being accepted
+The `aud` (audience) claim validation is controlled by `jwt.require_audience` and `jwt.expected_audience`:
+
+- If `require_audience: true` and JWT lacks `aud` claim → **401 Unauthorized**
+- If `require_audience: false` (default) and JWT lacks `aud` claim → validation passes
+- If JWT has `aud` claim and `expected_audience` is configured → at least one audience must match a pattern (glob pattern matching with `*` wildcard)
+- If JWT has `aud` claim but `expected_audience` is empty/not configured → validation passes
 
 ---
 
 ## Introspection Caching
 
-The Auth Resolver plugin MAY cache introspection results to reduce latency:
-
-**Benefits:**
-- Reduced IdP load
-- Lower request latency
-
-**Risks:**
-- Revoked tokens remain valid until cache expires
-- Stale subject information
-
-**Recommendations:**
-- Cache TTL should be significantly shorter than token lifetime
-- Consider risk profile when setting TTL (high-security contexts may require no caching)
-- Use `token_exp` as upper bound for cache entry lifetime
+Introspection results MAY be cached to reduce IdP load and latency (`introspection.cache.*`). Trade-off: revoked tokens remain valid until cache expires. Cache TTL should be shorter than token lifetime; use token `exp` as upper bound for cache entry lifetime.
 
 ---
 
@@ -236,9 +269,9 @@ sequenceDiagram
 
     Client->>Gateway: Request + Bearer {JWT}
     Gateway->>Gateway: Extract iss from JWT (unverified)
-    Gateway->>Gateway: Lookup iss in trusted_issuers
+    Gateway->>Gateway: Lookup iss in jwt.trusted_issuers
 
-    alt iss not in trusted_issuers
+    alt iss not in jwt.trusted_issuers
         Gateway-->>Client: 401 Untrusted issuer
     end
 
@@ -259,7 +292,7 @@ sequenceDiagram
     Gateway-->>Client: Response
 ```
 
-### Introspection (Opaque Token or JWT with introspect=always)
+### Introspection (Opaque Token or JWT with introspection.mode=always)
 
 ```mermaid
 sequenceDiagram
@@ -271,7 +304,7 @@ sequenceDiagram
 
     Client->>Gateway: Request + Bearer {token}
 
-    Note over Gateway: Token is opaque OR introspect=always
+    Note over Gateway: Token is opaque OR introspection.mode=always
 
     Gateway->>AuthResolver: introspect(token)
     AuthResolver->>IdP: POST /introspect { token }
@@ -285,7 +318,7 @@ sequenceDiagram
 
 **Note:** Introspection diagram covers:
 - Opaque tokens (can't be validated locally)
-- JWT with `introspect: always` (revocation check + enrichment)
+- JWT with `introspection.mode: always` (revocation check + enrichment)
 - JWT missing required claims (plugin enriches via introspection)
 
 ---
