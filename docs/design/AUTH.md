@@ -2,136 +2,7 @@
 
 ## Overview
 
-Auth Resolver is HyperSpot's Policy Decision Point (PDP) integration module. It implements an AuthZEN-based authorization API extended with constraint-based filtering for SQL-level enforcement (see [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for details).
-
-The core problem Auth Resolver solves: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. For LIST operations, we need **constraints** that can filter results, not a boolean decision or enumerated resource IDs.
-
----
-
-## AuthZEN Overview
-
-AuthZEN Authorization API 1.0 (approved by OpenID Foundation on 2026-01-12) defines:
-
-### Access Evaluation API
-
-Point-in-time check: "Can subject S perform action A on resource R?"
-
-```
-POST /access/v1/evaluation
-
-Request:
-{
-  "subject": { "type": "user", "id": "alice", "properties": {...} },
-  "action": { "name": "read", "properties": {...} },
-  "resource": { "type": "document", "id": "doc-123", "properties": {...} },
-  "context": { ... }
-}
-
-Response:
-{
-  "decision": true,
-  "context": { ... }
-}
-```
-
-### Search APIs
-
-AuthZEN defines three search operations:
-
-| API | Question | Response |
-|-----|----------|----------|
-| Subject Search | "Who can perform action A on resource R?" | List of subject entities |
-| Resource Search | "What resources can subject S perform action A on?" | List of resource entities |
-| Action Search | "What actions can subject S perform on resource R?" | List of action entities |
-
-```
-POST /access/v1/search/resources
-
-Request:
-{
-  "subject": { "type": "user", "id": "alice" },
-  "action": { "name": "read" },
-  "resource": { "type": "document" }  // no "id" - searching
-}
-
-Response:
-{
-  "results": [
-    { "type": "document", "id": "doc-123" },
-    { "type": "document", "id": "doc-456" },
-    ...
-  ],
-  "page": { "next_token": "...", "result_count": 2 }
-}
-```
-
-**Why Search APIs don't work for HyperSpot:**
-
-Search APIs assume the PDP has access to resource data. In HyperSpot, resources live in the PEP's database - the PDP cannot enumerate what it doesn't have. This creates an architectural mismatch: the component that knows "who can access what" (PDP) is separate from the component that has "what exists" (PEP).
-
----
-
-## AuthZEN Gap Analysis
-
-| Aspect | AuthZEN 1.0 | HyperSpot Requirement | Resolution |
-|--------|-------------|----------------------|------------|
-| **Point access check** | `decision: true/false` | Same | AuthZEN-compliant |
-| **List/query operations** | Resource Search returns IDs | Need constraints for SQL WHERE | **Extended evaluation response** |
-| **Resource location** | PDP has resource data | Resources in PEP's database | **Constraints instead of enumeration** |
-| **Tenant hierarchy** | Not specified | First-class primitive | Extension via `context.tenant_scope` |
-| **Resource groups** | Not specified | First-class primitive | Extension via filters |
-| **Capability negotiation** | Not specified | PEP declares what it can enforce | Extension via `context.capabilities` |
-| **Constraint-based filtering** | Not supported | Core requirement | **Extended evaluation response** |
-
-### The Fundamental Problem: PDP Doesn't Have Resources
-
-In HyperSpot's architecture, resources live in the PEP's database. The PDP knows authorization policies but cannot enumerate resources it doesn't have access to.
-
-**The naive approach without constraints:**
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant PEP
-    participant DB
-    participant PDP
-
-    Client->>PEP: GET /events?limit=10
-    PEP->>DB: SELECT * FROM events (millions!)
-    DB-->>PEP: all rows
-    loop For each resource
-        PEP->>PDP: evaluate(evt-N)?
-        PDP-->>PEP: decision
-    end
-    Note over PEP: filter results<br/>apply limit=10<br/>(wrong order!)
-    PEP-->>Client: response
-```
-
-**Problems:**
-1. **O(N) evaluations** - Must check every resource, even to return 10 items
-2. **Pagination breaks** - `limit=10` applied after filtering; may return 0-10 items unpredictably
-3. **Total count impossible** - Can't know total without evaluating all resources
-4. **Dynamic data** - Results change between pagination requests
-
-**What HyperSpot needs:**
-```jsonc
-// Extended evaluation response with constraints
-{
-  "decision": true,
-  "context": {
-    "constraints": [{
-      "filters": [
-        // Tenant ownership filter - uses local tenant_closure table
-        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-123", "respect_barrier": true }
-      ]
-    }]
-  }
-}
-// PEP compiles to: WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'tenant-123')
-// Now: SELECT * FROM events WHERE (constraints) LIMIT 10 - correct pagination!
-```
-
-**Our resolution**: Extend the AuthZEN evaluation response with optional `context.constraints`. The PDP expresses "what the user can access" as predicates; the PEP applies them to SQL before fetching data.
+Auth Resolver is HyperSpot's Policy Decision Point (PDP) integration module. The core problem it solves: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. For LIST operations, we need **constraints** that can filter results, not a boolean decision or enumerated resource IDs.
 
 ---
 
@@ -148,6 +19,94 @@ sequenceDiagram
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
 - **PDP (Policy Decision Point)** - Auth Resolver implementing authorization decisions
 - **PEP (Policy Enforcement Point)** - HyperSpot domain modules applying constraints
+
+---
+
+## Why AuthZEN (and Why It's Not Enough)
+
+We chose [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12) as the foundation for Auth Resolver. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full analysis of considered options.
+
+**Why AuthZEN:**
+- Industry standard with growing ecosystem
+- Vendor-neutral: doesn't dictate policy model (RBAC/ABAC/ReBAC)
+- Clean subject/action/resource/context structure
+- Extensible via `context` field
+
+However, AuthZEN out of the box doesn't solve HyperSpot's core requirement: **query-level authorization**.
+
+### Why Access Evaluation API Alone Isn't Enough
+
+AuthZEN's Access Evaluation API answers: "Can subject S perform action A on resource R?" — a point-in-time check returning `decision: true/false`.
+
+#### LIST Operations
+
+For **LIST operations** with Access Evaluation API, we'd need an iterative process:
+
+1. Fetch a batch of resources from DB (e.g., `LIMIT 100` to get candidates for a page of 10)
+2. Send batch to PDP for evaluation (AuthZEN supports batching via Access Evaluations API)
+3. Filter results based on decisions
+4. If filtered result < requested page size → fetch next batch, repeat
+
+**The core problem**: unpredictable number of iterations. If the user has access to only 1% of resources, fetching a page of 10 items might require 10+ round-trips (DB → PDP → filter → not enough → repeat). Worst case: user has access to nothing, and we scan the entire table before returning empty result.
+
+**Additional problems:**
+- **Pagination cursor invalidation** — cursor points to DB offset, but after filtering the mapping breaks
+- **Total count impossible** — can't know total accessible count without evaluating all resources
+- **Inconsistent page sizes** — hard to guarantee exactly N items per page
+
+#### Point Operations (GET/UPDATE/DELETE)
+
+For **point operations**, Access Evaluation API could technically work, but requires an inefficient flow:
+
+1. Query database to fetch the resource
+2. Send resource to PDP for evaluation
+3. If denied, return 403/404
+
+**The problem**: the subject might not have rights to access this resource type at all. The database query is wasteful — we should fail fast before touching the database.
+
+**What we want instead:**
+1. Ask PDP first: "Can subject S perform action A on resource type T?"
+2. If denied → 403 immediately (fail-fast, no database query)
+3. If allowed → get constraints, execute query with `WHERE id = :id AND (constraints)`
+4. If 0 rows → 404 (hides resource existence from unauthorized users)
+
+### Why Search API Doesn't Work
+
+AuthZEN's Resource Search API answers: "What resources can subject S perform action A on?" — returning a list of resource IDs.
+
+This **assumes the PDP has access to resource data**. In HyperSpot's architecture, resources live in the PEP's database — the PDP cannot enumerate what it doesn't have.
+
+This creates an architectural mismatch:
+- **PDP** knows "who can access what" (authorization policies)
+- **PEP** knows "what exists" (resources in database)
+
+To use Search API, we'd need to sync all resources to the PDP — defeating the purpose of keeping data local.
+
+### Our Solution: Extended Evaluation Response
+
+We extend AuthZEN's evaluation response with optional `context.constraints`. Instead of returning resource IDs (enumeration), the PDP returns **predicates** that the PEP compiles to SQL WHERE clauses:
+
+```jsonc
+// PDP response
+{
+  "decision": true,
+  "context": {
+    "constraints": [{
+      "filters": [
+        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-123", "respect_barrier": true }
+      ]
+    }]
+  }
+}
+// PEP compiles to: WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'tenant-123')
+// Result: SELECT * FROM events WHERE (constraints) LIMIT 10 — correct pagination!
+```
+
+This gives us:
+- **O(1) authorization overhead** per query (single PDP call)
+- **Correct pagination** — constraints applied at SQL level before LIMIT
+- **Accurate counts** — database handles filtering
+- **No resource sync** — PDP never needs to know about individual resources
 
 ---
 
@@ -687,5 +646,5 @@ WHERE id IN (
 ## References
 
 - [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12)
-- [Related ADR: PDP/PEP Authorization Model](../../../docs/adrs/authorization/0001-pdp-pep-authorization-model.md)
-- [HyperSpot GTS (Global Type System)](../../types-registry/)
+- [ADR 0001: PDP/PEP Authorization Model](../adrs/authorization/0001-pdp-pep-authorization-model.md)
+- [HyperSpot GTS (Global Type System)](../../modules/types-registry/)
