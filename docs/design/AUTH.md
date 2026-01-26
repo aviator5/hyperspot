@@ -1,15 +1,29 @@
-# Auth Resolver Technical Specification
+# Authentication & Authorization Design
 
 ## Overview
 
-Auth Resolver is HyperSpot's Policy Decision Point (PDP) integration module. The core problem it solves: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. For LIST operations, we need **constraints** that can filter results, not a boolean decision or enumerated resource IDs.
+This document describes HyperSpot's approach to authentication (AuthN) and authorization (AuthZ).
+
+**Authentication** verifies the identity of the subject making a request. HyperSpot integrates with vendor's Identity Provider (IdP) to validate access tokens and extract subject identity.
+
+**Authorization** determines what the authenticated subject can do. HyperSpot integrates with vendor's Policy Decision Point (PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the details.
+
+### Auth Resolver: Gateway + Plugin Architecture
+
+Since IdP and PDP are vendor-specific, HyperSpot cannot implement authentication and authorization directly. Instead, we use the **gateway + plugin** pattern:
+
+- **Auth Resolver** — a HyperSpot gateway module that defines a unified interface for AuthN/AuthZ operations
+- **Vendor Plugin** — implements the Auth Resolver interface, integrating with vendor's IdP and Authorization API
+
+This allows HyperSpot domain modules (PEPs) to use a consistent API regardless of the vendor's identity and authorization infrastructure. Each vendor develops their own Auth Resolver plugin that bridges to their specific systems.
 
 ---
 
 ## Core Terms
 
+- **Access Token** - Credential presented by the client to authenticate requests. Format is not restricted — can be opaque token (validated via introspection) or self-contained JWT. The key requirement: it must enable authentication and subject identification.
+- **Subject / Principal** - Actor initiating the request (user or API client), identified via access token
 - **Tenant** - Domain of ownership/responsibility and policy (billing, security, data isolation)
-- **Subject / Principal** - Actor initiating the request (user or API client)
 - **Subject Tenant** - Tenant the subject belongs to
 - **Context Tenant** - Tenant scope root for the operation (may differ from subject tenant in cross-tenant scenarios)
 - **Resource Owner Tenant** - Actual tenant owning the resource (`owner_tenant_id`)
@@ -21,6 +35,14 @@ Auth Resolver is HyperSpot's Policy Decision Point (PDP) integration module. The
 - **PEP (Policy Enforcement Point)** - HyperSpot domain modules applying constraints
 
 ---
+
+# Authentication
+
+*TBD*
+
+---
+
+# Authorization
 
 ## Why AuthZEN (and Why It's Not Enough)
 
