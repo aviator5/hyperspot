@@ -14,10 +14,12 @@
 - [Authorization](#authorization)
   - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
   - [Integration Architecture](#integration-architecture)
+  - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
   - [PEP Enforcement](#pep-enforcement)
   - [API Specifications](#api-specifications)
-  - [Filter Types Reference](#filter-types-reference)
-  - [Capabilities -> Filter Matrix](#capabilities---filter-matrix)
+  - [Predicate Types Reference](#predicate-types-reference)
+  - [PEP Property Mapping](#pep-property-mapping)
+  - [Capabilities -> Predicate Matrix](#capabilities---predicate-matrix)
   - [Table Schemas (Local Projections)](#table-schemas-local-projections)
 - [Open Questions](#open-questions)
 - [References](#references)
@@ -45,6 +47,33 @@ In HyperSpot's architecture:
 
 See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full rationale.
 
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthN as AuthN Layer<br/>(Gateway)
+    participant PEP as PEP<br/>(Domain Module)
+    participant PDP as PDP<br/>(Auth Resolver)
+    participant DB as Database
+
+    Client->>AuthN: Request + Token
+    AuthN->>AuthN: Validate token, extract claims
+    AuthN->>PEP: Request + SecurityContext
+    PEP->>PDP: AuthZ Request<br/>(subject, action, resource, context)
+    PDP->>PDP: Evaluate policies
+    PDP-->>PEP: decision + constraints
+    PEP->>PEP: Compile constraints to SQL
+    PEP->>DB: Query with WHERE clauses
+    DB-->>PEP: Filtered results
+    PEP-->>Client: Response
+```
+
+**Separation of concerns:**
+1. **AuthN Layer** — validates token, extracts identity → `SecurityContext`
+2. **PEP** — builds AuthZ request, compiles constraints to SQL
+3. **PDP** — evaluates policies, returns decision + constraints
+
 ### Auth Resolver: Gateway + Plugin Architecture
 
 Since IdP and PDP are vendor-specific, HyperSpot cannot implement authentication and authorization directly. Instead, we use the **gateway + plugin** pattern:
@@ -68,6 +97,8 @@ This allows HyperSpot domain modules (PEPs) to use a consistent API regardless o
 - **Resource Group** - Optional container for resources (project/workspace/folder)
 - **Permission** - `{ resource_type, action }` - allowed operation identifier
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
+
+  **Why "constraints" not "grants":** The term "grant" is overloaded in authorization contexts—OAuth uses it for token acquisition flows (Authorization Code Grant), Zanzibar/ReBAC uses it for static relation tuples stored in the system. Constraints are fundamentally different: they are *computed predicates* returned by PDP at evaluation time, not stored permission facts. The term "constraints" accurately describes their role as query-level restrictions.
 - **Security Context** - Result of successful authentication containing subject identity and tenant information. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`.
 
 ---
@@ -405,11 +436,13 @@ We extend AuthZEN's evaluation response with optional `context.constraints`. Ins
 {
   "decision": true,
   "context": {
-    "constraints": [{
-      "filters": [
-        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-123", "respect_barrier": true }
-      ]
-    }]
+    "constraints": [
+      {
+        "predicates": [
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-123", "respect_barrier": true }
+        ]
+      }
+    ]
   }
 }
 // PEP compiles to: WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'tenant-123')
@@ -465,6 +498,50 @@ This gives us:
 
 ---
 
+## Deployment Modes and Trust Model
+
+Auth Resolver (PDP) can run in two configurations with different trust models.
+
+### In-Process (Plugin)
+
+```
+┌─────────────────────────────────┐
+│       HyperSpot Process         │
+│  PEP ───function call───► PDP   │
+└─────────────────────────────────┘
+```
+
+- PDP runs as a plugin in the same process
+- Communication via direct function calls
+- **Trust model:** implicit — same process, same memory space
+- No additional authentication required
+
+### Out-of-Process (Separate Service)
+
+```
+┌─────────────┐        gRPC/mTLS        ┌───────────────┐
+│  HyperSpot  │ ──────────────────────► │ Auth Resolver │
+│    (PEP)    │                         │    (PDP)      │
+└─────────────┘                         └───────────────┘
+```
+
+- PDP runs as a separate process (same machine or remote)
+- Communication via gRPC
+- **Trust model:** explicit authentication required
+- **mTLS required:** PDP authenticates that the caller is a legitimate PEP
+
+### Trust Boundaries
+
+| Aspect | In-Process | Out-of-Process |
+|--------|------------|----------------|
+| PEP → PDP AuthN | implicit | mTLS |
+| Subject identity | PDP trusts PEP | PDP trusts authenticated PEP |
+| Network exposure | none | internal network only |
+
+**Note:** In both modes, PDP trusts subject identity data from PEP. The mTLS in out-of-process mode authenticates *which service* is calling, not the validity of subject claims. Subject identity originates from the AuthN layer (Gateway) and flows through PEP to PDP.
+
+---
+
 ## PEP Enforcement
 
 ### Unified PEP Flow
@@ -490,11 +567,11 @@ The only difference between LIST and point operations (GET/UPDATE/DELETE) is whe
 
 ### Constraint Compilation to SQL
 
-When constraints are present, the PEP compiles the `filters` array to SQL WHERE clauses:
+When constraints are present, the PEP compiles each constraint to SQL WHERE clauses:
 
-1. **Filters within a constraint** are AND'd together
-2. **Multiple constraints** (alternatives) are OR'd together
-3. **Unknown filter types** cause that constraint to be treated as false (fail-closed)
+1. **Predicates within a constraint** (`predicates` array) are AND'd together
+2. **Multiple constraints** (`constraints` array) are OR'd together
+3. **Unknown predicate types** cause that constraint to be treated as false (fail-closed)
 
 ### Fail-Closed Rules
 
@@ -505,10 +582,9 @@ The PEP MUST:
 3. **Apply constraints when present** - If `constraints` array is present, apply to SQL; if all constraints evaluate to false -> deny all
 4. **Trust decision when constraints not required** - `decision: true` without `constraints` AND `require_constraints: false` -> allow (e.g., CREATE operations)
 5. **Handle unreachable PDP** - Network failure, timeout -> deny all
-6. **Handle unknown filter types** - Treat containing constraint as false; if all constraints false -> deny all
-7. **Handle unknown filter ops** - Treat containing constraint as false
-8. **Handle missing required fields** - Treat containing constraint as false
-9. **Handle unknown field names** - Treat containing constraint as false (PEP doesn't know how to map)
+6. **Handle unknown predicate types** - Treat containing constraint as false; if all constraints false -> deny all
+7. **Handle missing required fields** - Treat containing constraint as false
+8. **Handle unknown property names** - Treat containing constraint as false (PEP doesn't know how to map)
 
 ---
 
@@ -530,7 +606,7 @@ PDP returns `decision` plus optional `constraints` for each evaluation.
 3. **Constraint-first** - Return predicates, not enumerated IDs
 4. **Capability negotiation** - PEP declares enforcement capabilities
 5. **Fail-closed** - Unknown constraints or schemas result in deny
-6. **OR/AND semantics** - Multiple constraints are OR'd (alternative access paths), filters within constraint are AND'd
+6. **OR/AND semantics** - Multiple constraints are OR'd (alternative access paths), predicates within constraint are AND'd
 
 #### Request
 
@@ -560,57 +636,60 @@ Content-Type: application/json
     }
   },
 
-  // HyperSpot extension: context with tenant scope and PEP capabilities
+  // HyperSpot extension: context with tenant and PEP capabilities
   "context": {
-    // Tenant scope configuration
-    "tenant_scope": {
+    // Tenant context — use ONE of: tenant_id OR tenant_subtree
+
+    // Option 1: Single tenant (simple case)
+    // "tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+
+    // Option 2: Tenant subtree (with hierarchy options)
+    "tenant_subtree": {
       "root_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-      "include_self": true,
-      "depth": "descendants",      // "none" | "children" | "descendants"
-      "respect_barrier": true,     // honor self_managed barrier in hierarchy traversal
-      "tenant_status": ["active", "suspended"]  // optional, filters by tenant status
+      "include_root": true,        // default: true
+      "respect_barrier": true,     // default: false, honor self_managed barrier
+      "tenant_status": ["active", "suspended"]  // optional, filter by status
     },
 
-    // PEP capabilities: what the caller can enforce locally
-    "capabilities": {
-      "require_constraints": true,              // if true, decision without constraints = deny
-      "local_tenant_closure": true,              // can use tenant_closure table
-      "local_resource_group_membership": true,  // can use resource_group_membership table
-      "local_resource_group_closure": true      // can use resource_group_closure table
-    }
+    // PEP enforcement mode
+    "require_constraints": true,  // if true, decision without constraints = deny
+
+    // PEP capabilities: what predicate types the caller can enforce locally
+    "capabilities": ["tenant_hierarchy", "group_membership", "group_hierarchy"]
   }
 }
 ```
 
 #### Response
 
-The response contains a `decision` and, when `decision: true`, optional `context.constraints`. Each constraint contains a `filters` array of typed filter objects that the PEP compiles to SQL.
+The response contains a `decision` and, when `decision: true`, optional `context.constraints`. Each constraint is an object with a `predicates` array that the PEP compiles to SQL.
 
 ```jsonc
 {
   "decision": true,
   "context": {
     // Multiple constraints are OR'd together (alternative access paths)
-    "constraints": [{
-      // Filters within a constraint are AND'd together
-      "filters": [
-        {
-          // Tenant ownership filter - uses local tenant_closure table
-          "type": "tenant_ownership",
-          "op": "in_closure",
-          "ancestor_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-          "respect_barrier": true,
-          "tenant_status": ["active", "suspended"]
-        },
-        {
-          // Simple column equality from resource properties
-          "type": "field",
-          "field": "resource.topic_id",
-          "op": "eq",
-          "value": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
-        }
-      ]
-    }]
+    // Each constraint's predicates are AND'd together
+    "constraints": [
+      {
+        "predicates": [
+          {
+            // Tenant subtree predicate - uses local tenant_closure table
+            "type": "in_tenant_subtree",
+            "resource_property": "owner_tenant_id",
+            "root_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
+            "respect_barrier": true,
+            "tenant_status": ["active", "suspended"]
+          },
+          {
+            // Equality predicate
+            "type": "eq",
+            "resource_property": "topic_id",
+            "value": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -659,11 +738,13 @@ The response contains a `decision` and, when `decision: true`, optional `context
 {
   "decision": true,
   "context": {
-    "constraints": [{
-      "filters": [
-        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-A", "respect_barrier": true }
-      ]
-    }]
+    "constraints": [
+      {
+        "predicates": [
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "respect_barrier": true }
+        ]
+      }
+    ]
   }
 }
 
@@ -683,11 +764,13 @@ The response contains a `decision` and, when `decision: true`, optional `context
 {
   "decision": true,
   "context": {
-    "constraints": [{
-      "filters": [
-        { "type": "tenant_ownership", "op": "in_closure", "ancestor_id": "tenant-A", "respect_barrier": true }
-      ]
-    }]
+    "constraints": [
+      {
+        "predicates": [
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "respect_barrier": true }
+        ]
+      }
+    ]
   }
 }
 
@@ -695,29 +778,31 @@ The response contains a `decision` and, when `decision: true`, optional `context
 // 0 rows -> 404 (hides resource existence)
 ```
 
-#### Response with Resource Group Filter
+#### Response with Resource Group Predicate
 
 ```jsonc
 {
   "decision": true,
   "context": {
-    "constraints": [{
-      "filters": [
-        {
-          // Tenant ownership filter
-          "type": "tenant_ownership",
-          "op": "in_closure",
-          "ancestor_id": "tenant-A",
-          "respect_barrier": true
-        },
-        {
-          // Resource group membership with closure - uses resource_group_membership + resource_group_closure tables
-          "type": "group_membership",
-          "op": "in_closure",
-          "ancestor_id": "project-root-group"
-        }
-      ]
-    }]
+    "constraints": [
+      {
+        "predicates": [
+          {
+            // Tenant subtree predicate
+            "type": "in_tenant_subtree",
+            "resource_property": "owner_tenant_id",
+            "root_tenant_id": "tenant-A",
+            "respect_barrier": true
+          },
+          {
+            // Group subtree predicate - uses resource_group_membership + resource_group_closure tables
+            "type": "in_group_subtree",
+            "resource_property": "id",
+            "root_group_id": "project-root-group"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -732,68 +817,65 @@ The response contains a `decision` and, when `decision: true`, optional `context
 
 ---
 
-## Filter Types Reference
+## Predicate Types Reference
 
-The following filter types can appear in the `filters` array. There are **three distinct filter types**, each with specific semantics:
+All predicates filter resources based on their properties. The `resource_property` field specifies which property to filter on — these correspond directly to `resource.properties` in the request.
 
-| Filter Type | Description | Operations |
-|-------------|-------------|------------|
-| `field` | Simple column comparisons on resource properties | `eq`, `in` |
-| `tenant_ownership` | Tenant hierarchy filtering | `in`, `in_closure` |
-| `group_membership` | Resource group membership filtering | `in`, `in_closure` |
+| Type | Description | Required Fields | Optional Fields |
+|------|-------------|-----------------|-----------------|
+| `eq` | Property equals value | `resource_property`, `value` | — |
+| `in` | Property in value list | `resource_property`, `values` | — |
+| `in_tenant_subtree` | Tenant subtree via closure table | `resource_property`, `root_tenant_id` | `respect_barrier`, `tenant_status` |
+| `in_group` | Flat group membership | `resource_property`, `group_ids` | — |
+| `in_group_subtree` | Group subtree via closure table | `resource_property`, `root_group_id` | — |
 
-### 1. Field Filter (`type: "field"`)
+### 1. Equality Predicate (`type: "eq"`)
 
-Simple operations on resource columns. Filter fields use **logical names** (DSL), not physical column names. PEP maps logical fields to actual database columns.
+Compares resource property to a single value.
 
 **Schema:**
-- `type` (required): `"field"`
-- `field` (required): Logical field name in DSL format (`resource.<property>`)
-- `op` (required): `"eq"` | `"in"`
-- `value` (required for `op: eq`): Single value
-- `values` (required for `op: in`): Array of values
+- `type` (required): `"eq"`
+- `resource_property` (required): Property name (e.g., `topic_id`, `owner_tenant_id`)
+- `value` (required): Single value to compare
 
 ```jsonc
-// Equality
-{ "type": "field", "field": "resource.topic_id", "op": "eq", "value": "uuid-123" }
-// PEP maps resource.topic_id -> topic_id column
+{ "type": "eq", "resource_property": "topic_id", "value": "uuid-123" }
 // SQL: topic_id = 'uuid-123'
+```
 
-// IN list
-{ "type": "field", "field": "resource.status", "op": "in", "values": ["active", "pending"] }
+### 2. IN Predicate (`type: "in"`)
+
+Compares resource property to a list of values.
+
+**Schema:**
+- `type` (required): `"in"`
+- `resource_property` (required): Property name (e.g., `owner_tenant_id`, `status`)
+- `values` (required): Array of values
+
+```jsonc
+{ "type": "in", "resource_property": "owner_tenant_id", "values": ["tenant-1", "tenant-2"] }
+// SQL: owner_tenant_id IN ('tenant-1', 'tenant-2')
+
+{ "type": "in", "resource_property": "status", "values": ["active", "pending"] }
 // SQL: status IN ('active', 'pending')
 ```
 
-**Field naming convention (DSL):**
+### 3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)
 
-| Prefix | Maps To | Example |
-|--------|---------|---------|
-| `resource.<property>` | Resource table column | `resource.topic_id` -> `topic_id` |
-
-PEP maintains mapping from logical field names to physical schema. PDP uses only logical names — **it doesn't know the database schema**.
-
-### 2. Tenant Ownership Filter (`type: "tenant_ownership"`)
-
-Filters resources by tenant hierarchy. The tenant column name in the resource table is configured at the module level when setting up the SQL builder (default: `owner_tenant_id`). Different resources may have different tenant columns (e.g., `owner_tenant_id`, `billing_tenant_id`).
+Filters resources by tenant subtree using the closure table. The `resource_property` specifies which property contains the tenant ID.
 
 **Schema:**
-- `type` (required): `"tenant_ownership"`
-- `op` (required): `"in"` | `"in_closure"`
-- `values` (required for `op: in`): Array of tenant IDs
-- `ancestor_id` (required for `op: in_closure`): Root of tenant subtree
-- `respect_barrier` (optional for `op: in_closure`): Honor `self_managed` barrier in hierarchy traversal, default `false`
-- `tenant_status` (optional for `op: in_closure`): Filter by tenant status
+- `type` (required): `"in_tenant_subtree"`
+- `resource_property` (required): Property containing tenant ID (e.g., `owner_tenant_id`)
+- `root_tenant_id` (required): Root of tenant subtree
+- `respect_barrier` (optional): Honor `self_managed` barrier in hierarchy traversal, default `false`
+- `tenant_status` (optional): Filter by tenant status
 
 ```jsonc
-// Explicit tenant IDs
-{ "type": "tenant_ownership", "op": "in", "values": ["tenant-1", "tenant-2"] }
-// SQL: owner_tenant_id IN ('tenant-1', 'tenant-2')
-
-// Tenant closure (requires local_tenant_closure capability)
 {
-  "type": "tenant_ownership",
-  "op": "in_closure",
-  "ancestor_id": "tenant-A",
+  "type": "in_tenant_subtree",
+  "resource_property": "owner_tenant_id",
+  "root_tenant_id": "tenant-A",
   "respect_barrier": true,
   "tenant_status": ["active", "suspended"]
 }
@@ -805,26 +887,34 @@ Filters resources by tenant hierarchy. The tenant column name in the resource ta
 // )
 ```
 
-### 3. Group Membership Filter (`type: "group_membership"`)
+### 4. Group Membership Predicate (`type: "in_group"`)
 
-Filters resources by resource group hierarchy. The resource ID column in the resource table is configured at the module level when setting up the SQL builder (default: `id`). The library uses this column for join with `resource_group_membership.resource_id`.
+Filters resources by explicit group membership. The `resource_property` specifies which property is used for group membership join.
 
 **Schema:**
-- `type` (required): `"group_membership"`
-- `op` (required): `"in"` | `"in_closure"`
-- `values` (required for `op: in`): Array of group IDs
-- `ancestor_id` (required for `op: in_closure`): Root of group subtree
+- `type` (required): `"in_group"`
+- `resource_property` (required): Property for group membership join (typically `id`)
+- `group_ids` (required): Array of group IDs
 
 ```jsonc
-// Explicit group IDs (requires local_resource_group_membership capability)
-{ "type": "group_membership", "op": "in", "values": ["group-1", "group-2"] }
+{ "type": "in_group", "resource_property": "id", "group_ids": ["group-1", "group-2"] }
 // SQL: id IN (
 //   SELECT resource_id FROM resource_group_membership
 //   WHERE group_id IN ('group-1', 'group-2')
 // )
+```
 
-// Group closure (requires local_resource_group_closure capability)
-{ "type": "group_membership", "op": "in_closure", "ancestor_id": "root-group" }
+### 5. Group Subtree Predicate (`type: "in_group_subtree"`)
+
+Filters resources by group subtree using the closure table. The `resource_property` specifies which property is used for group membership join.
+
+**Schema:**
+- `type` (required): `"in_group_subtree"`
+- `resource_property` (required): Property for group membership join (typically `id`)
+- `root_group_id` (required): Root of group subtree
+
+```jsonc
+{ "type": "in_group_subtree", "resource_property": "id", "root_group_id": "root-group" }
 // SQL: id IN (
 //   SELECT resource_id FROM resource_group_membership
 //   WHERE group_id IN (
@@ -836,34 +926,77 @@ Filters resources by resource group hierarchy. The resource ID column in the res
 
 ---
 
-## Capabilities -> Filter Matrix
+## PEP Property Mapping
 
-The PEP declares its capabilities in the request. This determines what filter operations the PDP can return:
+The `resource_property` in predicates corresponds to `resource.properties` in the request. Each module (PEP) defines a mapping from property names to physical SQL columns. PDP uses property names — **it doesn't know the database schema**.
 
-| Capability | When `false` | When `true` |
-|------------|--------------|-------------|
-| `require_constraints` | `decision: true` without constraints = allow | `decision: true` without constraints = **deny** |
-| `local_tenant_closure` | PDP returns `tenant_ownership, op: in` with explicit tenant IDs | PDP can return `tenant_ownership, op: in_closure` |
-| `local_resource_group_membership` | PDP cannot return `type: group_membership` filters | PDP can return `group_membership` filters |
-| `local_resource_group_closure` | PDP returns `group_membership, op: in` with explicit group IDs | PDP can return `group_membership, op: in_closure` |
+**Example mapping for Event Manager:**
 
-**Filter type availability by capability:**
+| Resource Property | SQL Column |
+|-------------------|------------|
+| `owner_tenant_id` | `events.tenant_id` |
+| `topic_id` | `events.topic_id` |
+| `id` | `events.id` |
 
-| Filter Type | Operation | Required Capability |
-|-------------|-----------|---------------------|
-| `field` | `eq`, `in` | (none - always available) |
-| `tenant_ownership` | `in` | (none - always available) |
-| `tenant_ownership` | `in_closure` | `local_tenant_closure` |
-| `group_membership` | `in` | `local_resource_group_membership` |
-| `group_membership` | `in_closure` | `local_resource_group_membership` + `local_resource_group_closure` |
+**How PEP compiles predicates to SQL:**
 
-**`require_constraints` usage:**
+| Predicate | SQL |
+|-----------|-----|
+| `{ "type": "eq", "resource_property": "topic_id", "value": "v" }` | `events.topic_id = 'v'` |
+| `{ "type": "in", "resource_property": "owner_tenant_id", "values": ["t1", "t2"] }` | `events.tenant_id IN ('t1', 't2')` |
+| `{ "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", ... }` | `events.tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ...)` |
+| `{ "type": "in_group", "resource_property": "id", "group_ids": ["g1", "g2"] }` | `events.id IN (SELECT resource_id FROM resource_group_membership WHERE ...)` |
+| `{ "type": "in_group_subtree", "resource_property": "id", "root_group_id": "g1" }` | `events.id IN (SELECT ... FROM resource_group_membership WHERE group_id IN (SELECT ... FROM resource_group_closure ...))` |
+
+**Conventions:**
+- All IDs are UUIDs
+- PDP may return GTS IDs (e.g., `gts.x.core.events.topic.v1~...`), PEP converts to UUIDv5
+
+---
+
+## Capabilities -> Predicate Matrix
+
+The PEP declares its capabilities in the request. This determines what predicate types the PDP can return.
+
+### `require_constraints` Flag
+
+The `require_constraints` field (separate from capabilities array) controls PEP behavior when constraints are absent:
+
+| `require_constraints` | `decision: true` without `constraints` |
+|-----------------------|----------------------------------------|
+| `true` | **deny** (constraints required but missing) |
+| `false` | **allow** (trust PDP decision) |
+
+**Usage:**
 - For LIST operations: typically `true` (constraints needed for SQL WHERE)
 - For CREATE operations: typically `false` (no query, just permission check)
 - For GET/UPDATE/DELETE: depends on whether PEP wants SQL-level enforcement or trusts PDP decision
 
+### Capabilities Array
+
+Capabilities declare what predicate types the PEP can enforce locally:
+
+| Capability | Enables Predicate Types |
+|------------|---------------------|
+| `tenant_hierarchy` | `in_tenant_subtree` |
+| `group_membership` | `in_group` |
+| `group_hierarchy` | `in_group_subtree` (implies `group_membership`) |
+
+**Capability dependencies:**
+- `group_hierarchy` implies `group_membership` — if PEP has the closure table, it necessarily has the membership table
+- When declaring capabilities, `["group_hierarchy"]` is sufficient; `group_membership` is implied
+
+**Predicate type availability by capability:**
+
+| Predicate Type | Required Capability |
+|-------------|---------------------|
+| `eq`, `in` | (none — always available) |
+| `in_tenant_subtree` | `tenant_hierarchy` |
+| `in_group` | `group_membership` |
+| `in_group_subtree` | `group_hierarchy` |
+
 **Capability degradation**: If a PEP lacks a capability, the PDP must either:
-1. Expand the filter to explicit IDs (may be large)
+1. Expand the predicate to explicit IDs (may be large)
 2. Return `decision: false` if expansion is not feasible
 
 ---
@@ -885,16 +1018,17 @@ Denormalized closure table for tenant hierarchy. Enables efficient subtree queri
 
 **Notes:**
 - Status is denormalized into closure for query simplicity (avoids JOIN). When a tenant's status changes, all rows where it is `descendant_id` are updated.
-- The `barrier_ancestor_id` column enables `respect_barrier` filtering: when set, only include descendants where `barrier_ancestor_id IS NULL OR barrier_ancestor_id = :ancestor_id`.
+- The `barrier_ancestor_id` column enables `respect_barrier` filtering: when set, only include descendants where `barrier_ancestor_id IS NULL OR barrier_ancestor_id = :root_tenant_id`.
 - Self-referential rows exist: each tenant has a row where `ancestor_id = descendant_id`.
+- **Predicate mapping:** `in_tenant_subtree` predicate compiles to SQL using this closure table.
 
-**Example query (tenant_ownership with in_closure):**
+**Example query (in_tenant_subtree):**
 ```sql
 SELECT * FROM events
 WHERE owner_tenant_id IN (
   SELECT descendant_id FROM tenant_closure
-  WHERE ancestor_id = :ancestor_id
-    AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = :ancestor_id)  -- respect_barrier
+  WHERE ancestor_id = :root_tenant_id
+    AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = :root_tenant_id)  -- respect_barrier
     AND descendant_status IN ('active', 'suspended')  -- tenant_status filter
 )
 ```
@@ -910,7 +1044,7 @@ Closure table for resource group hierarchy. Similar structure to tenant_closure 
 
 **Notes:**
 - Self-referential rows exist: each group has a row where `ancestor_id = descendant_id`.
-- Used for `group_membership, op: in_closure` filter expansion.
+- **Predicate mapping:** `in_group_subtree` predicate compiles to SQL using this closure table.
 
 ### `resource_group_membership`
 
@@ -923,16 +1057,16 @@ Association between resources and groups. A resource can belong to multiple grou
 
 **Notes:**
 - The `resource_id` column joins with the resource table's ID column (configurable per module, default `id`).
-- Used for both `group_membership, op: in` and `group_membership, op: in_closure` filters.
+- **Predicate mapping:** `in_group` and `in_group_subtree` predicates use this table for the resource-to-group join.
 
-**Example query (group_membership with in_closure):**
+**Example query (in_group_subtree):**
 ```sql
 SELECT * FROM events
 WHERE id IN (
   SELECT resource_id FROM resource_group_membership
   WHERE group_id IN (
     SELECT descendant_id FROM resource_group_closure
-    WHERE ancestor_id = :ancestor_id
+    WHERE ancestor_id = :root_group_id
   )
 )
 ```
@@ -941,9 +1075,9 @@ WHERE id IN (
 
 ## Open Questions
 
-1. **"Allow all" semantics** - Should there be a way for PDP to express "allow all resources of this type" (e.g., for platform support roles)? Currently, constraints must have concrete filters. Future consideration: `filters: []` with explicit "allow all" semantics.
+1. **"Allow all" semantics** - Should there be a way for PDP to express "allow all resources of this type" (e.g., for platform support roles)? Currently, constraints must have concrete predicates. Future consideration: `predicates: []` with explicit "allow all" semantics.
 
-2. **Empty `filters` interpretation** - If a constraint has an empty `filters: []` array, should it mean "match all" or "match none"? Currently undefined.
+2. **Empty `predicates` interpretation** - If a constraint has an empty `predicates: []` array, should it mean "match all" or "match none"? Currently undefined.
 
 3. **Batch evaluation optimization** - We support `/access/v1/evaluations` for batch requests. Should PDP optimize constraint generation when multiple evaluations share the same subject/context? Use cases: bulk operations, permission checks for UI rendering.
 
