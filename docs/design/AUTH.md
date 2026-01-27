@@ -3,6 +3,11 @@
 ## Table of Contents
 
 - [Overview](#overview)
+  - [PDP/PEP Model](#pdppep-model)
+  - [Request Flow](#request-flow)
+  - [Auth Resolver: Gateway + Plugin Architecture](#auth-resolver-gateway--plugin-architecture)
+  - [Integration Architecture](#integration-architecture)
+  - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
 - [Core Terms](#core-terms)
 - [Authentication](#authentication)
   - [Configuration](#configuration)
@@ -13,8 +18,6 @@
   - [Introspection Caching](#introspection-caching)
 - [Authorization](#authorization)
   - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
-  - [Integration Architecture](#integration-architecture)
-  - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
   - [PEP Enforcement](#pep-enforcement)
   - [API Specifications](#api-specifications)
   - [Predicate Types Reference](#predicate-types-reference)
@@ -83,6 +86,114 @@ Since IdP and PDP are vendor-specific, HyperSpot cannot implement authentication
 
 This allows HyperSpot domain modules (PEPs) to use a consistent API regardless of the vendor's identity and authorization infrastructure. Each vendor develops their own Auth Resolver plugin that bridges to their specific systems.
 
+### Integration Architecture
+
+```mermaid
+flowchart TB
+    subgraph Vendor["Vendor Platform"]
+        IdP["IdP"]
+        TenantSvc["Tenant Service"]
+        RGSvc["RG Service"]
+        AuthzSvc["Authz Service"]
+    end
+
+    subgraph HyperSpot
+        subgraph TenantResolver["Tenant Resolver"]
+            TenantGW["Gateway"]
+            TenantPlugin["Plugin"]
+        end
+
+        subgraph RGResolver["RG Resolver"]
+            RGGW["Gateway"]
+            RGPlugin["Plugin"]
+        end
+
+        subgraph AuthResolver["Auth Resolver"]
+            AuthGW["Gateway"]
+            AuthPlugin["Plugin<br/>(AuthN + PDP)"]
+        end
+
+        subgraph PEP["Domain Module (PEP)"]
+            Handler["Handler"]
+            subgraph ModuleDB["Module Database"]
+                DomainTables["Domain Tables<br/>(events, ...)"]
+                LocalProj["Local Projections<br/>• tenant_closure<br/>• resource_group_closure<br/>• resource_group_membership"]
+            end
+        end
+    end
+
+    %% Tenant Resolver flow
+    TenantGW --> TenantPlugin
+    TenantPlugin --> TenantSvc
+
+    %% RG Resolver flow
+    RGGW --> RGPlugin
+    RGPlugin --> RGSvc
+
+    %% Auth Resolver flow
+    AuthGW --> AuthPlugin
+    AuthPlugin -->|introspection| IdP
+    AuthPlugin -->|authz| AuthzSvc
+    AuthPlugin -.->|tenant hierarchy| TenantGW
+    AuthPlugin -.->|group hierarchy,<br/>membership| RGGW
+
+    %% PEP flow
+    Handler -->|token introspection| AuthGW
+    Handler -->|/access/v1/evaluation| AuthGW
+    Handler -->|constraints → SQL| ModuleDB
+```
+
+**Communication flow:**
+1. **Handler → Auth Resolver (Gateway)** — PEP calls for token introspection and authorization
+2. **Auth Resolver (Gateway) → Auth Resolver (Plugin)** — gateway delegates to vendor plugin (handles both AuthN and PDP)
+3. **Auth Resolver (Plugin) → IdP** — token introspection
+4. **Auth Resolver (Plugin) → Authz Svc** — authorization decisions
+5. **Auth Resolver (Plugin) → Tenant Resolver (Gateway)** — tenant hierarchy queries
+6. **Auth Resolver (Plugin) → RG Resolver (Gateway)** — group hierarchy and membership queries
+7. **Tenant/RG Resolver (Gateway) → Plugin → Vendor Service** — gateway delegates to plugin, plugin syncs from vendor
+
+### Deployment Modes and Trust Model
+
+Auth Resolver (PDP) can run in two configurations with different trust models.
+
+#### In-Process (Plugin)
+
+```
+┌─────────────────────────────────┐
+│       HyperSpot Process         │
+│  PEP ───function call───► PDP   │
+└─────────────────────────────────┘
+```
+
+- PDP runs as a plugin in the same process
+- Communication via direct function calls
+- **Trust model:** implicit — same process, same memory space
+- No additional authentication required
+
+#### Out-of-Process (Separate Service)
+
+```
+┌─────────────┐        gRPC/mTLS        ┌───────────────┐
+│  HyperSpot  │ ──────────────────────► │ Auth Resolver │
+│    (PEP)    │                         │    (PDP)      │
+└─────────────┘                         └───────────────┘
+```
+
+- PDP runs as a separate process (same machine or remote)
+- Communication via gRPC
+- **Trust model:** explicit authentication required
+- **mTLS required:** PDP authenticates that the caller is a legitimate PEP
+
+#### Trust Boundaries
+
+| Aspect | In-Process | Out-of-Process |
+|--------|------------|----------------|
+| PEP → PDP AuthN | implicit | mTLS |
+| Subject identity | PDP trusts PEP | PDP trusts authenticated PEP |
+| Network exposure | none | internal network only |
+
+**Note:** In both modes, PDP trusts subject identity data from PEP. The mTLS in out-of-process mode authenticates *which service* is calling, not the validity of subject claims. Subject identity originates from the AuthN layer (Gateway) and flows through PEP to PDP.
+
 ---
 
 ## Core Terms
@@ -99,7 +210,7 @@ This allows HyperSpot domain modules (PEPs) to use a consistent API regardless o
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
 
   **Why "constraints" not "grants":** The term "grant" is overloaded in authorization contexts—OAuth uses it for token acquisition flows (Authorization Code Grant), Zanzibar/ReBAC uses it for static relation tuples stored in the system. Constraints are fundamentally different: they are *computed predicates* returned by PDP at evaluation time, not stored permission facts. The term "constraints" accurately describes their role as query-level restrictions.
-- **Security Context** - Result of successful authentication containing subject identity and tenant information. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`.
+- **Security Context** - Result of successful authentication containing subject identity, tenant information, and optionally the original bearer token. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`, `bearer_token`.
 
 ---
 
@@ -191,6 +302,7 @@ SecurityContext {
     subject_id: String,           // from `sub` claim
     subject_type: GtsTypeId,      // vendor-specific subject type (optional)
     subject_tenant_id: TenantId,  // Subject Owner Tenant - tenant the subject belongs to
+    bearer_token: Option<String>, // original token for forwarding and PDP validation
 }
 ```
 
@@ -201,8 +313,13 @@ SecurityContext {
 | `subject_id` | `sub` claim | Introspection response `sub` |
 | `subject_type` | Custom claim (vendor-defined) | Plugin maps from response |
 | `subject_tenant_id` | Custom claim (vendor-defined) | Plugin maps from response |
+| `bearer_token` | Original token from `Authorization` header | Original token from `Authorization` header |
 
-**Note:** Token expiration (`exp`) is validated during authentication but not included in SecurityContext. Expiration is token metadata, not identity. The caching layer uses `exp` as upper bound for cache entry TTL.
+**Notes:**
+- Token expiration (`exp`) is validated during authentication but not included in SecurityContext. Expiration is token metadata, not identity. The caching layer uses `exp` as upper bound for cache entry TTL.
+- **Security:** `bearer_token` is a credential. It MUST NOT be logged, serialized to persistent storage, or included in error messages. Implementations should use opaque wrapper types (e.g., `Secret<String>`) and exclude from `Debug` output. The token is included for two purposes:
+  1. **Forwarding** — Auth Resolver plugin may need to call external vendor services that require the original bearer token for authentication
+  2. **PDP validation** — In out-of-process deployments, PDP may independently validate the token as defence-in-depth, not trusting the PEP's claim extraction
 
 ---
 
@@ -457,91 +574,6 @@ This gives us:
 
 ---
 
-## Integration Architecture
-
-```
-+---------------------------------------------------------------------+
-|                        Vendor Platform                              |
-|  +----------+  +-----------------+  +------------+  +------------+  |
-|  |   IdP    |  | Tenant Service  |  |  RG Svc    |  | Authz Svc  |  |
-|  +----^-----+  +-------^---------+  +-----^------+  +-----^------+  |
-+-------+----------------+------------------+---------------+---------+
-        |                |                  |               |
-+-------+----------------+------------------+---------------+---------+
-|       |         HyperSpot                 |               |         |
-|  +----+----+  +--------+--------+  +------+-----+  +------+------+  |
-|  |  AuthN  |  | Tenant Resolver |  | RG Resolver|  |Auth Resolver|  |
-|  | (JWT/   |  |    (Gateway)    |  |  (Gateway) |  |   (PDP)     |  |
-|  | Introsp)|  +--------+--------+  +------+-----+  +------+------+  |
-|  +---------+           |                  |               |         |
-|                        v                  v               |         |
-|              +-------------------------------+            |         |
-|              |     Local Projections         |            |         |
-|              |  * tenant_closure             |            |         |
-|              |  * resource_group_closure     |            |         |
-|              |  * resource_group_membership  |            |         |
-|              +-------------------------------+            |         |
-|                                                           |         |
-|  +-------------------------------------------------------+-------+ |
-|  |                    Domain Module (PEP)                 |       | |
-|  |  +-------------+                                       |       | |
-|  |  |   Handler   |---- /access/v1/evaluation ----------->|       | |
-|  |  +------+------+     (returns decision + constraints)          | |
-|  |         | Compile constraints to SQL                           | |
-|  |         v                                                      | |
-|  |  +-------------+                                               | |
-|  |  |  Database   |  WHERE owner_tenant_id IN (...)               | |
-|  |  +-------------+                                               | |
-|  +----------------------------------------------------------------+ |
-+---------------------------------------------------------------------+
-```
-
----
-
-## Deployment Modes and Trust Model
-
-Auth Resolver (PDP) can run in two configurations with different trust models.
-
-### In-Process (Plugin)
-
-```
-┌─────────────────────────────────┐
-│       HyperSpot Process         │
-│  PEP ───function call───► PDP   │
-└─────────────────────────────────┘
-```
-
-- PDP runs as a plugin in the same process
-- Communication via direct function calls
-- **Trust model:** implicit — same process, same memory space
-- No additional authentication required
-
-### Out-of-Process (Separate Service)
-
-```
-┌─────────────┐        gRPC/mTLS        ┌───────────────┐
-│  HyperSpot  │ ──────────────────────► │ Auth Resolver │
-│    (PEP)    │                         │    (PDP)      │
-└─────────────┘                         └───────────────┘
-```
-
-- PDP runs as a separate process (same machine or remote)
-- Communication via gRPC
-- **Trust model:** explicit authentication required
-- **mTLS required:** PDP authenticates that the caller is a legitimate PEP
-
-### Trust Boundaries
-
-| Aspect | In-Process | Out-of-Process |
-|--------|------------|----------------|
-| PEP → PDP AuthN | implicit | mTLS |
-| Subject identity | PDP trusts PEP | PDP trusts authenticated PEP |
-| Network exposure | none | internal network only |
-
-**Note:** In both modes, PDP trusts subject identity data from PEP. The mTLS in out-of-process mode authenticates *which service* is calling, not the validity of subject claims. Subject identity originates from the AuthN layer (Gateway) and flows through PEP to PDP.
-
----
-
 ## PEP Enforcement
 
 ### Unified PEP Flow
@@ -607,6 +639,7 @@ PDP returns `decision` plus optional `constraints` for each evaluation.
 4. **Capability negotiation** - PEP declares enforcement capabilities
 5. **Fail-closed** - Unknown constraints or schemas result in deny
 6. **OR/AND semantics** - Multiple constraints are OR'd (alternative access paths), predicates within constraint are AND'd
+7. **Token passthrough** - Original bearer token optionally included in `context.bearer_token` for PDP validation and external service calls (MUST NOT be logged)
 
 #### Request
 
@@ -655,10 +688,31 @@ Content-Type: application/json
     "require_constraints": true,  // if true, decision without constraints = deny
 
     // PEP capabilities: what predicate types the caller can enforce locally
-    "capabilities": ["tenant_hierarchy", "group_membership", "group_hierarchy"]
+    "capabilities": ["tenant_hierarchy", "group_membership", "group_hierarchy"],
+
+    // Original bearer token (optional) — see "Bearer Token in Context" below
+    "bearer_token": "eyJhbGciOiJSUzI1NiIs..."
   }
 }
 ```
+
+#### Bearer Token in Context
+
+The `context.bearer_token` field is optional. PEP includes it when PDP needs access to the original token. Use cases:
+
+1. **PDP validation (defence-in-depth)** — In out-of-process deployments, PDP may not fully trust subject claims extracted by PEP. PDP can independently validate the token signature and extract claims to verify `subject.id` and `subject.properties` match the token.
+
+2. **External service calls** — Auth Resolver plugin may need to call vendor's external APIs (authorization service, user info endpoint, etc.) that require the original bearer token for authentication.
+
+3. **Token-embedded policies** — Some IdPs embed access policies directly in the token (e.g., `permissions`, `roles`, `scopes` claims in JWT). PDP extracts and evaluates these claims to generate constraints.
+
+4. **Scope narrowing** — Token may contain scope restrictions (e.g., `scope: "read:events"`, resource-specific access tokens). PDP uses these to narrow the access decision beyond what static policies would allow.
+
+5. **Audit and tracing** — Token may contain correlation IDs, session info, or other metadata useful for audit logging in PDP.
+
+**When to omit:** If PDP fully trusts PEP's claim extraction and doesn't need to call external services, `bearer_token` can be omitted to reduce payload size and minimize credential exposure.
+
+**Security:** `bearer_token` is a credential. PDP MUST NOT log it, persist it, or include it in error responses.
 
 #### Response
 
