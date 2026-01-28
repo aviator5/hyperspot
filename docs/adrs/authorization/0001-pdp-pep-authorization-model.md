@@ -171,7 +171,7 @@ Option E provides a cleaner contract between PDP and PEP with less implementatio
 
 **Technical Specification:**
 
-- [`docs/design/AUTH.md`](../../design/AUTH.md)
+- [`docs/authorization/AUTH.md`](../../authorization/AUTH.md)
 
 **Authorization Architecture:**
 

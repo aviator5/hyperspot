@@ -24,7 +24,7 @@
   - [PEP Property Mapping](#pep-property-mapping)
   - [Capabilities -> Predicate Matrix](#capabilities---predicate-matrix)
   - [Table Schemas (Local Projections)](#table-schemas-local-projections)
-- [Usage Scenarios](./AUTH_SCENARIOS.md)
+- [Usage Scenarios](./SCENARIOS.md)
 - [Open Questions](#open-questions)
 - [References](#references)
 
@@ -1130,7 +1130,7 @@ WHERE id IN (
 
 ## Usage Scenarios
 
-For concrete examples demonstrating the authorization model in practice, see [AUTH_SCENARIOS.md](./AUTH_SCENARIOS.md).
+For concrete examples demonstrating the authorization model in practice, see [SCENARIOS.md](./SCENARIOS.md).
 
 The scenarios document covers:
 - When to use projection tables (`tenant_closure`, `resource_group_membership`, `resource_group_closure`)

@@ -21,9 +21,23 @@ All examples use a Task Management domain:
   - [Combinations Summary](#combinations-summary)
 - [Scenarios](#scenarios)
   - [With `tenant_closure`](#with-tenant_closure)
+    - [S01: LIST, tenant subtree, PEP has tenant_closure](#s01-list-tenant-subtree-pep-has-tenant_closure)
+    - [S02: GET, tenant subtree, PEP has tenant_closure](#s02-get-tenant-subtree-pep-has-tenant_closure)
+    - [S03: UPDATE, tenant subtree, PEP has tenant_closure](#s03-update-tenant-subtree-pep-has-tenant_closure)
+    - [S04: CREATE, tenant context](#s04-create-tenant-context)
+    - [S05: LIST, tenant subtree with barrier, PEP has tenant_closure](#s05-list-tenant-subtree-with-barrier-pep-has-tenant_closure)
   - [Without `tenant_closure`](#without-tenant_closure)
+    - [S06: LIST, tenant subtree, PEP without tenant_closure](#s06-list-tenant-subtree-pep-without-tenant_closure)
+    - [S07: GET, tenant subtree, PEP without tenant_closure](#s07-get-tenant-subtree-pep-without-tenant_closure)
+    - [S08: UPDATE, tenant subtree, PEP without tenant_closure (prefetch)](#s08-update-tenant-subtree-pep-without-tenant_closure-prefetch)
+    - [S09: GET, same-tenant only](#s09-get-same-tenant-only)
   - [Resource Groups](#resource-groups)
+    - [S10: LIST, group membership, PEP has resource_group_membership](#s10-list-group-membership-pep-has-resource_group_membership)
+    - [S11: LIST, group subtree, PEP has resource_group_closure](#s11-list-group-subtree-pep-has-resource_group_closure)
   - [Advanced Patterns](#advanced-patterns)
+    - [S12: LIST, tenant subtree and group membership (AND)](#s12-list-tenant-subtree-and-group-membership-and)
+    - [S13: LIST, multiple access paths (OR)](#s13-list-multiple-access-paths-or)
+    - [S14: Access denied](#s14-access-denied)
 - [TOCTOU Analysis](#toctou-analysis)
 - [References](#references)
 
@@ -107,13 +121,15 @@ PEP has local tenant_closure table → can enforce `in_tenant_subtree` predicate
 
 ---
 
-#### Scenario 1: LIST (tenant subtree)
+#### S01: LIST, tenant subtree, PEP has tenant_closure
 
-**Context:** User requests all tasks visible in their tenant subtree.
+`GET /tasks?tenant_subtree=true`
+
+User requests all tasks visible in their tenant subtree.
 
 **Request:**
 ```http
-GET /tasks
+GET /tasks?tenant_subtree=true
 Authorization: Bearer <token>
 ```
 
@@ -172,13 +188,15 @@ WHERE owner_tenant_id IN (
 
 ---
 
-#### Scenario 2: GET (tenant subtree)
+#### S02: GET, tenant subtree, PEP has tenant_closure
 
-**Context:** User requests a specific task; PEP enforces tenant subtree access at query level.
+`GET /tasks/{id}?tenant_subtree=true`
+
+User requests a specific task; PEP enforces tenant subtree access at query level.
 
 **Request:**
 ```http
-GET /tasks/task-456
+GET /tasks/task-456?tenant_subtree=true
 Authorization: Bearer <token>
 ```
 
@@ -242,13 +260,15 @@ WHERE id = 'task-456'
 
 ---
 
-#### Scenario 3: UPDATE (tenant subtree)
+#### S03: UPDATE, tenant subtree, PEP has tenant_closure
 
-**Context:** User updates a task; constraint ensures atomic authorization check.
+`PUT /tasks/{id}?tenant_subtree=true`
+
+User updates a task; constraint ensures atomic authorization check.
 
 **Request:**
 ```http
-PUT /tasks/task-456
+PUT /tasks/task-456?tenant_subtree=true
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -316,9 +336,11 @@ WHERE id = 'task-456'
 
 ---
 
-#### Scenario 4: CREATE
+#### S04: CREATE, tenant context
 
-**Context:** User creates a new task. No constraints needed — PDP just validates permission.
+`POST /tasks`
+
+User creates a new task. No constraints needed — PDP just validates permission.
 
 **Request:**
 ```http
@@ -369,9 +391,11 @@ VALUES ('task-new', 'T2', 'New Task', 'pending')
 
 ---
 
-#### Scenario 5: Subtree with Barrier
+#### S05: LIST, tenant subtree with barrier, PEP has tenant_closure
 
-**Context:** User in parent tenant T1 requests tasks, but child tenant T2 is self-managed (barrier). Tasks in T2 subtree should be excluded.
+`GET /tasks?tenant_subtree=true&respect_barrier=true`
+
+User in parent tenant T1 requests tasks, but child tenant T2 is self-managed (barrier). Tasks in T2 subtree should be excluded.
 
 **Tenant hierarchy:**
 ```
@@ -383,7 +407,7 @@ T1 (parent)
 
 **Request:**
 ```http
-GET /tasks
+GET /tasks?tenant_subtree=true&respect_barrier=true
 Authorization: Bearer <token>
 ```
 
@@ -463,13 +487,15 @@ PEP has no tenant_closure table → PDP returns explicit IDs or PEP prefetches a
 
 ---
 
-#### Scenario 6: LIST (explicit tenant IDs)
+#### S06: LIST, tenant subtree, PEP without tenant_closure
 
-**Context:** PEP doesn't have tenant_closure. PDP resolves the subtree and returns explicit tenant IDs.
+`GET /tasks?tenant_subtree=true`
+
+PEP doesn't have tenant_closure. PDP resolves the subtree and returns explicit tenant IDs.
 
 **Request:**
 ```http
-GET /tasks
+GET /tasks?tenant_subtree=true
 Authorization: Bearer <token>
 ```
 
@@ -527,23 +553,25 @@ WHERE owner_tenant_id IN ('T1', 'T2', 'T3')
 
 ---
 
-#### Scenario 7: GET (prefetch)
+#### S07: GET, tenant subtree, PEP without tenant_closure
 
-**Context:** PEP doesn't have tenant_closure. For point operations, PEP prefetches resource attributes to send to PDP.
+`GET /tasks/{id}?tenant_subtree=true`
+
+PEP doesn't have tenant_closure. For read-only operations, PEP fetches the resource first, then asks PDP for a decision based on resource attributes. No second query needed — TOCTOU is not a concern for reads.
 
 **Request:**
 ```http
-GET /tasks/task-456
+GET /tasks/task-456?tenant_subtree=true
 Authorization: Bearer <token>
 ```
 
-**Step 1 — PEP prefetches resource attributes:**
+**Step 1 — PEP fetches resource:**
 ```sql
-SELECT owner_tenant_id FROM tasks WHERE id = 'task-456'
+SELECT * FROM tasks WHERE id = 'task-456'
 ```
-Result: `owner_tenant_id = 'T2'`
+Result: full task record with `owner_tenant_id = 'T2'`
 
-**Step 2 — PEP → PDP Request (with prefetched properties):**
+**Step 2 — PEP → PDP Request (with resource properties):**
 ```json
 {
   "subject": {
@@ -564,7 +592,7 @@ Result: `owner_tenant_id = 'T2'`
       "root_id": "T1",
       "include_root": true
     },
-    "require_constraints": true,
+    "require_constraints": false,
     "capabilities": []
   }
 }
@@ -572,47 +600,32 @@ Result: `owner_tenant_id = 'T2'`
 
 **PDP → PEP Response:**
 
-PDP validates that T2 is in T1's subtree and returns `eq` constraint for TOCTOU protection:
+PDP validates that T2 is in T1's subtree and returns decision only (no constraints needed for read):
 
 ```json
 {
-  "decision": true,
-  "context": {
-    "constraints": [
-      {
-        "predicates": [
-          {
-            "type": "eq",
-            "resource_property": "owner_tenant_id",
-            "value": "T2"
-          }
-        ]
-      }
-    ]
-  }
+  "decision": true
 }
 ```
 
-**Step 3 — SQL with constraint:**
-```sql
-SELECT * FROM tasks
-WHERE id = 'task-456'
-  AND owner_tenant_id = 'T2'
-```
+**Step 3 — Return result:**
+- `decision: true` → return already-fetched task
+- `decision: false` → **404 Not Found** (hides resource existence)
+- Resource not found in Step 1 → **404 Not Found**
 
-**Result interpretation:**
-- 1 row → return task
-- 0 rows → concurrent modification occurred (tenant changed between prefetch and query) or resource doesn't exist → **404**
+**Why no TOCTOU concern:** For GET, the "use" is returning data to the client. Even if `owner_tenant_id` changed between check and response, no security violation occurs — the client either gets data they had access to at query time, or gets 404. For mutations (UPDATE/DELETE), see S08.
 
 ---
 
-#### Scenario 8: UPDATE (prefetch + TOCTOU protection)
+#### S08: UPDATE, tenant subtree, PEP without tenant_closure (prefetch)
 
-**Context:** Same as Scenario 7, but for UPDATE. The `eq` constraint protects against TOCTOU race conditions.
+`PUT /tasks/{id}?tenant_subtree=true`
+
+Unlike S07 (GET), mutations require TOCTOU protection. PEP prefetches `owner_tenant_id`, gets `eq` constraint from PDP, and applies it in UPDATE's WHERE clause. This ensures atomic check-and-modify.
 
 **Request:**
 ```http
-PUT /tasks/task-456
+PUT /tasks/task-456?tenant_subtree=true
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -684,9 +697,11 @@ WHERE id = 'task-456'
 
 ---
 
-#### Scenario 9: Same-tenant only (eq predicate)
+#### S09: GET, same-tenant only
 
-**Context:** Simplest case — user can only access resources in their own tenant. No subtree, no hierarchy.
+`GET /tasks/{id}`
+
+Simplest case — user can only access resources in their own tenant. No subtree, no hierarchy.
 
 **Request:**
 ```http
@@ -750,9 +765,11 @@ WHERE id = 'task-456'
 
 ---
 
-#### Scenario 10: LIST with group_membership
+#### S10: LIST, group membership, PEP has resource_group_membership
 
-**Context:** User has access to specific projects (flat group membership, no hierarchy).
+`GET /tasks`
+
+User has access to specific projects (flat group membership, no hierarchy).
 
 **Request:**
 ```http
@@ -809,9 +826,11 @@ WHERE id IN (
 
 ---
 
-#### Scenario 11: LIST with group_hierarchy
+#### S11: LIST, group subtree, PEP has resource_group_closure
 
-**Context:** User has access to a project folder and all its subfolders.
+`GET /tasks`
+
+User has access to a project folder and all its subfolders.
 
 **Request:**
 ```http
@@ -875,13 +894,15 @@ WHERE id IN (
 
 ---
 
-#### Scenario 12: Combined Tenant + Group (AND)
+#### S12: LIST, tenant subtree and group membership (AND)
 
-**Context:** User has access to tasks in their tenant subtree AND in specific projects. Both conditions must be satisfied.
+`GET /tasks?tenant_subtree=true`
+
+User has access to tasks in their tenant subtree AND in specific projects. Both conditions must be satisfied.
 
 **Request:**
 ```http
-GET /tasks
+GET /tasks?tenant_subtree=true
 Authorization: Bearer <token>
 ```
 
@@ -949,9 +970,11 @@ WHERE owner_tenant_id IN (
 
 ---
 
-#### Scenario 13: Multiple Access Paths (OR)
+#### S13: LIST, multiple access paths (OR)
 
-**Context:** User has multiple ways to access tasks: (1) via project membership, (2) via explicitly shared tasks.
+`GET /tasks`
+
+User has multiple ways to access tasks: (1) via project membership, (2) via explicitly shared tasks.
 
 **Request:**
 ```http
@@ -1025,9 +1048,11 @@ WHERE (
 
 ---
 
-#### Scenario 14: Access Denied
+#### S14: Access denied
 
-**Context:** User doesn't have permission to access the requested resources.
+`GET /tasks`
+
+User doesn't have permission to access the requested resources.
 
 **Request:**
 ```http
@@ -1072,17 +1097,30 @@ Authorization: Bearer <token>
 
 [Time-of-check to time-of-use (TOCTOU)](https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use) is a class of race condition where a security check is performed at one point in time, but the protected action occurs later when conditions may have changed.
 
+### When TOCTOU Matters
+
+TOCTOU is a security concern only for **mutations** (UPDATE, DELETE). For **reads** (GET, LIST), there's no security violation if the resource changes between check and response — the client receives data they had access to at query time.
+
+| Operation | TOCTOU Concern | Why |
+|-----------|----------------|-----|
+| GET | ❌ No | Read returns point-in-time snapshot; no state change |
+| LIST | ❌ No | Same as GET — read-only |
+| UPDATE | ✅ Yes | Must ensure authorization at mutation time |
+| DELETE | ✅ Yes | Must ensure authorization at mutation time |
+| CREATE | ❌ No | No existing resource to race against |
+
 ### How Each Scenario Handles TOCTOU
 
-| Scenario | Closure | Prefetch | Constraint | TOCTOU Protection |
-|----------|---------|----------|------------|-------------------|
-| With closure | ✅ | No | `in_tenant_subtree` | ✅ Atomic SQL check |
-| Without closure | ❌ | Yes | `eq` (prefetched value) | ✅ Atomic SQL check |
-| CREATE | N/A | No | None | N/A (no existing resource) |
+| Scenario | Operation | Closure | Constraint | TOCTOU Protection |
+|----------|-----------|---------|------------|-------------------|
+| S01-S03, S05 | LIST/GET/UPDATE | ✅ | `in_tenant_subtree` | ✅ Atomic SQL check |
+| S07 | GET | ❌ | decision only | N/A (read-only) |
+| S08 | UPDATE | ❌ | `eq` (prefetched) | ✅ Atomic SQL check |
+| S04 | CREATE | N/A | None | N/A (no existing resource) |
 
-### Key Insight
+### Key Insight: Prefetch + Constraint for Mutations
 
-Without closure tables, PDP still returns a constraint (`eq` or `in`) that is applied in SQL. This ensures TOCTOU protection even without closure tables:
+Without closure tables, mutations (UPDATE/DELETE) use a two-step pattern:
 
 1. **Prefetch:** PEP reads `owner_tenant_id = 'T2'` from database
 2. **PDP check:** PDP validates T2 is accessible, returns `eq: owner_tenant_id = 'T2'`
@@ -1090,6 +1128,8 @@ Without closure tables, PDP still returns a constraint (`eq` or `in`) that is ap
 4. **If tenant changed:** WHERE clause won't match → 0 rows affected → 404
 
 The constraint acts as a [compare-and-swap](https://en.wikipedia.org/wiki/Compare-and-swap) mechanism — if the value changed between check and use, the operation atomically fails.
+
+**For reads (S07):** No second query needed. PEP fetches the resource, asks PDP for decision, and returns the already-fetched data if allowed.
 
 ---
 
