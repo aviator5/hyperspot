@@ -8,12 +8,16 @@ For the core authorization design, see [AUTH.md](./AUTH.md).
 All examples use a Task Management domain:
 - **Resource:** `tasks` table with `id`, `owner_tenant_id`, `title`, `status`
 - **Resource Groups:** Projects (tasks belong to projects)
+- **Tenant Model:** Hierarchical multi-tenancy — see [TENANT_MODEL.md](./TENANT_MODEL.md) for details on topology, barriers, and closure tables
 
 ---
 
 ## Table of Contents
 
-- [When to Use Projection Tables](#when-to-use-projection-tables)
+- [Projection Tables](#projection-tables)
+  - [What Are Projection Tables?](#what-are-projection-tables)
+  - [Choosing Projection Tables](#choosing-projection-tables)
+  - [Capabilities and PDP Response](#capabilities-and-pdp-response)
   - [When No Projection Tables Are Needed](#when-no-projection-tables-are-needed)
   - [When to Use `tenant_closure`](#when-to-use-tenant_closure)
   - [When to Use `resource_group_membership`](#when-to-use-resource_group_membership)
@@ -30,24 +34,50 @@ All examples use a Task Management domain:
     - [S06: LIST, tenant subtree, PEP without tenant_closure](#s06-list-tenant-subtree-pep-without-tenant_closure)
     - [S07: GET, tenant subtree, PEP without tenant_closure](#s07-get-tenant-subtree-pep-without-tenant_closure)
     - [S08: UPDATE, tenant subtree, PEP without tenant_closure (prefetch)](#s08-update-tenant-subtree-pep-without-tenant_closure-prefetch)
-    - [S09: GET, same-tenant only](#s09-get-same-tenant-only)
+    - [S09: GET, context tenant only (no subtree)](#s09-get-context-tenant-only-no-subtree)
   - [Resource Groups](#resource-groups)
     - [S10: LIST, group membership, PEP has resource_group_membership](#s10-list-group-membership-pep-has-resource_group_membership)
     - [S11: LIST, group subtree, PEP has resource_group_closure](#s11-list-group-subtree-pep-has-resource_group_closure)
+    - [S12: UPDATE, group membership, PEP has resource_group_membership](#s12-update-group-membership-pep-has-resource_group_membership)
+    - [S13: UPDATE, group subtree, PEP has resource_group_closure](#s13-update-group-subtree-pep-has-resource_group_closure)
+    - [S14: GET, group membership, PEP without resource_group_membership](#s14-get-group-membership-pep-without-resource_group_membership)
+    - [S15: LIST, group subtree, PEP has membership but no closure](#s15-list-group-subtree-pep-has-membership-but-no-closure)
   - [Advanced Patterns](#advanced-patterns)
-    - [S12: LIST, tenant subtree and group membership (AND)](#s12-list-tenant-subtree-and-group-membership-and)
-    - [S13: LIST, multiple access paths (OR)](#s13-list-multiple-access-paths-or)
-    - [S14: Access denied](#s14-access-denied)
+    - [S16: LIST, tenant subtree and group membership (AND)](#s16-list-tenant-subtree-and-group-membership-and)
+    - [S17: LIST, multiple access paths (OR)](#s17-list-multiple-access-paths-or)
+    - [S18: Access denied](#s18-access-denied)
 - [TOCTOU Analysis](#toctou-analysis)
 - [References](#references)
 
 ---
 
-## When to Use Projection Tables
+## Projection Tables
 
-Before diving into scenarios, it's important to understand **why** a module chooses particular projection tables. The choice depends on the application's tenant structure, resource organization, and query patterns.
+### What Are Projection Tables?
 
-### Key Principle: Capabilities Determine Flow
+**Projection tables** are local copies of hierarchical or relational data that enable efficient SQL-level authorization. Instead of calling external services during query execution, PEP uses these pre-synced tables to enforce constraints directly in the database.
+
+**The problem they solve:** When PDP returns constraints like "user can access resources in tenant subtree T1", the PEP needs to translate this into SQL. Without local data, PEP would need to:
+1. Call an external service to resolve the tenant hierarchy, or
+2. Receive thousands of explicit tenant IDs from PDP (doesn't scale)
+
+Projection tables allow PEP to JOIN against local data, making authorization O(1) regardless of hierarchy size.
+
+**Types of projection tables:**
+
+| Table | Purpose | Enables |
+|-------|---------|---------|
+| `tenant_closure` | Denormalized tenant hierarchy (ancestor→descendant pairs) | `in_tenant_subtree` predicate — efficient subtree queries without recursive CTEs |
+| `resource_group_membership` | Resource-to-group associations | `in_group` predicate — filter by group membership |
+| `resource_group_closure` | Denormalized group hierarchy | `in_group_subtree` predicate — filter by group subtree |
+
+**Closure tables** specifically solve the hierarchy traversal problem. A closure table contains all ancestor-descendant pairs, allowing subtree queries with a simple `WHERE ancestor_id = X` instead of recursive tree walking.
+
+### Choosing Projection Tables
+
+The choice depends on the application's tenant structure, resource organization, and **endpoint requirements**. Even with a hierarchical tenant model, specific endpoints may operate within a single context tenant (see S09).
+
+### Capabilities and PDP Response
 
 | PEP Capability | Closure Table | Prefetch | PDP Response |
 |----------------|---------------|----------|--------------|
@@ -61,12 +91,15 @@ Before diving into scenarios, it's important to understand **why** a module choo
 
 | Condition | Why Tables Aren't Required |
 |-----------|---------------------------|
+| Endpoint operates in context tenant only | No subtree traversal → `eq` on `owner_tenant_id` is sufficient (see S09) |
 | Few tenants per vendor | PDP can return explicit tenant IDs in `in` predicate |
 | Flat tenant structure | No hierarchy → `in_tenant_subtree` not needed |
 | No resource groups | `in_group*` predicates not used |
 | Low frequency LIST requests | Prefetch overhead is acceptable |
 
-**Example:** Internal enterprise tool with 10 tenants, flat structure.
+**Important:** The first condition applies regardless of overall tenant model. Even in a hierarchical multi-tenant system, specific endpoints may be designed to work within a single context tenant without subtree access. This is an endpoint-level decision, not a system-wide constraint.
+
+**Example:** Internal enterprise tool with 10 tenants, flat structure. Or: a "My Tasks" endpoint that shows only tasks in user's direct tenant, even though the system supports tenant hierarchy for other operations.
 
 ### When to Use `tenant_closure`
 
@@ -697,11 +730,11 @@ WHERE id = 'task-456'
 
 ---
 
-#### S09: GET, same-tenant only
+#### S09: GET, context tenant only (no subtree)
 
 `GET /tasks/{id}`
 
-Simplest case — user can only access resources in their own tenant. No subtree, no hierarchy.
+Simplest case — access limited to context tenant only, no subtree traversal. User can only access resources directly owned by their tenant.
 
 **Request:**
 ```http
@@ -757,11 +790,13 @@ WHERE id = 'task-456'
   AND owner_tenant_id = 'T1'
 ```
 
-**Note:** No prefetch needed — PDP returns direct `eq` constraint based on the subject's tenant.
+**Note:** No prefetch needed, no closure table required. PDP returns direct `eq` constraint based on context tenant. This pattern applies when the endpoint operates within a single tenant context, regardless of whether the overall tenant model is hierarchical.
 
 ---
 
 ### Resource Groups
+
+> **Note:** Resource groups operate within tenant boundaries. All group-based constraints include a tenant predicate (typically `eq` on `owner_tenant_id`) to ensure tenant isolation. Groups don't bypass multi-tenancy — a user in T1 cannot access resources in T2's groups even if they somehow have group membership.
 
 ---
 
@@ -796,6 +831,9 @@ Authorization: Bearer <token>
 ```
 
 **PDP → PEP Response:**
+
+Tenant constraint is always included — groups don't bypass tenant isolation:
+
 ```json
 {
   "decision": true,
@@ -803,6 +841,11 @@ Authorization: Bearer <token>
     "constraints": [
       {
         "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
           {
             "type": "in_group",
             "resource_property": "id",
@@ -818,10 +861,11 @@ Authorization: Bearer <token>
 **SQL:**
 ```sql
 SELECT * FROM tasks
-WHERE id IN (
-  SELECT resource_id FROM resource_group_membership
-  WHERE group_id IN ('ProjectA', 'ProjectB')
-)
+WHERE owner_tenant_id = 'T1'
+  AND id IN (
+    SELECT resource_id FROM resource_group_membership
+    WHERE group_id IN ('ProjectA', 'ProjectB')
+  )
 ```
 
 ---
@@ -857,6 +901,9 @@ Authorization: Bearer <token>
 ```
 
 **PDP → PEP Response:**
+
+Tenant constraint is always included:
+
 ```json
 {
   "decision": true,
@@ -864,6 +911,11 @@ Authorization: Bearer <token>
     "constraints": [
       {
         "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
           {
             "type": "in_group_subtree",
             "resource_property": "id",
@@ -879,14 +931,323 @@ Authorization: Bearer <token>
 **SQL:**
 ```sql
 SELECT * FROM tasks
-WHERE id IN (
-  SELECT resource_id FROM resource_group_membership
-  WHERE group_id IN (
-    SELECT descendant_id FROM resource_group_closure
-    WHERE ancestor_id = 'FolderA'
+WHERE owner_tenant_id = 'T1'
+  AND id IN (
+    SELECT resource_id FROM resource_group_membership
+    WHERE group_id IN (
+      SELECT descendant_id FROM resource_group_closure
+      WHERE ancestor_id = 'FolderA'
   )
 )
 ```
+
+---
+
+#### S12: UPDATE, group membership, PEP has resource_group_membership
+
+`PUT /tasks/{id}`
+
+User updates a task; PEP has resource_group_membership table. Similar to tenant-based S03, but filtering by group membership.
+
+**Request:**
+```http
+PUT /tasks/task-456
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"status": "completed"}
+```
+
+**PEP → PDP Request:**
+```json
+{
+  "subject": {
+    "type": "gts.x.core.security.subject.user.v1~",
+    "id": "user-123",
+    "properties": { "tenant_id": "T1" }
+  },
+  "action": { "name": "update" },
+  "resource": {
+    "type": "gts.x.tasks.task.v1~",
+    "id": "task-456"
+  },
+  "context": {
+    "tenant_id": "T1",
+    "require_constraints": true,
+    "capabilities": ["group_membership"]
+  }
+}
+```
+
+**PDP → PEP Response:**
+
+Tenant constraint is always included:
+
+```json
+{
+  "decision": true,
+  "context": {
+    "constraints": [
+      {
+        "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
+          {
+            "type": "in_group",
+            "resource_property": "id",
+            "group_ids": ["ProjectA", "ProjectB"]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**SQL:**
+```sql
+UPDATE tasks
+SET status = 'completed'
+WHERE id = 'task-456'
+  AND owner_tenant_id = 'T1'
+  AND id IN (
+    SELECT resource_id FROM resource_group_membership
+    WHERE group_id IN ('ProjectA', 'ProjectB')
+  )
+```
+
+**Result interpretation:**
+- 1 row affected → success
+- 0 rows affected → task doesn't exist or not in user's accessible groups → **404**
+
+---
+
+#### S13: UPDATE, group subtree, PEP has resource_group_closure
+
+`PUT /tasks/{id}`
+
+User updates a task; PEP has both resource_group_membership and resource_group_closure tables.
+
+**Request:**
+```http
+PUT /tasks/task-456
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"status": "completed"}
+```
+
+**PEP → PDP Request:**
+```json
+{
+  "subject": {
+    "type": "gts.x.core.security.subject.user.v1~",
+    "id": "user-123",
+    "properties": { "tenant_id": "T1" }
+  },
+  "action": { "name": "update" },
+  "resource": {
+    "type": "gts.x.tasks.task.v1~",
+    "id": "task-456"
+  },
+  "context": {
+    "tenant_id": "T1",
+    "require_constraints": true,
+    "capabilities": ["group_hierarchy"]
+  }
+}
+```
+
+**PDP → PEP Response:**
+
+Tenant constraint is always included:
+
+```json
+{
+  "decision": true,
+  "context": {
+    "constraints": [
+      {
+        "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
+          {
+            "type": "in_group_subtree",
+            "resource_property": "id",
+            "root_group_id": "FolderA"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**SQL:**
+```sql
+UPDATE tasks
+SET status = 'completed'
+WHERE id = 'task-456'
+  AND owner_tenant_id = 'T1'
+  AND id IN (
+    SELECT resource_id FROM resource_group_membership
+    WHERE group_id IN (
+      SELECT descendant_id FROM resource_group_closure
+      WHERE ancestor_id = 'FolderA'
+    )
+  )
+```
+
+---
+
+#### S14: GET, group membership, PEP without resource_group_membership
+
+`GET /tasks/{id}`
+
+PEP doesn't have resource_group_membership table. For read operations, PEP fetches the resource and sends group membership info to PDP for decision.
+
+**Request:**
+```http
+GET /tasks/task-456
+Authorization: Bearer <token>
+```
+
+**Step 1 — PEP fetches resource with group info:**
+
+PEP must know which groups the resource belongs to. This could come from:
+- A `group_ids` column on the resource itself
+- An application-level join during fetch
+- External service call
+
+```sql
+SELECT t.*, array_agg(g.group_id) as group_ids
+FROM tasks t
+LEFT JOIN task_groups g ON t.id = g.task_id
+WHERE t.id = 'task-456'
+GROUP BY t.id
+```
+Result: task with `owner_tenant_id = 'T1'`, `group_ids = ['ProjectA']`
+
+**Step 2 — PEP → PDP Request (with tenant and group info):**
+```json
+{
+  "subject": {
+    "type": "gts.x.core.security.subject.user.v1~",
+    "id": "user-123",
+    "properties": { "tenant_id": "T1" }
+  },
+  "action": { "name": "read" },
+  "resource": {
+    "type": "gts.x.tasks.task.v1~",
+    "id": "task-456",
+    "properties": {
+      "owner_tenant_id": "T1",
+      "group_ids": ["ProjectA"]
+    }
+  },
+  "context": {
+    "tenant_id": "T1",
+    "require_constraints": false,
+    "capabilities": []
+  }
+}
+```
+
+**PDP → PEP Response:**
+
+PDP checks both tenant access AND group membership:
+
+```json
+{
+  "decision": true
+}
+```
+
+**Step 3 — Return result:**
+- `decision: true` → return already-fetched task
+- `decision: false` → **404 Not Found**
+
+**Note:** For LIST operations without resource_group_membership, PDP would need to return explicit resource IDs (impractical for large datasets) or the architecture needs redesign. This scenario works best for point operations.
+
+---
+
+#### S15: LIST, group subtree, PEP has membership but no closure
+
+`GET /tasks`
+
+PEP has resource_group_membership but not resource_group_closure. PDP expands group hierarchy to explicit group IDs.
+
+**Request:**
+```http
+GET /tasks
+Authorization: Bearer <token>
+```
+
+**PEP → PDP Request:**
+```json
+{
+  "subject": {
+    "type": "gts.x.core.security.subject.user.v1~",
+    "id": "user-123",
+    "properties": { "tenant_id": "T1" }
+  },
+  "action": { "name": "list" },
+  "resource": { "type": "gts.x.tasks.task.v1~" },
+  "context": {
+    "tenant_id": "T1",
+    "require_constraints": true,
+    "capabilities": ["group_membership"]
+  }
+}
+```
+
+**Note:** PEP declares `group_membership` capability (has the membership table) but NOT `group_hierarchy` (no closure table).
+
+**PDP → PEP Response:**
+
+PDP knows user has access to FolderA and its subfolders. Since PEP can't handle `in_group_subtree`, PDP expands the hierarchy to explicit group IDs. Tenant constraint is always included:
+
+```json
+{
+  "decision": true,
+  "context": {
+    "constraints": [
+      {
+        "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
+          {
+            "type": "in_group",
+            "resource_property": "id",
+            "group_ids": ["FolderA", "FolderA-Sub1", "FolderA-Sub2", "FolderA-Sub1-Deep"]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**SQL:**
+```sql
+SELECT * FROM tasks
+WHERE owner_tenant_id = 'T1'
+  AND id IN (
+    SELECT resource_id FROM resource_group_membership
+    WHERE group_id IN ('FolderA', 'FolderA-Sub1', 'FolderA-Sub2', 'FolderA-Sub1-Deep')
+  )
+```
+
+**Trade-off:** PDP must know the group hierarchy and expand it. Works well for shallow hierarchies or small group counts; may not scale for deep/wide hierarchies with thousands of groups.
 
 ---
 
@@ -894,7 +1255,7 @@ WHERE id IN (
 
 ---
 
-#### S12: LIST, tenant subtree and group membership (AND)
+#### S16: LIST, tenant subtree and group membership (AND)
 
 `GET /tasks?tenant_subtree=true`
 
@@ -970,7 +1331,7 @@ WHERE owner_tenant_id IN (
 
 ---
 
-#### S13: LIST, multiple access paths (OR)
+#### S17: LIST, multiple access paths (OR)
 
 `GET /tasks`
 
@@ -1048,7 +1409,7 @@ WHERE (
 
 ---
 
-#### S14: Access denied
+#### S18: Access denied
 
 `GET /tasks`
 
@@ -1111,12 +1472,23 @@ TOCTOU is a security concern only for **mutations** (UPDATE, DELETE). For **read
 
 ### How Each Scenario Handles TOCTOU
 
+**Tenant-based scenarios:**
+
 | Scenario | Operation | Closure | Constraint | TOCTOU Protection |
 |----------|-----------|---------|------------|-------------------|
 | S01-S03, S05 | LIST/GET/UPDATE | ✅ | `in_tenant_subtree` | ✅ Atomic SQL check |
 | S07 | GET | ❌ | decision only | N/A (read-only) |
 | S08 | UPDATE | ❌ | `eq` (prefetched) | ✅ Atomic SQL check |
 | S04 | CREATE | N/A | None | N/A (no existing resource) |
+
+**Resource group scenarios:**
+
+| Scenario | Operation | Projection Tables | Constraint | TOCTOU Protection |
+|----------|-----------|-------------------|------------|-------------------|
+| S10, S11 | LIST | ✅ | `in_group` / `in_group_subtree` | ✅ Atomic SQL check |
+| S12, S13 | UPDATE | ✅ | `in_group` / `in_group_subtree` | ✅ Atomic SQL check |
+| S14 | GET | ❌ | decision only | N/A (read-only) |
+| S15 | LIST | membership only | `in_group` (expanded) | ✅ Atomic SQL check |
 
 ### Key Insight: Prefetch + Constraint for Mutations
 
@@ -1136,6 +1508,7 @@ The constraint acts as a [compare-and-swap](https://en.wikipedia.org/wiki/Compar
 ## References
 
 - [AUTH.md](./AUTH.md) — Core authorization design
+- [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
 - [TOCTOU - Wikipedia](https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use)
 - [Race Conditions - PortSwigger](https://portswigger.net/web-security/race-conditions)
 - [AWS Multi-tenant Authorization](https://docs.aws.amazon.com/prescriptive-guidance/latest/saas-multitenant-api-access-authorization/introduction.html)

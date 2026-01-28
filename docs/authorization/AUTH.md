@@ -24,6 +24,7 @@
   - [PEP Property Mapping](#pep-property-mapping)
   - [Capabilities -> Predicate Matrix](#capabilities---predicate-matrix)
   - [Table Schemas (Local Projections)](#table-schemas-local-projections)
+- [Tenant Model](./TENANT_MODEL.md)
 - [Usage Scenarios](./SCENARIOS.md)
 - [Open Questions](#open-questions)
 - [References](#references)
@@ -1173,4 +1174,6 @@ The scenarios document covers:
 - [ADR 0001: PDP/PEP Authorization Model](../adrs/authorization/0001-pdp-pep-authorization-model.md)
 
 ### Internal
+- [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
+- [SCENARIOS.md](./SCENARIOS.md) — Authorization usage scenarios
 - [HyperSpot GTS (Global Type System)](../../modules/types-registry/)
