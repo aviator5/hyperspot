@@ -6,12 +6,12 @@
   - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
     - [PDP/PEP Model](#pdppep-model)
+    - [Core Terms](#core-terms)
     - [Request Flow](#request-flow)
     - [AuthN Resolver and AuthZ Resolver: Gateway + Plugin Architecture](#authn-resolver-and-authz-resolver-gateway--plugin-architecture)
+    - [Plugin Roles](#plugin-roles)
     - [Integration Architecture](#integration-architecture)
     - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
-    - [Plugin Roles](#plugin-roles)
-  - [Core Terms](#core-terms)
   - [Token Scopes](#token-scopes)
     - [Overview](#overview-1)
     - [Scope vs Permission](#scope-vs-permission)
@@ -20,40 +20,29 @@
     - [SecurityContext Integration](#securitycontext-integration)
     - [PDP Evaluation Flow](#pdp-evaluation-flow)
     - [Gateway Scope Enforcement (Optional)](#gateway-scope-enforcement-optional)
-- [Authentication](#authentication)
-  - [Overview](#overview-2)
-    - [Token Validation Modes](#token-validation-modes)
-    - [JWT Local Validation](#jwt-local-validation)
-    - [Token Introspection](#token-introspection)
-    - [AuthN Result: Security Context](#authn-result-security-context)
-  - [Configuration](#configuration)
-    - [JWT Settings](#jwt-settings)
-    - [JWKS Settings](#jwks-settings)
-    - [Introspection Settings](#introspection-settings)
-  - [Token Introspection](#token-introspection-1)
-  - [OpenID Connect Integration](#openid-connect-integration)
-    - [Issuer Configuration](#issuer-configuration)
-    - [Discovery](#discovery)
-  - [Validation](#validation)
-    - [Token Expiration](#token-expiration)
-    - [Audience Validation](#audience-validation)
-  - [Introspection Caching](#introspection-caching)
-- [Authorization](#authorization)
-  - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
-    - [Why Access Evaluation API Alone Isn't Enough](#why-access-evaluation-api-alone-isnt-enough)
-      - [LIST Operations](#list-operations)
-      - [Point Operations (GET/UPDATE/DELETE)](#point-operations-getupdatedelete)
-    - [Why Search API Doesn't Work](#why-search-api-doesnt-work)
-    - [Our Solution: Extended Evaluation Response](#our-solution-extended-evaluation-response)
-  - [PEP Enforcement](#pep-enforcement)
-    - [Unified PEP Flow](#unified-pep-flow)
-    - [Constraint Compilation to SQL](#constraint-compilation-to-sql)
-    - [Fail-Closed Rules](#fail-closed-rules)
-  - [Authorization Decision Caching](#authorization-decision-caching)
-    - [Critical Security Requirements](#critical-security-requirements)
-    - [Open Questions (TODO)](#open-questions-todo)
-  - [API Specifications](#api-specifications)
-    - [Access Evaluation API (AuthZEN-extended)](#access-evaluation-api-authzen-extended)
+  - [Authentication](#authentication)
+    - [AuthN Middleware](#authn-middleware)
+    - [Overview](#overview-2)
+    - [SecurityContext](#securitycontext)
+    - [Plugin Responsibilities](#plugin-responsibilities)
+    - [Rationale: Minimalist Interface](#rationale-minimalist-interface)
+    - [Implementation Reference](#implementation-reference)
+  - [Authorization](#authorization)
+    - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
+      - [Why Access Evaluation API Alone Isn't Enough](#why-access-evaluation-api-alone-isnt-enough)
+        - [LIST Operations](#list-operations)
+        - [Point Operations (GET/UPDATE/DELETE)](#point-operations-getupdatedelete)
+      - [Why Search API Doesn't Work](#why-search-api-doesnt-work)
+      - [Our Solution: Extended Evaluation Response](#our-solution-extended-evaluation-response)
+    - [PEP Enforcement](#pep-enforcement)
+      - [Unified PEP Flow](#unified-pep-flow)
+      - [Constraint Compilation to SQL](#constraint-compilation-to-sql)
+      - [Fail-Closed Rules](#fail-closed-rules)
+    - [Authorization Decision Caching](#authorization-decision-caching)
+      - [Critical Security Requirements](#critical-security-requirements)
+      - [Open Questions (TODO)](#open-questions-todo)
+    - [API Specifications](#api-specifications)
+      - [Access Evaluation API (AuthZEN-extended)](#access-evaluation-api-authzen-extended)
       - [Design Principles](#design-principles)
       - [Request](#request)
       - [Bearer Token in Context](#bearer-token-in-context)
@@ -62,27 +51,27 @@
       - [Operation-Specific Behavior](#operation-specific-behavior)
       - [Response with Resource Group Predicate](#response-with-resource-group-predicate)
       - [Deny Response](#deny-response)
-  - [Predicate Types Reference](#predicate-types-reference)
-    - [1. Equality Predicate (`type: "eq"`)](#1-equality-predicate-type-eq)
-    - [2. IN Predicate (`type: "in"`)](#2-in-predicate-type-in)
-    - [3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)](#3-tenant-subtree-predicate-type-in_tenant_subtree)
-    - [4. Group Membership Predicate (`type: "in_group"`)](#4-group-membership-predicate-type-in_group)
-    - [5. Group Subtree Predicate (`type: "in_group_subtree"`)](#5-group-subtree-predicate-type-in_group_subtree)
-    - [Group Tenant Scoping](#group-tenant-scoping)
-  - [PEP Property Mapping](#pep-property-mapping)
-  - [Capabilities -\> Predicate Matrix](#capabilities---predicate-matrix)
-    - [`require_constraints` Flag](#require_constraints-flag)
-    - [Capabilities Array](#capabilities-array)
-  - [Table Schemas (Local Projections)](#table-schemas-local-projections)
-    - [`tenant_closure`](#tenant_closure)
-    - [`resource_group_closure`](#resource_group_closure)
-    - [`resource_group_membership`](#resource_group_membership)
-  - [Usage Scenarios](#usage-scenarios)
-- [Open Questions](#open-questions)
-- [References](#references)
-  - [Authentication](#authentication-1)
-  - [Authorization](#authorization-1)
-  - [Internal](#internal)
+    - [Predicate Types Reference](#predicate-types-reference)
+      - [1. Equality Predicate (`type: "eq"`)](#1-equality-predicate-type-eq)
+      - [2. IN Predicate (`type: "in"`)](#2-in-predicate-type-in)
+      - [3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)](#3-tenant-subtree-predicate-type-in_tenant_subtree)
+      - [4. Group Membership Predicate (`type: "in_group"`)](#4-group-membership-predicate-type-in_group)
+      - [5. Group Subtree Predicate (`type: "in_group_subtree"`)](#5-group-subtree-predicate-type-in_group_subtree)
+      - [Group Tenant Scoping](#group-tenant-scoping)
+    - [PEP Property Mapping](#pep-property-mapping)
+    - [Capabilities -\> Predicate Matrix](#capabilities---predicate-matrix)
+      - [`require_constraints` Flag](#require_constraints-flag)
+      - [Capabilities Array](#capabilities-array)
+    - [Table Schemas (Local Projections)](#table-schemas-local-projections)
+      - [`tenant_closure`](#tenant_closure)
+      - [`resource_group_closure`](#resource_group_closure)
+      - [`resource_group_membership`](#resource_group_membership)
+    - [Usage Scenarios](#usage-scenarios)
+  - [Open Questions](#open-questions)
+  - [References](#references)
+    - [Authentication](#authentication-1)
+    - [Authorization](#authorization-1)
+    - [Internal](#internal)
 
 ---
 
@@ -92,17 +81,9 @@ This document describes HyperSpot's approach to authentication (AuthN) and autho
 
 **Authentication** verifies the identity of the subject making a request. HyperSpot uses the **AuthN Resolver** module to integrate with vendor's Identity Provider (IdP), validate access tokens, and extract subject identity into a `SecurityContext`.
 
-**Authorization** determines what the authenticated subject can do. HyperSpot uses the **AuthZ Resolver** module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the authorization model and [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for the rationale behind separating AuthN and AuthZ.
+**Authorization** determines what the authenticated subject can do. HyperSpot uses the **AuthZ Resolver** module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks.
 
-**AuthN Middleware:**
-
-Authentication is performed by **AuthN middleware** within the module that accepts the request. The middleware:
-1. Extracts the bearer token from the request
-2. Calls AuthN Resolver (Gateway) for validation (JWT local or introspection)
-3. Receives `SecurityContext` containing validated subject identity
-4. Passes the `SecurityContext` to the module's handler (PEP)
-
-This pattern applies to any module accepting external requests: API Gateway module, Domain Module (if exposed directly), gRPC Gateway module, etc. The authorization model is entry-point agnostic.
+See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the authorization model and [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for the rationale behind separating AuthN and AuthZ.
 
 ### PDP/PEP Model
 
@@ -112,18 +93,31 @@ This document uses the PDP/PEP authorization model (per NIST SP 800-162):
 - **PEP (Policy Enforcement Point)** — enforces PDP decisions at resource access points
 
 In HyperSpot's architecture:
+- **AuthN Resolver** validates tokens and produces SecurityContext (separate concern from PDP)
 - **AuthZ Resolver** (via vendor-specific plugin) serves as the **PDP**
 - **Domain modules** act as **PEPs**, applying constraints to database queries
-- **AuthN Resolver** validates tokens and produces SecurityContext (separate concern from PDP)
 
-See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full rationale.
+### Core Terms
+
+- **Access Token** - Credential presented by the client to authenticate requests. Format is not restricted — can be opaque token (validated via introspection) or self-contained JWT. The key requirement: it must enable authentication and subject identification.
+- **Subject / Principal** - Actor initiating the request (user or API client), identified via access token
+- **Tenant** - Domain of ownership/responsibility and policy (billing, security, data isolation). See [TENANT_MODEL.md](./TENANT_MODEL.md)
+- **Subject Owner Tenant** - Tenant the subject belongs to (owning tenant of the subject)
+- **Context Tenant** - Tenant scope root for the operation (may differ from subject owner tenant in cross-tenant scenarios)
+- **Resource Owner Tenant** - Actual tenant owning the resource (`owner_tenant_id`)
+- **Resource** - Object with owner tenant identifier
+- **Resource Group** - Optional container for resources, used for access control. See [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md)
+- **Permission** - `{ resource_type, action }` - allowed operation identifier
+- **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (stored vendor-side) or "grants" (OAuth flows, Zanzibar tuples), but compiled, time-bound enforcement artifacts computed at evaluation time.
+- **Security Context** - Result of successful authentication containing subject identity, tenant information, and optionally the original bearer token. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`, `token_scopes`, `bearer_token`.
+- **Token Scopes** - Capability restrictions extracted from the access token. Act as a "ceiling" on what an application can do, regardless of user's actual permissions. See [Token Scopes](#token-scopes).
 
 ### Request Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Module as Module<br/>(with AuthN Middleware)
+    participant Module as Module AuthN Middleware
     participant AuthN as AuthN Resolver
     participant Handler as Module Handler (PEP)
     participant AuthZ as AuthZ Resolver<br/>(PDP)
@@ -131,7 +125,7 @@ sequenceDiagram
 
     Client->>Module: Request + Token
     Module->>AuthN: Validate token
-    AuthN->>AuthN: JWT verification or introspection
+    AuthN->>AuthN: Token validation or introspection
     AuthN-->>Module: SecurityContext
     Module->>Handler: Request + SecurityContext
     Handler->>AuthZ: AuthZ Request<br/>(subject, action, resource, context)
@@ -164,6 +158,28 @@ This separation provides:
 - **Mix & match vendors** — Use different vendors for IdP (AuthN) and Policy Engine (AuthZ)
 
 Each vendor develops their own AuthN and AuthZ plugins (or a unified plugin implementing both interfaces) that bridge to their specific systems. See [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for the rationale behind this separation.
+
+### Plugin Roles
+
+**AuthN Plugin:**
+
+The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. The plugin is responsible for:
+- **IdP communication** — calling introspection endpoints, handling IdP-specific protocols
+- **Claim enrichment** — if the IdP doesn't include `subject_type` or `subject_tenant_id` in tokens, the plugin fetches this information from vendor services
+- **Response mapping** — converting IdP-specific responses to `SecurityContext`
+- **Token scope extraction** — detecting first-party vs third-party apps and setting `token_scopes` accordingly
+
+**AuthZ Plugin:**
+
+The AuthZ Resolver plugin bridges HyperSpot to the vendor's Authorization Service (PDP). The plugin is responsible for:
+- **Policy evaluation** — calling vendor's authorization API with subject, action, resource, context
+- **Constraint generation** — translating vendor's policy decisions into SQL-compilable constraints
+- **Hierarchy queries** — using Tenant Resolver and RG Resolver to query tenant and group hierarchies for constraint generation
+- **Token validation** (optional) — in out-of-process deployments, independently validating bearer_token for defense-in-depth
+
+**Unified Plugin Pattern:**
+
+Vendors with integrated AuthN+AuthZ APIs can provide a unified plugin implementing both interfaces, allowing single API calls to vendor services, shared caching between AuthN and AuthZ operations, and coordinated version updates. See [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for details.
 
 ### Integration Architecture
 
@@ -267,49 +283,6 @@ In both modes, AuthZ Resolver (PDP) trusts subject identity data from PEP. The m
 | Subject identity trust | Same process | Authenticated caller |
 | Network exposure | none | internal network only |
 
-### Plugin Roles
-
-**AuthN Plugin:**
-
-The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. The plugin is responsible for:
-- **IdP communication** — calling introspection endpoints, handling IdP-specific protocols
-- **Claim enrichment** — if the IdP doesn't include `subject_type` or `subject_tenant_id` in tokens, the plugin fetches this information from vendor services
-- **Response mapping** — converting IdP-specific responses to `SecurityContext`
-- **Token scope extraction** — detecting first-party vs third-party apps and setting `token_scopes` accordingly
-
-**AuthZ Plugin:**
-
-The AuthZ Resolver plugin bridges HyperSpot to the vendor's Authorization Service (PDP). The plugin is responsible for:
-- **Policy evaluation** — calling vendor's authorization API with subject, action, resource, context
-- **Constraint generation** — translating vendor's policy decisions into SQL-compilable constraints
-- **Hierarchy queries** — using Tenant Resolver and RG Resolver to query tenant and group hierarchies for constraint generation
-- **Token validation** (optional) — in out-of-process deployments, independently validating bearer_token for defense-in-depth
-
-**Unified Plugin Pattern:**
-
-Vendors with integrated AuthN+AuthZ APIs can provide a unified plugin implementing both interfaces, allowing single API calls to vendor services, shared caching between AuthN and AuthZ operations, and coordinated version updates. See [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for details.
-
----
-
-## Core Terms
-
-- **Access Token** - Credential presented by the client to authenticate requests. Format is not restricted — can be opaque token (validated via introspection) or self-contained JWT. The key requirement: it must enable authentication and subject identification.
-- **Subject / Principal** - Actor initiating the request (user or API client), identified via access token
-- **Tenant** - Domain of ownership/responsibility and policy (billing, security, data isolation). See [TENANT_MODEL.md](./TENANT_MODEL.md)
-- **Subject Owner Tenant** - Tenant the subject belongs to (owning tenant of the subject)
-- **Context Tenant** - Tenant scope root for the operation (may differ from subject owner tenant in cross-tenant scenarios)
-- **Resource Owner Tenant** - Actual tenant owning the resource (`owner_tenant_id`)
-- **Resource** - Object with owner tenant identifier
-- **Resource Group** - Optional container for resources, used for access control. See [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md)
-- **Permission** - `{ resource_type, action }` - allowed operation identifier
-- **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
-
-  **Why "constraints" not "grants":** The term "grant" is overloaded in authorization contexts—OAuth uses it for token acquisition flows (Authorization Code Grant), Zanzibar/ReBAC uses it for static relation tuples stored in the system. Constraints are fundamentally different: they are *computed predicates* returned by PDP at evaluation time, not stored permission facts. The term "constraints" accurately describes their role as query-level restrictions.
-- **Security Context** - Result of successful authentication containing subject identity, tenant information, and optionally the original bearer token. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`, `token_scopes`, `bearer_token`.
-- **Token Scopes** - Capability restrictions extracted from the access token. Act as a "ceiling" on what an application can do, regardless of user's actual permissions. See [Token Scopes](#token-scopes).
-
----
-
 ## Token Scopes
 
 ### Overview
@@ -397,263 +370,148 @@ auth:
 
 ---
 
-# Authentication
+## Authentication
 
-## Overview
+### AuthN Middleware
 
-HyperSpot integrates with the vendor's Identity Provider (IdP) to authenticate requests. It supports two token formats:
+Authentication is performed by **AuthN middleware** within the module that accepts the request. The middleware:
+1. Extracts the bearer token from the request
+2. Calls AuthN Resolver (Gateway) for validation (JWT local or introspection)
+3. Receives `SecurityContext` containing validated subject identity
+4. Passes the `SecurityContext` to the module's handler (PEP)
 
-- **JWT (JSON Web Token)** — Self-contained tokens (RFC 7519), can be validated locally via signature verification or via introspection for revocation checking and claim enrichment
-- **Opaque tokens** — Tokens validated via Token Introspection endpoint (RFC 7662)
+This pattern applies to any module accepting external requests: API Gateway module, Domain Module (if exposed directly), gRPC Gateway module, etc. The authorization model is entry-point agnostic.
 
-For JWT-based authentication, HyperSpot follows OpenID Connect Core 1.0 standards. Auto-configuration is supported via OpenID Connect Discovery 1.0 (`.well-known/openid-configuration`).
+### Overview
 
-**Token type detection**: JWT tokens are identified by their structure (three base64url-encoded segments separated by dots). All other tokens are treated as opaque.
+HyperSpot's authentication is handled by the **AuthN Resolver** — a gateway module with a minimalist interface that validates bearer tokens and produces `SecurityContext`.
 
-### Token Validation Modes
-
-| Mode | When | How |
-|------|------|-----|
-| JWT local | JWT + introspection not required | Validate signature via JWKS, extract claims |
-| Introspection | Opaque token OR JWT requiring enrichment/revocation check | Plugin calls `introspection_endpoint` |
-
-### JWT Local Validation
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Middleware as AuthN Middleware
-    participant AuthN as AuthN Resolver
-    participant IdP as Vendor's IdP
-    participant Handler as Module Handler (PEP)
-
-    Client->>Middleware: Request + Bearer {JWT}
-    Middleware->>Middleware: Extract iss from JWT (unverified)
-    Middleware->>Middleware: Lookup iss in jwt.trusted_issuers
-
-    alt iss not in jwt.trusted_issuers
-        Middleware-->>Client: 401 Untrusted issuer
-    end
-
-    alt JWKS not cached or expired (1h)
-        Middleware->>AuthN: get JWKS(discovery_url)
-        AuthN->>IdP: GET {discovery_url}/.well-known/openid-configuration
-        IdP-->>AuthN: { jwks_uri, ... }
-        AuthN->>IdP: GET {jwks_uri}
-        IdP-->>AuthN: JWKS
-        AuthN-->>Middleware: JWKS (cached 1h)
-    end
-
-    Middleware->>Middleware: Validate signature (JWKS)
-    Middleware->>Middleware: Check exp, aud
-    Middleware->>Middleware: Extract claims → SecurityContext
-    Middleware->>Handler: Request + SecurityContext
-    Handler-->>Middleware: Response
-    Middleware-->>Client: Response
-```
-
-### Token Introspection
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Middleware as AuthN Middleware
-    participant AuthN as AuthN Resolver
-    participant IdP as Vendor's IdP
-    participant Handler as Module Handler (PEP)
-
-    Client->>Middleware: Request + Bearer {token}
-
-    Note over Middleware: Token is opaque OR introspection.mode=always
-
-    Middleware->>AuthN: introspect(token)
-    AuthN->>IdP: POST /introspect { token }
-    IdP-->>AuthN: { active: true, sub, sub_tenant_id, sub_type, exp, ... }
-    AuthN->>AuthN: Map response → SecurityContext
-    AuthN-->>Middleware: SecurityContext
-    Middleware->>Handler: Request + SecurityContext
-    Handler-->>Middleware: Response
-    Middleware-->>Client: Response
-```
-
-### AuthN Result: Security Context
-
-Successful authentication produces a `SecurityContext` that flows to authorization:
+**Core Interface:**
 
 ```rust
-SecurityContext {
-    subject_id: String,           // from `sub` claim
-    subject_type: GtsTypeId,      // vendor-specific subject type (optional)
-    subject_tenant_id: TenantId,  // Subject Owner Tenant - tenant the subject belongs to
-    token_scopes: Vec<String>,    // capability restrictions from token (["*"] for first-party)
-    bearer_token: Option<String>, // original token for forwarding and PDP validation
+trait AuthNResolverApi {
+    async fn authenticate(&self, bearer_token: &str) -> Result<SecurityContext, AuthNError>;
 }
 ```
 
-**Field sources by validation mode:**
+**Architecture:**
+- **AuthN Middleware** — Extracts bearer token from request headers
+- **AuthN Resolver Gateway** — Delegates to vendor-specific plugin
+- **AuthN Resolver Plugin** — Implements token validation logic (JWT, introspection, custom protocols, etc.)
+- **Output** — `SecurityContext` containing validated subject identity
 
-| Field | JWT Local | Introspection |
-|-------|-----------|---------------|
-| `subject_id` | `sub` claim | Introspection response `sub` |
-| `subject_type` | Custom claim (vendor-defined) | Plugin maps from response |
-| `subject_tenant_id` | Custom claim (vendor-defined) | Plugin maps from response |
-| `token_scopes` | `scope` claim (space-separated) or plugin detection | Plugin maps from response or detects first-party |
-| `bearer_token` | Original token from `Authorization` header | Original token from `Authorization` header |
+**Request Flow:**
 
-**Notes:**
-- Token expiration (`exp`) is validated during authentication but not included in SecurityContext. Expiration is token metadata, not identity. The caching layer uses `exp` as upper bound for cache entry TTL.
-- **Security:** `bearer_token` is a credential. It MUST NOT be logged, serialized to persistent storage, or included in error messages. Implementations should use opaque wrapper types (e.g., `Secret<String>`) and exclude from `Debug` output. The token is included for two purposes:
-  1. **Forwarding** — AuthZ Resolver plugin may need to call external vendor services that require the original bearer token for authentication
-  2. **PDP validation** — In out-of-process deployments, AuthZ Resolver (PDP) may independently validate the token as defence-in-depth, not trusting the PEP's claim extraction
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Middleware as AuthN Middleware
+    participant Gateway as AuthN Resolver<br/>(Gateway)
+    participant Plugin as AuthN Resolver<br/>(Plugin)
+    participant IdP as Vendor's IdP
+    participant Handler as Module Handler (PEP)
 
----
-
-## Configuration
-
-```yaml
-auth:
-  jwt:
-    trusted_issuers:
-      "https://accounts.google.com":
-        discovery_url: "https://accounts.google.com"
-      "my-corp-idp":
-        discovery_url: "https://idp.corp.example.com"
-    require_audience: true
-    expected_audience:
-      - "https://*.my-company.com"
-      - "https://api.my-company.com"
-  jwks:
-    cache:
-      ttl: 1h
-  introspection:
-    mode: opaque_only
-    endpoint: "https://idp.corp.example.com/oauth2/introspect"
-    cache:
-      enabled: true
-      max_entries: 10000
-      ttl: 5m
-    endpoint_discovery_cache:
-      enabled: true
-      max_entries: 10000
-      ttl: 1h
+    Client->>Middleware: Request + Bearer Token
+    Middleware->>Middleware: Extract bearer_token from Authorization header
+    Middleware->>Gateway: authenticate(bearer_token)
+    Gateway->>Plugin: authenticate(bearer_token)
+    Plugin->>IdP: Validate token (implementation-specific)
+    IdP-->>Plugin: Token valid + claims
+    Plugin->>Plugin: Map to SecurityContext
+    Plugin-->>Gateway: SecurityContext
+    Gateway-->>Middleware: SecurityContext
+    Middleware->>Handler: Request + SecurityContext
+    Handler-->>Middleware: Response
+    Middleware-->>Client: Response
 ```
 
-### JWT Settings
+### SecurityContext
 
-- `auth.jwt.trusted_issuers` — map of issuer identifier to discovery config
-  - **Key** — expected `iss` claim value in JWT
-  - **`discovery_url`** — base URL for OpenID Discovery (`{value}/.well-known/openid-configuration`)
-- `auth.jwt.require_audience` — whether to require `aud` claim validation (default: `false`)
-- `auth.jwt.expected_audience` — list of glob patterns for valid audiences (e.g., `https://*.my-company.com`)
+The `SecurityContext` is the result of successful authentication, flowing from AuthN Resolver to PEPs (via handlers):
 
-### JWKS Settings
+```rust
+SecurityContext {
+    subject_id: String,           // from `sub` claim or IdP response
+    subject_type: GtsTypeId,      // vendor-specific subject type
+    subject_tenant_id: TenantId,  // Subject Owner Tenant - tenant the subject belongs to
+    token_scopes: Vec<String>,    // capability restrictions (["*"] for first-party)
+    bearer_token: Option<String>, // original token for forwarding to PDP
+}
+```
 
-- `auth.jwks.cache.ttl` — JWKS cache TTL (default: `1h`)
+**Field Semantics:**
 
-### Introspection Settings
+| Field | Description | Used By |
+|-------|-------------|---------|
+| `subject_id` | Unique identifier for the subject | All authorization decisions |
+| `subject_type` | GTS type identifier (e.g., `gts.x.core.security.subject.user.v1~`) | PDP for role/permission mapping |
+| `subject_tenant_id` | Subject Owner Tenant — tenant the subject belongs to | PDP for tenant context |
+| `token_scopes` | Capability restrictions from token (see [Token Scopes](#token-scopes)) | PDP for scope narrowing |
+| `bearer_token` | Original bearer token (optional) | PDP validation, external API calls |
 
-- `auth.introspection.mode` — when to introspect: `never`, `opaque_only` (default), `always`
-- `auth.introspection.endpoint` — global introspection endpoint URL (applies to all issuers)
-- `auth.introspection.cache.enabled` — enable introspection result caching (default: `true`)
-- `auth.introspection.cache.max_entries` — max cached introspection results (default: `10000`)
-- `auth.introspection.cache.ttl` — introspection result cache TTL (default: `5m`)
-- `auth.introspection.endpoint_discovery_cache.enabled` — cache discovered introspection endpoints (default: `true`)
-- `auth.introspection.endpoint_discovery_cache.max_entries` — max cached endpoints (default: `10000`)
-- `auth.introspection.endpoint_discovery_cache.ttl` — endpoint discovery cache TTL (default: `1h`)
+**Security Notes:**
+- Token expiration (`exp`) is validated during authentication but not included in SecurityContext (expiration is token metadata, not identity)
+- `bearer_token` is a credential and MUST NOT be logged, serialized to persistent storage, or included in error messages
+- The token is included for:
+  1. **PDP validation** — In out-of-process deployments, AuthZ Resolver may independently validate the token for defense-in-depth
+  2. **Forwarding** — AuthZ Resolver plugin may need to call external vendor services requiring authentication
 
----
+### Plugin Responsibilities
 
-## Token Introspection
+The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. Plugin responsibilities:
 
-Introspection (RFC 7662) is used in three scenarios:
+1. **Token Validation** — Implement vendor-specific validation logic (JWT signature verification, introspection, custom protocols)
+2. **Claim Extraction** — Extract subject identity from token claims or introspection response
+3. **Claim Enrichment** — If IdP doesn't include required claims (`subject_type`, `subject_tenant_id`), fetch from vendor services
+4. **Token Scope Detection** — Determine first-party vs third-party apps and set `token_scopes` accordingly (see [Token Scopes](#token-scopes))
+5. **Response Mapping** — Convert vendor-specific responses to `SecurityContext`
 
-1. **Opaque tokens** — token is not self-contained, must be validated by IdP
-2. **JWT enrichment** — JWT lacks HyperSpot-specific claims (`sub_tenant_id`, `sub_type`), plugin fetches additional subject info via introspection
-3. **Revocation checking** — even for valid JWTs, introspection provides central point to check if token was revoked (e.g., user logout, compromised token)
+### Rationale: Minimalist Interface
 
-Configuration determines when introspection is triggered via `introspection.mode`:
-- `introspection.mode: always` — all tokens (JWT and opaque) go through introspection
-- `introspection.mode: opaque_only` — only opaque tokens (default)
-- `introspection.mode: never` — JWT local validation only (no revocation check)
+**Why a single `authenticate` method?**
 
-**Configuration Matrix:**
+1. **Vendor Neutrality** — Different IdPs use different protocols (JWT local validation, introspection, custom APIs). The interface abstracts these details, allowing plugins to implement vendor-specific logic without changing the gateway.
 
-| Token Type | `introspection.mode` | `introspection.endpoint` | Behavior |
-|------------|----------------------|--------------------------|----------|
-| JWT | `never` | (any) | Local validation only, no introspection |
-| JWT | `opaque_only` | (any) | Local validation only |
-| JWT | `always` | configured | Use configured endpoint |
-| JWT | `always` | not configured | Discover endpoint from issuer's OIDC config |
-| Opaque | `never` | (any) | **401 Unauthorized** (cannot validate opaque without introspection) |
-| Opaque | `opaque_only` / `always` | configured | Use configured endpoint |
-| Opaque | `opaque_only` / `always` | not configured | **401 Unauthorized** (no `iss` claim to discover endpoint) |
+2. **Separation of Concerns** — The gateway defines *what* authentication produces (SecurityContext), plugins define *how* tokens are validated. This separation keeps the core architecture stable while enabling diverse implementations.
 
-**Note:** Discovery requires the `iss` claim to look up the issuer configuration. Opaque tokens don't contain claims, so discovery is only possible for JWTs. For opaque tokens, `introspection.endpoint` must be explicitly configured.
+3. **Plugin Flexibility** — Plugins choose validation strategies based on token format and configuration:
+   - JWT tokens: local validation with JWKS caching
+   - Opaque tokens: introspection calls to IdP
+   - Hybrid approaches: JWT validation with enrichment via introspection
+   - Custom protocols: vendor-specific authentication flows (mTLS, API keys, PASETO, etc.)
 
-## OpenID Connect Integration
+4. **Caching Autonomy** — Plugins implement caching strategies appropriate to their validation method (JWKS caching, introspection result caching, discovery endpoint caching). The gateway doesn't dictate caching policy.
 
-HyperSpot leverages OpenID Connect standards for authentication:
+5. **Future-Proof** — New authentication methods can be added as new plugins without changing the gateway interface.
 
-- **JWT validation** per OpenID Connect Core 1.0 — signature verification, claim validation
-- **Discovery** via `.well-known/openid-configuration` (OpenID Connect Discovery 1.0) — automatic endpoint configuration
-- **JWKS (JSON Web Key Set)** — public keys for JWT signature validation, fetched from `jwks_uri`
-- **Token Introspection** (RFC 7662) — for opaque token validation, JWT enrichment, and revocation checking
+**What the gateway does NOT specify:**
+- Token format (JWT, opaque, custom)
+- Validation method (local, introspection, hybrid)
+- Claim structure (vendor-specific)
+- Caching strategy (plugin decision)
+- Discovery mechanisms (OIDC, custom)
 
-### Issuer Configuration
+**What the gateway DOES specify:**
+- Output format: `SecurityContext`
+- Error semantics: `AuthNError` (unauthorized, invalid token, service unavailable)
+- Security boundaries: token is credential, must be handled securely
 
-The `trusted_issuers` map is required for JWT validation. This separation exists because:
+### Implementation Reference
 
-1. **Trust anchor** — HyperSpot must know which issuers to trust before receiving tokens
-2. **Flexible mapping** — `iss` claim may differ from discovery URL (e.g., custom identifiers)
-3. **Bootstrap problem** — to validate JWT, we need JWKS; to get JWKS, we need discovery URL
+For a complete implementation of JWT + OIDC authentication (JWT local validation, token introspection, OpenID Connect Discovery), see **[AUTHN_JWT_OIDC_PLUGIN.md](./AUTHN_JWT_OIDC_PLUGIN.md)**.
 
-**Lazy initialization flow:**
-1. Admin configures `jwt.trusted_issuers` map
-2. On first request, extract `iss` from JWT (unverified)
-3. Look up `iss` in `jwt.trusted_issuers` → get discovery URL
-4. If not found → reject (untrusted issuer)
-5. Fetch `{discovery_url}/.well-known/openid-configuration`
-6. Validate and cache JWKS, then verify JWT signature
-
-### Discovery
-
-Discovery is performed lazily on the first authenticated request (not at startup). HyperSpot fetches the OpenID configuration from `{issuer}/.well-known/openid-configuration` and extracts:
-
-- `jwks_uri` — for fetching signing keys
-- `introspection_endpoint` — for opaque token validation (optional)
-
-**Caching:** JWKS is cached for `jwks.cache.ttl` (default: **1 hour**) and refreshed automatically on cache expiry or when signature validation fails with unknown `kid`.
+This reference implementation covers:
+- JWT and opaque token support
+- Multiple validation modes (`never`, `opaque_only`, `always`)
+- OpenID Connect Discovery integration
+- JWKS and introspection caching
+- Configuration examples for standard OIDC providers
 
 ---
 
-## Validation
+## Authorization
 
-### Token Expiration
-
-The `exp` (expiration) claim is always validated:
-- JWT local: `exp` claim must be in the future
-- Introspection: response `active` must be `true` and `exp` must be in the future
-
-### Audience Validation
-
-The `aud` (audience) claim validation is controlled by `jwt.require_audience` and `jwt.expected_audience`:
-
-- If `require_audience: true` and JWT lacks `aud` claim → **401 Unauthorized**
-- If `require_audience: false` (default) and JWT lacks `aud` claim → validation passes
-- If JWT has `aud` claim and `expected_audience` is configured → at least one audience must match a pattern (glob pattern matching with `*` wildcard)
-- If JWT has `aud` claim but `expected_audience` is empty/not configured → validation passes
-
----
-
-## Introspection Caching
-
-Introspection results MAY be cached to reduce IdP load and latency (`introspection.cache.*`). Trade-off: revoked tokens remain valid until cache expires. Cache TTL should be shorter than token lifetime; use token `exp` as upper bound for cache entry lifetime.
-
----
-
-# Authorization
-
-## Why AuthZEN (and Why It's Not Enough)
+### Why AuthZEN (and Why It's Not Enough)
 
 We chose [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12) as the foundation for AuthZ Resolver. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full analysis of considered options.
 
@@ -665,11 +523,11 @@ We chose [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authori
 
 However, AuthZEN out of the box doesn't solve HyperSpot's core requirement: **query-level authorization**.
 
-### Why Access Evaluation API Alone Isn't Enough
+#### Why Access Evaluation API Alone Isn't Enough
 
 AuthZEN's Access Evaluation API answers: "Can subject S perform action A on resource R?" — a point-in-time check returning `decision: true/false`.
 
-#### LIST Operations
+##### LIST Operations
 
 For **LIST operations** with Access Evaluation API, we'd need an iterative process:
 
@@ -685,7 +543,7 @@ For **LIST operations** with Access Evaluation API, we'd need an iterative proce
 - **Total count impossible** — can't know total accessible count without evaluating all resources
 - **Inconsistent page sizes** — hard to guarantee exactly N items per page
 
-#### Point Operations (GET/UPDATE/DELETE)
+##### Point Operations (GET/UPDATE/DELETE)
 
 For **point operations**, Access Evaluation API could technically work, but requires an inefficient flow:
 
@@ -701,7 +559,7 @@ For **point operations**, Access Evaluation API could technically work, but requ
 3. If allowed → get constraints, execute query with `WHERE id = :id AND (constraints)`
 4. If 0 rows → 404 (hides resource existence from unauthorized users)
 
-### Why Search API Doesn't Work
+#### Why Search API Doesn't Work
 
 AuthZEN's Resource Search API answers: "What resources can subject S perform action A on?" — returning a list of resource IDs.
 
@@ -713,7 +571,7 @@ This creates an architectural mismatch:
 
 To use Search API, we'd need to sync all resources to the PDP — defeating the purpose of keeping data local.
 
-### Our Solution: Extended Evaluation Response
+#### Our Solution: Extended Evaluation Response
 
 We extend AuthZEN's evaluation response with optional `context.constraints`. Instead of returning resource IDs (enumeration), the PDP returns **predicates** that the PEP compiles to SQL WHERE clauses:
 
@@ -743,9 +601,9 @@ This gives us:
 
 ---
 
-## PEP Enforcement
+### PEP Enforcement
 
-### Unified PEP Flow
+#### Unified PEP Flow
 
 All operations (LIST, GET, UPDATE, DELETE) follow the same flow:
 
@@ -766,7 +624,7 @@ sequenceDiagram
 
 The only difference between LIST and point operations (GET/UPDATE/DELETE) is whether `resource.id` is present.
 
-### Constraint Compilation to SQL
+#### Constraint Compilation to SQL
 
 When constraints are present, the PEP compiles each constraint to SQL WHERE clauses:
 
@@ -774,7 +632,7 @@ When constraints are present, the PEP compiles each constraint to SQL WHERE clau
 2. **Multiple constraints** (`constraints` array) are OR'd together
 3. **Unknown predicate types** cause that constraint to be treated as false (fail-closed)
 
-### Fail-Closed Rules
+#### Fail-Closed Rules
 
 The PEP MUST:
 
@@ -790,13 +648,13 @@ The PEP MUST:
 
 ---
 
-## Authorization Decision Caching
+### Authorization Decision Caching
 
 PEP implementations MAY cache authorization decisions returned by the PDP to reduce latency and PDP load.
 
 **Status: Requires further design work.** This section outlines high-level considerations. Detailed caching protocol (cache-control metadata, TTL negotiation, invalidation signals) is not yet specified.
 
-### Critical Security Requirements
+#### Critical Security Requirements
 
 Any caching implementation MUST satisfy:
 
@@ -806,7 +664,7 @@ Any caching implementation MUST satisfy:
 
 3. **Tenant isolation** - Cache key MUST include tenant context to prevent cross-tenant data leakage.
 
-### Open Questions (TODO)
+#### Open Questions (TODO)
 
 - Cache key structure - Which request fields participate? How to canonicalize `resource.properties`?
 - Cache-control protocol - Should PDP signal cacheability? TTL negotiation?
@@ -816,9 +674,9 @@ Any caching implementation MUST satisfy:
 
 ---
 
-## API Specifications
+### API Specifications
 
-### Access Evaluation API (AuthZEN-extended)
+#### Access Evaluation API (AuthZEN-extended)
 
 Two endpoints for authorization checks, following AuthZEN structure:
 
@@ -1070,7 +928,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
 
 ---
 
-## Predicate Types Reference
+### Predicate Types Reference
 
 All predicates filter resources based on their properties. The `resource_property` field specifies which property to filter on — these correspond directly to `resource.properties` in the request.
 
@@ -1082,7 +940,7 @@ All predicates filter resources based on their properties. The `resource_propert
 | `in_group` | Flat group membership | `resource_property`, `group_ids` | — |
 | `in_group_subtree` | Group subtree via closure table | `resource_property`, `root_group_id` | — |
 
-### 1. Equality Predicate (`type: "eq"`)
+#### 1. Equality Predicate (`type: "eq"`)
 
 Compares resource property to a single value.
 
@@ -1096,7 +954,7 @@ Compares resource property to a single value.
 // SQL: topic_id = 'uuid-123'
 ```
 
-### 2. IN Predicate (`type: "in"`)
+#### 2. IN Predicate (`type: "in"`)
 
 Compares resource property to a list of values.
 
@@ -1113,7 +971,7 @@ Compares resource property to a list of values.
 // SQL: status IN ('active', 'pending')
 ```
 
-### 3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)
+#### 3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)
 
 Filters resources by tenant subtree using the closure table. The `resource_property` specifies which property contains the tenant ID.
 
@@ -1140,7 +998,7 @@ Filters resources by tenant subtree using the closure table. The `resource_prope
 // )
 ```
 
-### 4. Group Membership Predicate (`type: "in_group"`)
+#### 4. Group Membership Predicate (`type: "in_group"`)
 
 Filters resources by explicit group membership. The `resource_property` specifies which property is used for group membership join.
 
@@ -1157,7 +1015,7 @@ Filters resources by explicit group membership. The `resource_property` specifie
 // )
 ```
 
-### 5. Group Subtree Predicate (`type: "in_group_subtree"`)
+#### 5. Group Subtree Predicate (`type: "in_group_subtree"`)
 
 Filters resources by group subtree using the closure table. The `resource_property` specifies which property is used for group membership join.
 
@@ -1177,7 +1035,7 @@ Filters resources by group subtree using the closure table. The `resource_proper
 // )
 ```
 
-### Group Tenant Scoping
+#### Group Tenant Scoping
 
 Resource groups are tenant-scoped. **PDP guarantees** that any `group_ids` (in `in_group` predicate) or `root_group_id` (in `in_group_subtree` predicate) returned in constraints belong to the same tenant as the request context.
 
@@ -1194,7 +1052,7 @@ See [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) for group data model de
 
 ---
 
-## PEP Property Mapping
+### PEP Property Mapping
 
 The `resource_property` in predicates corresponds to `resource.properties` in the request. Each module (PEP) defines a mapping from property names to physical SQL columns. PDP uses property names — **it doesn't know the database schema**.
 
@@ -1222,11 +1080,11 @@ The `resource_property` in predicates corresponds to `resource.properties` in th
 
 ---
 
-## Capabilities -> Predicate Matrix
+### Capabilities -> Predicate Matrix
 
 The PEP declares its capabilities in the request. This determines what predicate types the PDP can return.
 
-### `require_constraints` Flag
+#### `require_constraints` Flag
 
 The `require_constraints` field (separate from capabilities array) controls PEP behavior when constraints are absent:
 
@@ -1240,7 +1098,7 @@ The `require_constraints` field (separate from capabilities array) controls PEP 
 - For CREATE operations: typically `false` (no query, just permission check)
 - For GET/UPDATE/DELETE: depends on whether PEP wants SQL-level enforcement or trusts PDP decision
 
-### Capabilities Array
+#### Capabilities Array
 
 Capabilities declare what predicate types the PEP can enforce locally:
 
@@ -1269,11 +1127,11 @@ Capabilities declare what predicate types the PEP can enforce locally:
 
 ---
 
-## Table Schemas (Local Projections)
+### Table Schemas (Local Projections)
 
 These tables are maintained locally by HyperSpot gateway modules (Tenant Resolver, Resource Group Resolver) and used by PEPs to execute constraint queries efficiently without calling back to the vendor platform.
 
-### `tenant_closure`
+#### `tenant_closure`
 
 Denormalized closure table for tenant hierarchy. Enables efficient subtree queries without recursive CTEs.
 
@@ -1301,7 +1159,7 @@ WHERE owner_tenant_id IN (
 )
 ```
 
-### `resource_group_closure`
+#### `resource_group_closure`
 
 Closure table for resource group hierarchy. Similar structure to tenant_closure but simpler (no barrier or status).
 
@@ -1314,7 +1172,7 @@ Closure table for resource group hierarchy. Similar structure to tenant_closure 
 - Self-referential rows exist: each group has a row where `ancestor_id = descendant_id`.
 - **Predicate mapping:** `in_group_subtree` predicate compiles to SQL using this closure table.
 
-### `resource_group_membership`
+#### `resource_group_membership`
 
 Association between resources and groups. A resource can belong to multiple groups.
 
@@ -1341,32 +1199,33 @@ WHERE id IN (
 
 ---
 
-## Usage Scenarios
+### Usage Scenarios
 
 For concrete examples demonstrating the authorization model in practice, see [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md).
 
 ---
 
-# Open Questions
+## Open Questions
 
 1. **Batch evaluation optimization** - We support `/access/v1/evaluations` for batch requests. Should PDP optimize constraint generation when multiple evaluations share the same subject/context? Use cases: bulk operations, permission checks for UI rendering (checking permissions for 50 list items at once).
 
 ---
 
-# References
+## References
 
-## Authentication
+### Authentication
+- [AUTHN_JWT_OIDC_PLUGIN.md](./AUTHN_JWT_OIDC_PLUGIN.md) — JWT + OIDC plugin reference implementation
 - [RFC 7519: JSON Web Token (JWT)](https://datatracker.ietf.org/doc/html/rfc7519)
 - [RFC 7662: OAuth 2.0 Token Introspection](https://datatracker.ietf.org/doc/html/rfc7662)
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
-## Authorization
+### Authorization
 - [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12)
 - [ADR 0001: PDP/PEP Authorization Model](../adrs/authorization/0001-pdp-pep-authorization-model.md)
 - [ADR 0002: Split AuthN and AuthZ Resolvers](../adrs/authorization/0002-split-authn-authz-resolvers.md)
 
-## Internal
+### Internal
 - [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
 - [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
 - [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md) — Authorization usage scenarios
