@@ -2,40 +2,87 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
-  - [PDP/PEP Model](#pdppep-model)
-  - [Request Flow](#request-flow)
-  - [Auth Resolver: Gateway + Plugin Architecture](#auth-resolver-gateway--plugin-architecture)
-  - [Integration Architecture](#integration-architecture)
-  - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
-- [Core Terms](#core-terms)
-- [Token Scopes](#token-scopes)
-  - [Scope vs Permission](#scope-vs-permission)
-  - [First-party vs Third-party Apps](#first-party-vs-third-party-apps)
-  - [Vendor Neutrality](#vendor-neutrality)
-  - [SecurityContext Integration](#securitycontext-integration)
-  - [PDP Evaluation Flow](#pdp-evaluation-flow)
-  - [Gateway Scope Enforcement (Optional)](#gateway-scope-enforcement-optional)
+- [Authentication \& Authorization Design](#authentication--authorization-design)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+    - [PDP/PEP Model](#pdppep-model)
+    - [Request Flow](#request-flow)
+    - [AuthN Resolver and AuthZ Resolver: Gateway + Plugin Architecture](#authn-resolver-and-authz-resolver-gateway--plugin-architecture)
+    - [Integration Architecture](#integration-architecture)
+    - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
+    - [Plugin Roles](#plugin-roles)
+  - [Core Terms](#core-terms)
+  - [Token Scopes](#token-scopes)
+    - [Overview](#overview-1)
+    - [Scope vs Permission](#scope-vs-permission)
+    - [First-party vs Third-party Apps](#first-party-vs-third-party-apps)
+    - [Vendor Neutrality](#vendor-neutrality)
+    - [SecurityContext Integration](#securitycontext-integration)
+    - [PDP Evaluation Flow](#pdp-evaluation-flow)
+    - [Gateway Scope Enforcement (Optional)](#gateway-scope-enforcement-optional)
 - [Authentication](#authentication)
+  - [Overview](#overview-2)
+    - [Token Validation Modes](#token-validation-modes)
+    - [JWT Local Validation](#jwt-local-validation)
+    - [Token Introspection](#token-introspection)
+    - [AuthN Result: Security Context](#authn-result-security-context)
   - [Configuration](#configuration)
-  - [Token Introspection](#token-introspection)
+    - [JWT Settings](#jwt-settings)
+    - [JWKS Settings](#jwks-settings)
+    - [Introspection Settings](#introspection-settings)
+  - [Token Introspection](#token-introspection-1)
   - [OpenID Connect Integration](#openid-connect-integration)
-  - [Plugin Role](#plugin-role)
+    - [Issuer Configuration](#issuer-configuration)
+    - [Discovery](#discovery)
   - [Validation](#validation)
+    - [Token Expiration](#token-expiration)
+    - [Audience Validation](#audience-validation)
   - [Introspection Caching](#introspection-caching)
 - [Authorization](#authorization)
   - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
+    - [Why Access Evaluation API Alone Isn't Enough](#why-access-evaluation-api-alone-isnt-enough)
+      - [LIST Operations](#list-operations)
+      - [Point Operations (GET/UPDATE/DELETE)](#point-operations-getupdatedelete)
+    - [Why Search API Doesn't Work](#why-search-api-doesnt-work)
+    - [Our Solution: Extended Evaluation Response](#our-solution-extended-evaluation-response)
   - [PEP Enforcement](#pep-enforcement)
+    - [Unified PEP Flow](#unified-pep-flow)
+    - [Constraint Compilation to SQL](#constraint-compilation-to-sql)
+    - [Fail-Closed Rules](#fail-closed-rules)
+  - [Authorization Decision Caching](#authorization-decision-caching)
+    - [Critical Security Requirements](#critical-security-requirements)
+    - [Open Questions (TODO)](#open-questions-todo)
   - [API Specifications](#api-specifications)
+    - [Access Evaluation API (AuthZEN-extended)](#access-evaluation-api-authzen-extended)
+      - [Design Principles](#design-principles)
+      - [Request](#request)
+      - [Bearer Token in Context](#bearer-token-in-context)
+      - [Response](#response)
+      - [PEP Decision Matrix](#pep-decision-matrix)
+      - [Operation-Specific Behavior](#operation-specific-behavior)
+      - [Response with Resource Group Predicate](#response-with-resource-group-predicate)
+      - [Deny Response](#deny-response)
   - [Predicate Types Reference](#predicate-types-reference)
+    - [1. Equality Predicate (`type: "eq"`)](#1-equality-predicate-type-eq)
+    - [2. IN Predicate (`type: "in"`)](#2-in-predicate-type-in)
+    - [3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)](#3-tenant-subtree-predicate-type-in_tenant_subtree)
+    - [4. Group Membership Predicate (`type: "in_group"`)](#4-group-membership-predicate-type-in_group)
+    - [5. Group Subtree Predicate (`type: "in_group_subtree"`)](#5-group-subtree-predicate-type-in_group_subtree)
+    - [Group Tenant Scoping](#group-tenant-scoping)
   - [PEP Property Mapping](#pep-property-mapping)
-  - [Capabilities -> Predicate Matrix](#capabilities---predicate-matrix)
+  - [Capabilities -\> Predicate Matrix](#capabilities---predicate-matrix)
+    - [`require_constraints` Flag](#require_constraints-flag)
+    - [Capabilities Array](#capabilities-array)
   - [Table Schemas (Local Projections)](#table-schemas-local-projections)
-- [Tenant Model](./TENANT_MODEL.md)
-- [Resource Group Model](./RESOURCE_GROUP_MODEL.md)
-- [Usage Scenarios](./SCENARIOS.md)
+    - [`tenant_closure`](#tenant_closure)
+    - [`resource_group_closure`](#resource_group_closure)
+    - [`resource_group_membership`](#resource_group_membership)
+  - [Usage Scenarios](#usage-scenarios)
 - [Open Questions](#open-questions)
 - [References](#references)
+  - [Authentication](#authentication-1)
+  - [Authorization](#authorization-1)
+  - [Internal](#internal)
 
 ---
 
@@ -43,9 +90,19 @@
 
 This document describes HyperSpot's approach to authentication (AuthN) and authorization (AuthZ).
 
-**Authentication** verifies the identity of the subject making a request. HyperSpot integrates with vendor's Identity Provider (IdP) to validate access tokens and extract subject identity.
+**Authentication** verifies the identity of the subject making a request. HyperSpot uses the **AuthN Resolver** module to integrate with vendor's Identity Provider (IdP), validate access tokens, and extract subject identity into a `SecurityContext`.
 
-**Authorization** determines what the authenticated subject can do. HyperSpot uses the Auth Resolver module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the details.
+**Authorization** determines what the authenticated subject can do. HyperSpot uses the **AuthZ Resolver** module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: HyperSpot modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the authorization model and [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for the rationale behind separating AuthN and AuthZ.
+
+**AuthN Middleware:**
+
+Authentication is performed by **AuthN middleware** within the module that accepts the request. The middleware:
+1. Extracts the bearer token from the request
+2. Calls AuthN Resolver (Gateway) for validation (JWT local or introspection)
+3. Receives `SecurityContext` containing validated subject identity
+4. Passes the `SecurityContext` to the module's handler (PEP)
+
+This pattern applies to any module accepting external requests: API Gateway module, Domain Module (if exposed directly), gRPC Gateway module, etc. The authorization model is entry-point agnostic.
 
 ### PDP/PEP Model
 
@@ -55,8 +112,9 @@ This document uses the PDP/PEP authorization model (per NIST SP 800-162):
 - **PEP (Policy Enforcement Point)** — enforces PDP decisions at resource access points
 
 In HyperSpot's architecture:
-- **Auth Resolver** (via vendor-specific plugin) serves as the **PDP**
+- **AuthZ Resolver** (via vendor-specific plugin) serves as the **PDP**
 - **Domain modules** act as **PEPs**, applying constraints to database queries
+- **AuthN Resolver** validates tokens and produces SecurityContext (separate concern from PDP)
 
 See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full rationale.
 
@@ -65,36 +123,47 @@ See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for th
 ```mermaid
 sequenceDiagram
     participant Client
-    participant AuthN as AuthN Layer<br/>(Gateway)
-    participant PEP as PEP<br/>(Domain Module)
-    participant PDP as PDP<br/>(Auth Resolver)
+    participant Module as Module<br/>(with AuthN Middleware)
+    participant AuthN as AuthN Resolver
+    participant Handler as Module Handler (PEP)
+    participant AuthZ as AuthZ Resolver<br/>(PDP)
     participant DB as Database
 
-    Client->>AuthN: Request + Token
-    AuthN->>AuthN: Validate token, extract claims
-    AuthN->>PEP: Request + SecurityContext
-    PEP->>PDP: AuthZ Request<br/>(subject, action, resource, context)
-    PDP->>PDP: Evaluate policies
-    PDP-->>PEP: decision + constraints
-    PEP->>PEP: Compile constraints to SQL
-    PEP->>DB: Query with WHERE clauses
-    DB-->>PEP: Filtered results
-    PEP-->>Client: Response
+    Client->>Module: Request + Token
+    Module->>AuthN: Validate token
+    AuthN->>AuthN: JWT verification or introspection
+    AuthN-->>Module: SecurityContext
+    Module->>Handler: Request + SecurityContext
+    Handler->>AuthZ: AuthZ Request<br/>(subject, action, resource, context)
+    AuthZ->>AuthZ: Evaluate policies
+    AuthZ-->>Handler: decision + constraints
+    Handler->>Handler: Compile constraints to SQL
+    Handler->>DB: Query with WHERE clauses
+    DB-->>Handler: Filtered results
+    Handler-->>Module: Response
+    Module-->>Client: Response
 ```
 
 **Separation of concerns:**
-1. **AuthN Layer** — validates token, extracts identity → `SecurityContext`
-2. **PEP** — builds AuthZ request, compiles constraints to SQL
-3. **PDP** — evaluates policies, returns decision + constraints
+1. **AuthN Middleware** — calls AuthN Resolver to validate token, produces `SecurityContext`
+2. **Module Handler (PEP)** — receives SecurityContext, builds AuthZ request, compiles constraints to SQL
+3. **AuthZ Resolver (PDP)** — evaluates policies, returns decision + constraints
 
-### Auth Resolver: Gateway + Plugin Architecture
+### AuthN Resolver and AuthZ Resolver: Gateway + Plugin Architecture
 
-Since IdP and PDP are vendor-specific, HyperSpot cannot implement authentication and authorization directly. Instead, we use the **gateway + plugin** pattern:
+Since IdP and PDP are vendor-specific, HyperSpot cannot implement authentication and authorization directly. Instead, we use the **gateway + plugin** pattern with two separate resolvers:
 
-- **Auth Resolver** — a HyperSpot gateway module that defines a unified interface for AuthN/AuthZ operations
-- **Vendor Plugin** — implements the Auth Resolver interface, integrating with vendor's IdP and Authorization API
+- **AuthN Resolver** — a HyperSpot gateway module that defines a unified interface for authentication operations (token validation, introspection, SecurityContext production)
+- **AuthZ Resolver** — a HyperSpot gateway module that defines a unified interface for authorization operations (PDP functionality, policy evaluation, constraint generation)
+- **Vendor Plugins** — implement the AuthN and/or AuthZ interfaces, integrating with vendor's IdP and Authorization API
 
-This allows HyperSpot domain modules (PEPs) to use a consistent API regardless of the vendor's identity and authorization infrastructure. Each vendor develops their own Auth Resolver plugin that bridges to their specific systems.
+This separation provides:
+- **Separation of concerns** — OIDC/JWT standards (AuthN) vs AuthZEN standards (AuthZ)
+- **Deployment flexibility** — AuthN on edge, AuthZ centralized in distributed scenarios
+- **Security boundaries** — Credentials (tokens) isolated in AuthN layer, AuthZ works with validated identity
+- **Mix & match vendors** — Use different vendors for IdP (AuthN) and Policy Engine (AuthZ)
+
+Each vendor develops their own AuthN and AuthZ plugins (or a unified plugin implementing both interfaces) that bridge to their specific systems. See [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for the rationale behind this separation.
 
 ### Integration Architecture
 
@@ -118,9 +187,14 @@ flowchart TB
             RGPlugin["Plugin"]
         end
 
-        subgraph AuthResolver["Auth Resolver"]
-            AuthGW["Gateway"]
-            AuthPlugin["Plugin<br/>(AuthN + PDP)"]
+        subgraph AuthNResolver["AuthN Resolver"]
+            AuthNGW["Gateway"]
+            AuthNPlugin["Plugin<br/>(Token Validation)"]
+        end
+
+        subgraph AuthZResolver["AuthZ Resolver"]
+            AuthZGW["Gateway"]
+            AuthZPlugin["Plugin<br/>(PDP)"]
         end
 
         subgraph PEP["Domain Module (PEP)"]
@@ -140,69 +214,80 @@ flowchart TB
     RGGW --> RGPlugin
     RGPlugin --> RGSvc
 
-    %% Auth Resolver flow
-    AuthGW --> AuthPlugin
-    AuthPlugin -->|introspection| IdP
-    AuthPlugin -->|authz| AuthzSvc
-    AuthPlugin -.->|tenant hierarchy| TenantGW
-    AuthPlugin -.->|group hierarchy,<br/>membership| RGGW
+    %% AuthN Resolver flow
+    AuthNGW --> AuthNPlugin
+    AuthNPlugin -->|introspection| IdP
+
+    %% AuthZ Resolver flow
+    AuthZGW --> AuthZPlugin
+    AuthZPlugin -->|authz| AuthzSvc
+    AuthZPlugin -.->|tenant hierarchy| TenantGW
+    AuthZPlugin -.->|group hierarchy,<br/>membership| RGGW
 
     %% PEP flow
-    Handler -->|token introspection| AuthGW
-    Handler -->|/access/v1/evaluation| AuthGW
+    Handler -->|token introspection| AuthNGW
+    Handler -->|/access/v1/evaluation| AuthZGW
     Handler -->|constraints → SQL| ModuleDB
 ```
 
 **Communication flow:**
-1. **Handler → Auth Resolver (Gateway)** — PEP calls for token introspection and authorization
-2. **Auth Resolver (Gateway) → Auth Resolver (Plugin)** — gateway delegates to vendor plugin (handles both AuthN and PDP)
-3. **Auth Resolver (Plugin) → IdP** — token introspection
-4. **Auth Resolver (Plugin) → Authz Svc** — authorization decisions
-5. **Auth Resolver (Plugin) → Tenant Resolver (Gateway)** — tenant hierarchy queries
-6. **Auth Resolver (Plugin) → RG Resolver (Gateway)** — group hierarchy and membership queries
-7. **Tenant/RG Resolver (Gateway) → Plugin → Vendor Service** — gateway delegates to plugin, plugin syncs from vendor
+1. **AuthN Middleware → AuthN Resolver (Gateway)** — Module's middleware calls for token validation and SecurityContext extraction
+2. **AuthN Resolver (Gateway) → AuthN Resolver (Plugin)** — gateway delegates to vendor plugin
+3. **AuthN Resolver (Plugin) → IdP** — token introspection (for opaque tokens or JWT enrichment)
+4. **Handler → AuthZ Resolver (Gateway)** — PEP calls for authorization decisions with SecurityContext
+5. **AuthZ Resolver (Gateway) → AuthZ Resolver (Plugin)** — gateway delegates to vendor plugin (PDP)
+6. **AuthZ Resolver (Plugin) → Authz Svc** — policy evaluation
+7. **AuthZ Resolver (Plugin) → Tenant Resolver (Gateway)** — tenant hierarchy queries
+8. **AuthZ Resolver (Plugin) → RG Resolver (Gateway)** — group hierarchy and membership queries
+9. **Tenant/RG Resolver (Gateway) → Plugin → Vendor Service** — gateway delegates to plugin, plugin syncs from vendor
 
 ### Deployment Modes and Trust Model
 
-Auth Resolver (PDP) can run in two configurations with different trust models.
+Both AuthN Resolver and AuthZ Resolver can run in two deployment configurations:
 
-#### In-Process (Plugin)
-
-```
-┌─────────────────────────────────┐
-│       HyperSpot Process         │
-│  PEP ───function call───► PDP   │
-└─────────────────────────────────┘
-```
-
-- PDP runs as a plugin in the same process
+**In-Process (Plugin):**
+- Resolvers run as plugins in the same process
 - Communication via direct function calls
-- **Trust model:** implicit — same process, same memory space
+- Trust model: implicit — same process, same memory space
 - No additional authentication required
 
-#### Out-of-Process (Separate Service)
-
-```
-┌─────────────┐        gRPC/mTLS        ┌───────────────┐
-│  HyperSpot  │ ──────────────────────► │ Auth Resolver │
-│    (PEP)    │                         │    (PDP)      │
-└─────────────┘                         └───────────────┘
-```
-
-- PDP runs as a separate process (same machine or remote)
+**Out-of-Process (Separate Service):**
+- Resolvers run as separate processes (same machine or remote)
 - Communication via gRPC
-- **Trust model:** explicit authentication required
-- **mTLS required:** PDP authenticates that the caller is a legitimate PEP
+- Trust model: explicit authentication required
+- **mTLS required** — Resolver authenticates that the caller is legitimate
 
-#### Trust Boundaries
+**Trust Boundaries:**
+
+In both modes, AuthZ Resolver (PDP) trusts subject identity data from PEP. The mTLS in out-of-process mode authenticates *which service* is calling, not the validity of subject claims. Subject identity originates from AuthN Resolver (Gateway) and flows through PEP to AuthZ Resolver.
 
 | Aspect | In-Process | Out-of-Process |
 |--------|------------|----------------|
-| PEP → PDP AuthN | implicit | mTLS |
-| Subject identity | PDP trusts PEP | PDP trusts authenticated PEP |
+| Gateway → Resolver | implicit | mTLS |
+| Subject identity trust | Same process | Authenticated caller |
 | Network exposure | none | internal network only |
 
-**Note:** In both modes, PDP trusts subject identity data from PEP. The mTLS in out-of-process mode authenticates *which service* is calling, not the validity of subject claims. Subject identity originates from the AuthN layer (Gateway) and flows through PEP to PDP.
+### Plugin Roles
+
+**AuthN Plugin:**
+
+The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. The plugin is responsible for:
+- **IdP communication** — calling introspection endpoints, handling IdP-specific protocols
+- **Claim enrichment** — if the IdP doesn't include `subject_type` or `subject_tenant_id` in tokens, the plugin fetches this information from vendor services
+- **Response mapping** — converting IdP-specific responses to `SecurityContext`
+- **Token scope extraction** — detecting first-party vs third-party apps and setting `token_scopes` accordingly
+
+**AuthZ Plugin:**
+
+The AuthZ Resolver plugin bridges HyperSpot to the vendor's Authorization Service (PDP). The plugin is responsible for:
+- **Policy evaluation** — calling vendor's authorization API with subject, action, resource, context
+- **Constraint generation** — translating vendor's policy decisions into SQL-compilable constraints
+- **Hierarchy queries** — using Tenant Resolver and RG Resolver to query tenant and group hierarchies for constraint generation
+- **Token validation** (optional) — in out-of-process deployments, independently validating bearer_token for defense-in-depth
+
+**Unified Plugin Pattern:**
+
+Vendors with integrated AuthN+AuthZ APIs can provide a unified plugin implementing both interfaces, allowing single API calls to vendor services, shared caching between AuthN and AuthZ operations, and coordinated version updates. See [ADR 0002](../adrs/authorization/0002-split-authn-authz-resolvers.md) for details.
 
 ---
 
@@ -249,8 +334,7 @@ Token scopes provide capability narrowing for third-party applications. They act
 | First-party | UI, CLI | `["*"]` | No restrictions, full user permissions |
 | Third-party | Partner integrations | `["read:events"]` | Limited to granted scopes |
 
-**Detection:** Auth Resolver plugin determines app type during introspection
-and sets `token_scopes` accordingly. HyperSpot does not maintain a trusted client list.
+**Detection:** AuthN Resolver plugin determines app type during introspection and sets `token_scopes` accordingly. HyperSpot does not maintain a trusted client list.
 
 ### Vendor Neutrality
 
@@ -260,7 +344,7 @@ different formats:
 - Simple strings: `read_all`, `admin`
 - No scopes: Some vendors encode everything in roles
 
-Auth Resolver plugin is responsible for:
+AuthN Resolver plugin is responsible for:
 1. Extracting scopes from token (JWT claim or introspection response)
 2. Mapping vendor format to internal representation
 3. Setting `["*"]` for first-party apps
@@ -338,34 +422,34 @@ For JWT-based authentication, HyperSpot follows OpenID Connect Core 1.0 standard
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Gateway as API Gateway (HyperSpot)
-    participant AuthResolver as Auth Resolver (HyperSpot)
+    participant Middleware as AuthN Middleware
+    participant AuthN as AuthN Resolver
     participant IdP as Vendor's IdP
-    participant Module as HyperSpot Module
+    participant Handler as Module Handler (PEP)
 
-    Client->>Gateway: Request + Bearer {JWT}
-    Gateway->>Gateway: Extract iss from JWT (unverified)
-    Gateway->>Gateway: Lookup iss in jwt.trusted_issuers
+    Client->>Middleware: Request + Bearer {JWT}
+    Middleware->>Middleware: Extract iss from JWT (unverified)
+    Middleware->>Middleware: Lookup iss in jwt.trusted_issuers
 
     alt iss not in jwt.trusted_issuers
-        Gateway-->>Client: 401 Untrusted issuer
+        Middleware-->>Client: 401 Untrusted issuer
     end
 
     alt JWKS not cached or expired (1h)
-        Gateway->>AuthResolver: get JWKS(discovery_url)
-        AuthResolver->>IdP: GET {discovery_url}/.well-known/openid-configuration
-        IdP-->>AuthResolver: { jwks_uri, ... }
-        AuthResolver->>IdP: GET {jwks_uri}
-        IdP-->>AuthResolver: JWKS
-        AuthResolver-->>Gateway: JWKS (cached 1h)
+        Middleware->>AuthN: get JWKS(discovery_url)
+        AuthN->>IdP: GET {discovery_url}/.well-known/openid-configuration
+        IdP-->>AuthN: { jwks_uri, ... }
+        AuthN->>IdP: GET {jwks_uri}
+        IdP-->>AuthN: JWKS
+        AuthN-->>Middleware: JWKS (cached 1h)
     end
 
-    Gateway->>Gateway: Validate signature (JWKS)
-    Gateway->>Gateway: Check exp, aud
-    Gateway->>Gateway: Extract claims → SecurityContext
-    Gateway->>Module: Request + SecurityContext
-    Module-->>Gateway: Response
-    Gateway-->>Client: Response
+    Middleware->>Middleware: Validate signature (JWKS)
+    Middleware->>Middleware: Check exp, aud
+    Middleware->>Middleware: Extract claims → SecurityContext
+    Middleware->>Handler: Request + SecurityContext
+    Handler-->>Middleware: Response
+    Middleware-->>Client: Response
 ```
 
 ### Token Introspection
@@ -373,23 +457,23 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Gateway as API Gateway (HyperSpot)
-    participant AuthResolver as Auth Resolver (HyperSpot)
+    participant Middleware as AuthN Middleware
+    participant AuthN as AuthN Resolver
     participant IdP as Vendor's IdP
-    participant Module as HyperSpot Module
+    participant Handler as Module Handler (PEP)
 
-    Client->>Gateway: Request + Bearer {token}
+    Client->>Middleware: Request + Bearer {token}
 
-    Note over Gateway: Token is opaque OR introspection.mode=always
+    Note over Middleware: Token is opaque OR introspection.mode=always
 
-    Gateway->>AuthResolver: introspect(token)
-    AuthResolver->>IdP: POST /introspect { token }
-    IdP-->>AuthResolver: { active: true, sub, sub_tenant_id, sub_type, exp, ... }
-    AuthResolver->>AuthResolver: Map response → SecurityContext
-    AuthResolver-->>Gateway: SecurityContext
-    Gateway->>Module: Request + SecurityContext
-    Module-->>Gateway: Response
-    Gateway-->>Client: Response
+    Middleware->>AuthN: introspect(token)
+    AuthN->>IdP: POST /introspect { token }
+    IdP-->>AuthN: { active: true, sub, sub_tenant_id, sub_type, exp, ... }
+    AuthN->>AuthN: Map response → SecurityContext
+    AuthN-->>Middleware: SecurityContext
+    Middleware->>Handler: Request + SecurityContext
+    Handler-->>Middleware: Response
+    Middleware-->>Client: Response
 ```
 
 ### AuthN Result: Security Context
@@ -419,8 +503,8 @@ SecurityContext {
 **Notes:**
 - Token expiration (`exp`) is validated during authentication but not included in SecurityContext. Expiration is token metadata, not identity. The caching layer uses `exp` as upper bound for cache entry TTL.
 - **Security:** `bearer_token` is a credential. It MUST NOT be logged, serialized to persistent storage, or included in error messages. Implementations should use opaque wrapper types (e.g., `Secret<String>`) and exclude from `Debug` output. The token is included for two purposes:
-  1. **Forwarding** — Auth Resolver plugin may need to call external vendor services that require the original bearer token for authentication
-  2. **PDP validation** — In out-of-process deployments, PDP may independently validate the token as defence-in-depth, not trusting the PEP's claim extraction
+  1. **Forwarding** — AuthZ Resolver plugin may need to call external vendor services that require the original bearer token for authentication
+  2. **PDP validation** — In out-of-process deployments, AuthZ Resolver (PDP) may independently validate the token as defence-in-depth, not trusting the PEP's claim extraction
 
 ---
 
@@ -542,22 +626,6 @@ Discovery is performed lazily on the first authenticated request (not at startup
 
 ---
 
-## Plugin Role
-
-The Auth Resolver plugin bridges HyperSpot to the vendor's IdP. The plugin is responsible for:
-
-1. **IdP communication** — calling introspection endpoints, handling IdP-specific protocols
-2. **Claim enrichment** — if the IdP doesn't include `subject_type` or `subject_tenant_id` in tokens, the plugin fetches this information from vendor services
-3. **Response mapping** — converting IdP-specific responses to `SecurityContext`
-
-**When a plugin is needed:**
-- Vendor's IdP uses opaque tokens
-- Standard claims don't include tenant information
-- Custom subject type mapping is required
-- Additional validation rules apply
-
----
-
 ## Validation
 
 ### Token Expiration
@@ -587,7 +655,7 @@ Introspection results MAY be cached to reduce IdP load and latency (`introspecti
 
 ## Why AuthZEN (and Why It's Not Enough)
 
-We chose [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12) as the foundation for Auth Resolver. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full analysis of considered options.
+We chose [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12) as the foundation for AuthZ Resolver. See [ADR 0001](../adrs/authorization/0001-pdp-pep-authorization-model.md) for the full analysis of considered options.
 
 **Why AuthZEN:**
 - Industry standard with growing ecosystem
@@ -685,12 +753,12 @@ All operations (LIST, GET, UPDATE, DELETE) follow the same flow:
 sequenceDiagram
     participant Client
     participant PEP as Module (PEP)
-    participant PDP as Auth Resolver (PDP)
+    participant AuthZ as AuthZ Resolver (PDP)
     participant DB
 
     Client->>PEP: GET /events
-    PEP->>PDP: evaluation request
-    PDP-->>PEP: decision + constraints
+    PEP->>AuthZ: evaluation request
+    AuthZ-->>PEP: decision + constraints
     PEP->>DB: SQL with constraints
     DB-->>PEP: filtered results
     PEP-->>Client: response
@@ -716,8 +784,35 @@ The PEP MUST:
 4. **Trust decision when constraints not required** - `decision: true` without `constraints` AND `require_constraints: false` -> allow (e.g., CREATE operations)
 5. **Handle unreachable PDP** - Network failure, timeout -> deny all
 6. **Handle unknown predicate types** - Treat containing constraint as false; if all constraints false -> deny all
-7. **Handle missing required fields** - Treat containing constraint as false
-8. **Handle unknown property names** - Treat containing constraint as false (PEP doesn't know how to map)
+7. **Handle empty or missing predicates** - If a constraint has empty `predicates: []` or missing `predicates` field -> treat constraint as malformed -> deny all. Constraints MUST have at least one predicate.
+8. **Handle missing required fields** - Treat containing constraint as false
+9. **Handle unknown property names** - Treat containing constraint as false (PEP doesn't know how to map)
+
+---
+
+## Authorization Decision Caching
+
+PEP implementations MAY cache authorization decisions returned by the PDP to reduce latency and PDP load.
+
+**Status: Requires further design work.** This section outlines high-level considerations. Detailed caching protocol (cache-control metadata, TTL negotiation, invalidation signals) is not yet specified.
+
+### Critical Security Requirements
+
+Any caching implementation MUST satisfy:
+
+1. **Token expiration boundary** - Cached decisions MUST NOT outlive the token's validity period (`exp` claim). Cache TTL must be: `min(pdp_suggested_ttl, token_expires_at - now)`.
+
+2. **Scope isolation** - Token scopes MUST be part of the cache key. A decision cached for a first-party token (broad scope `["*"]`) MUST NOT be reused for a third-party app token (narrow scopes like `["users:read"]`). This prevents privilege escalation via cache.
+
+3. **Tenant isolation** - Cache key MUST include tenant context to prevent cross-tenant data leakage.
+
+### Open Questions (TODO)
+
+- Cache key structure - Which request fields participate? How to canonicalize `resource.properties`?
+- Cache-control protocol - Should PDP signal cacheability? TTL negotiation?
+- Invalidation strategy - Proactive invalidation (policy version, WebSocket events) vs pure TTL expiration?
+- Token expiration access - Add `token_expires_at` to `SecurityContext` or pass separately?
+- Stale-while-revalidate - For zero-downtime policy updates?
 
 ---
 
@@ -802,17 +897,17 @@ Content-Type: application/json
 
 #### Bearer Token in Context
 
-The `context.bearer_token` field is optional. PEP includes it when PDP needs access to the original token. Use cases:
+The `context.bearer_token` field is optional. PEP includes it when AuthZ Resolver (PDP) needs access to the original token. Use cases:
 
-1. **PDP validation (defence-in-depth)** — In out-of-process deployments, PDP may not fully trust subject claims extracted by PEP. PDP can independently validate the token signature and extract claims to verify `subject.id` and `subject.properties` match the token.
+1. **PDP validation (defence-in-depth)** — In out-of-process deployments, AuthZ Resolver may not fully trust subject claims extracted by AuthN Resolver. AuthZ Resolver can independently validate the token signature and extract claims to verify `subject.id` and `subject.properties` match the token.
 
-2. **External service calls** — Auth Resolver plugin may need to call vendor's external APIs (authorization service, user info endpoint, etc.) that require the original bearer token for authentication.
+2. **External service calls** — AuthZ Resolver plugin may need to call vendor's external APIs (authorization service, user info endpoint, etc.) that require the original bearer token for authentication.
 
-3. **Token-embedded policies** — Some IdPs embed access policies directly in the token (e.g., `permissions`, `roles`, `scopes` claims in JWT). PDP extracts and evaluates these claims to generate constraints.
+3. **Token-embedded policies** — Some IdPs embed access policies directly in the token (e.g., `permissions`, `roles`, `scopes` claims in JWT). AuthZ Resolver extracts and evaluates these claims to generate constraints.
 
-4. **Scope narrowing** — Token may contain scope restrictions (e.g., `scope: "read:events"`, resource-specific access tokens). PDP uses these to narrow the access decision beyond what static policies would allow.
+4. **Scope narrowing** — Token may contain scope restrictions (e.g., `scope: "read:events"`, resource-specific access tokens). AuthZ Resolver uses these to narrow the access decision beyond what static policies would allow.
 
-5. **Audit and tracing** — Token may contain correlation IDs, session info, or other metadata useful for audit logging in PDP.
+5. **Audit and tracing** — Token may contain correlation IDs, session info, or other metadata useful for audit logging in AuthZ Resolver.
 
 **When to omit:** If PDP fully trusts PEP's claim extraction and doesn't need to call external services, `bearer_token` can be omitted to reduce payload size and minimize credential exposure.
 
@@ -1089,7 +1184,7 @@ Resource groups are tenant-scoped. **PDP guarantees** that any `group_ids` (in `
 **Trust model:**
 - PEP trusts this guarantee and does not perform additional tenant validation on group IDs
 - PEP does not have access to group metadata (including `tenant_id`) — only `resource_group_membership` and `resource_group_closure` tables
-- PDP (via Auth Resolver plugin) has access to group hierarchy from vendor's Resource Group service and validates tenant ownership
+- AuthZ Resolver (PDP via plugin) has access to group hierarchy from vendor's Resource Group service and validates tenant ownership
 
 **Defense in depth:** All group-based constraints also include a tenant predicate on the **resource** (typically `eq` on `owner_tenant_id`). This ensures:
 1. PDP validates group belongs to correct tenant (group-level check)
@@ -1248,50 +1343,31 @@ WHERE id IN (
 
 ## Usage Scenarios
 
-For concrete examples demonstrating the authorization model in practice, see [SCENARIOS.md](./SCENARIOS.md).
-
-The scenarios document covers:
-- When to use projection tables (`tenant_closure`, `resource_group_membership`, `resource_group_closure`)
-- Complete request/response flows for LIST, GET, UPDATE, DELETE, CREATE operations
-- With and without closure tables (prefetch patterns)
-- Resource group filtering (flat membership and hierarchy)
-- Combined tenant + group constraints (AND/OR semantics)
-- TOCTOU protection analysis
+For concrete examples demonstrating the authorization model in practice, see [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md).
 
 ---
 
-## Open Questions
+# Open Questions
 
-1. **"Allow all" semantics** - Should there be a way for PDP to express "allow all resources of this type" (e.g., for platform support roles)? Currently, constraints must have concrete predicates. Future consideration: `predicates: []` with explicit "allow all" semantics.
-
-2. **Empty `predicates` interpretation** - If a constraint has an empty `predicates: []` array, should it mean "match all" or "match none"? Currently undefined.
-
-3. **Batch evaluation optimization** - We support `/access/v1/evaluations` for batch requests. Should PDP optimize constraint generation when multiple evaluations share the same subject/context? Use cases: bulk operations, permission checks for UI rendering.
-
-4. **Constraint caching** - Can constraints be cached at the PEP level beyond TTL? What invalidation signals are needed?
-
-5. **AuthZEN context structure** - Is embedding HyperSpot-specific fields in `context` the right approach, or should we use a dedicated extension namespace?
-
-6. **IANA registration** - Should HyperSpot register its extension parameters with the AuthZEN metadata registry?
-
-7. **AuthZEN Search API relationship** - Our extended evaluation response serves similar purposes to Resource Search. Should we document this as a constraint-based alternative, or position it separately?
+1. **Batch evaluation optimization** - We support `/access/v1/evaluations` for batch requests. Should PDP optimize constraint generation when multiple evaluations share the same subject/context? Use cases: bulk operations, permission checks for UI rendering (checking permissions for 50 list items at once).
 
 ---
 
-## References
+# References
 
-### Authentication
+## Authentication
 - [RFC 7519: JSON Web Token (JWT)](https://datatracker.ietf.org/doc/html/rfc7519)
 - [RFC 7662: OAuth 2.0 Token Introspection](https://datatracker.ietf.org/doc/html/rfc7662)
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
-### Authorization
+## Authorization
 - [OpenID AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html) (approved 2026-01-12)
 - [ADR 0001: PDP/PEP Authorization Model](../adrs/authorization/0001-pdp-pep-authorization-model.md)
+- [ADR 0002: Split AuthN and AuthZ Resolvers](../adrs/authorization/0002-split-authn-authz-resolvers.md)
 
-### Internal
+## Internal
 - [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
 - [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
-- [SCENARIOS.md](./SCENARIOS.md) — Authorization usage scenarios
+- [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md) — Authorization usage scenarios
 - [HyperSpot GTS (Global Type System)](../../modules/types-registry/)

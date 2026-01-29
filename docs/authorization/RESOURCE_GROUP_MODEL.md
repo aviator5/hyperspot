@@ -89,7 +89,7 @@ The following properties are the **minimum** HyperSpot expects from the vendor's
 | `tenant_id` | UUID | Owning tenant (groups are tenant-scoped) |
 | `parent_id` | UUID? | Parent group (NULL for root groups) |
 
-Vendors typically maintain additional fields (name, description, type, status, metadata, etc.) in their own systems. HyperSpot's Auth Resolver plugin syncs only the hierarchy structure needed for authorization.
+Vendors typically maintain additional fields (name, description, type, status, metadata, etc.) in their own systems. HyperSpot's RG Resolver plugin syncs only the hierarchy structure needed for authorization.
 
 ---
 

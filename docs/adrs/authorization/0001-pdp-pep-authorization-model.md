@@ -25,7 +25,7 @@ HyperSpot is a modular platform for building multi-tenant vendor platforms. Each
 
 Industry best practices (NIST SP 800-162, XACML, AuthZEN) recommend separating authorization into:
 
-- **PDP (Policy Decision Point)** — Evaluates policies and returns access decisions. In HyperSpot, this is the vendor's authorization service accessed via Auth Resolver gateway.
+- **PDP (Policy Decision Point)** — Evaluates policies and returns access decisions. In HyperSpot, this is the vendor's authorization service accessed via AuthZ Resolver gateway.
 - **PEP (Policy Enforcement Point)** — Enforces PDP decisions at resource access points. In HyperSpot, domain modules act as PEPs, with ModKit providing shared enforcement infrastructure.
 - **PAP (Policy Administration Point)** — Where policies are authored and managed. This is entirely vendor-controlled (their admin UI, policy DSL, etc.). HyperSpot never sees or stores policies.
 - **PIP (Policy Information Point)** — Provides additional attributes for decision-making (user roles, tenant hierarchy, resource metadata). In HyperSpot, Tenant Resolver and Resource Group Resolver serve as PIPs.
@@ -37,7 +37,7 @@ Benefits of PDP/PEP separation:
 - Separation of concerns (business logic vs authorization logic)
 - Easier security audits and compliance
 
-HyperSpot modules act as PEPs; Auth Resolver integrates with vendor's PDP; Tenant/RG Resolvers act as PIPs.
+HyperSpot modules act as PEPs; AuthZ Resolver integrates with vendor's PDP; Tenant/RG Resolvers act as PIPs.
 
 ## Decision Drivers
 
