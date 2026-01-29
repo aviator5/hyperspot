@@ -4,13 +4,16 @@ This document describes HyperSpot's multi-tenancy model, tenant topology, and is
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Tenant Topology: Forest](#tenant-topology-forest)
-- [Tenant Properties](#tenant-properties)
-- [Barriers (Self-Managed Tenants)](#barriers-self-managed-tenants)
-- [Context Tenant vs Subject Tenant](#context-tenant-vs-subject-tenant)
-- [Tenant Subtree Queries](#tenant-subtree-queries)
-- [Closure Table](#closure-table)
+- [Tenant Model](#tenant-model)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Tenant Topology: Forest](#tenant-topology-forest)
+  - [Tenant Properties](#tenant-properties)
+  - [Barriers (Self-Managed Tenants)](#barriers-self-managed-tenants)
+  - [Context Tenant vs Subject Tenant](#context-tenant-vs-subject-tenant)
+  - [Tenant Subtree Queries](#tenant-subtree-queries)
+  - [Closure Table](#closure-table)
+  - [References](#references)
 
 ---
 
@@ -235,14 +238,12 @@ WHERE ancestor_id = 'T2'
 
 Result: T2, T3 (barrier doesn't apply when querying from T2)
 
-**Maintenance:**
-- Closure table is maintained by Tenant Resolver module
-- Synced from vendor's tenant service
-- Updates propagate on tenant create/move/delete/status change
+**Synchronization:** How projection tables are synchronized with vendor systems, consistency guarantees, and conflict resolution are out of scope for this document. See Tenant Resolver design documentation (TBD).
 
 ---
 
 ## References
 
 - [AUTH.md](./AUTH.md) — Core authorization design
+- [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
 - [SCENARIOS.md](./SCENARIOS.md) — Authorization scenarios with tenant examples

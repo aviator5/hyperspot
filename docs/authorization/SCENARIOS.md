@@ -796,7 +796,9 @@ WHERE id = 'task-456'
 
 ### Resource Groups
 
-> **Note:** Resource groups operate within tenant boundaries. All group-based constraints include a tenant predicate (typically `eq` on `owner_tenant_id`) to ensure tenant isolation. Groups don't bypass multi-tenancy — a user in T1 cannot access resources in T2's groups even if they somehow have group membership.
+> **Note:** Resource groups are tenant-scoped. **PDP guarantees** that any `group_ids` or `root_group_id` returned in constraints belong to the request context tenant. PEP trusts this guarantee — it has no group metadata to validate against (only `resource_group_membership` table).
+>
+> All group-based constraints also include a tenant predicate on the resource (typically `eq` on `owner_tenant_id`) as defense in depth, ensuring tenant isolation at the resource level.
 
 ---
 
@@ -1509,6 +1511,7 @@ The constraint acts as a [compare-and-swap](https://en.wikipedia.org/wiki/Compar
 
 - [AUTH.md](./AUTH.md) — Core authorization design
 - [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
+- [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
 - [TOCTOU - Wikipedia](https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use)
 - [Race Conditions - PortSwigger](https://portswigger.net/web-security/race-conditions)
 - [AWS Multi-tenant Authorization](https://docs.aws.amazon.com/prescriptive-guidance/latest/saas-multitenant-api-access-authorization/introduction.html)

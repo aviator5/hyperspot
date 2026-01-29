@@ -25,6 +25,7 @@
   - [Capabilities -> Predicate Matrix](#capabilities---predicate-matrix)
   - [Table Schemas (Local Projections)](#table-schemas-local-projections)
 - [Tenant Model](./TENANT_MODEL.md)
+- [Resource Group Model](./RESOURCE_GROUP_MODEL.md)
 - [Usage Scenarios](./SCENARIOS.md)
 - [Open Questions](#open-questions)
 - [References](#references)
@@ -202,12 +203,12 @@ Auth Resolver (PDP) can run in two configurations with different trust models.
 
 - **Access Token** - Credential presented by the client to authenticate requests. Format is not restricted — can be opaque token (validated via introspection) or self-contained JWT. The key requirement: it must enable authentication and subject identification.
 - **Subject / Principal** - Actor initiating the request (user or API client), identified via access token
-- **Tenant** - Domain of ownership/responsibility and policy (billing, security, data isolation)
+- **Tenant** - Domain of ownership/responsibility and policy (billing, security, data isolation). See [TENANT_MODEL.md](./TENANT_MODEL.md)
 - **Subject Owner Tenant** - Tenant the subject belongs to (owning tenant of the subject)
 - **Context Tenant** - Tenant scope root for the operation (may differ from subject owner tenant in cross-tenant scenarios)
 - **Resource Owner Tenant** - Actual tenant owning the resource (`owner_tenant_id`)
 - **Resource** - Object with owner tenant identifier
-- **Resource Group** - Optional container for resources (project/workspace/folder)
+- **Resource Group** - Optional container for resources, used for access control. See [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md)
 - **Permission** - `{ resource_type, action }` - allowed operation identifier
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
 
@@ -980,6 +981,21 @@ Filters resources by group subtree using the closure table. The `resource_proper
 // )
 ```
 
+### Group Tenant Scoping
+
+Resource groups are tenant-scoped. **PDP guarantees** that any `group_ids` (in `in_group` predicate) or `root_group_id` (in `in_group_subtree` predicate) returned in constraints belong to the same tenant as the request context.
+
+**Trust model:**
+- PEP trusts this guarantee and does not perform additional tenant validation on group IDs
+- PEP does not have access to group metadata (including `tenant_id`) — only `resource_group_membership` and `resource_group_closure` tables
+- PDP (via Auth Resolver plugin) has access to group hierarchy from vendor's Resource Group service and validates tenant ownership
+
+**Defense in depth:** All group-based constraints also include a tenant predicate on the **resource** (typically `eq` on `owner_tenant_id`). This ensures:
+1. PDP validates group belongs to correct tenant (group-level check)
+2. SQL filters resources by tenant (resource-level check)
+
+See [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) for group data model details.
+
 ---
 
 ## PEP Property Mapping
@@ -1175,5 +1191,6 @@ The scenarios document covers:
 
 ### Internal
 - [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
+- [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
 - [SCENARIOS.md](./SCENARIOS.md) — Authorization usage scenarios
 - [HyperSpot GTS (Global Type System)](../../modules/types-registry/)
