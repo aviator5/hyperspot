@@ -9,6 +9,13 @@
   - [Integration Architecture](#integration-architecture)
   - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
 - [Core Terms](#core-terms)
+- [Token Scopes](#token-scopes)
+  - [Scope vs Permission](#scope-vs-permission)
+  - [First-party vs Third-party Apps](#first-party-vs-third-party-apps)
+  - [Vendor Neutrality](#vendor-neutrality)
+  - [SecurityContext Integration](#securitycontext-integration)
+  - [PDP Evaluation Flow](#pdp-evaluation-flow)
+  - [Gateway Scope Enforcement (Optional)](#gateway-scope-enforcement-optional)
 - [Authentication](#authentication)
   - [Configuration](#configuration)
   - [Token Introspection](#token-introspection)
@@ -213,7 +220,96 @@ Auth Resolver (PDP) can run in two configurations with different trust models.
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (which are stored vendor-side), but compiled, time-bound enforcement artifacts.
 
   **Why "constraints" not "grants":** The term "grant" is overloaded in authorization contexts—OAuth uses it for token acquisition flows (Authorization Code Grant), Zanzibar/ReBAC uses it for static relation tuples stored in the system. Constraints are fundamentally different: they are *computed predicates* returned by PDP at evaluation time, not stored permission facts. The term "constraints" accurately describes their role as query-level restrictions.
-- **Security Context** - Result of successful authentication containing subject identity, tenant information, and optionally the original bearer token. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`, `bearer_token`.
+- **Security Context** - Result of successful authentication containing subject identity, tenant information, and optionally the original bearer token. Flows from authentication to authorization. Contains: `subject_id`, `subject_type`, `subject_tenant_id`, `token_scopes`, `bearer_token`.
+- **Token Scopes** - Capability restrictions extracted from the access token. Act as a "ceiling" on what an application can do, regardless of user's actual permissions. See [Token Scopes](#token-scopes).
+
+---
+
+## Token Scopes
+
+### Overview
+
+Token scopes provide capability narrowing for third-party applications. They act as a "ceiling" on what an application can do, regardless of user's actual permissions.
+
+**Key principle:** `effective_access = min(token_scopes, user_permissions)`
+
+### Scope vs Permission
+
+| Aspect | Scope | Permission |
+|--------|-------|------------|
+| Granularity | Coarse (human-readable) | Fine (technical) |
+| Example | `read:calendar` | `gts.x.events.event.v1~:read` |
+| Who defines | OAuth consent / IdP | PDP policies |
+| Purpose | Limit app capabilities | Grant user access |
+
+### First-party vs Third-party Apps
+
+| App Type | Example | token_scopes | Behavior |
+|----------|---------|--------------|----------|
+| First-party | UI, CLI | `["*"]` | No restrictions, full user permissions |
+| Third-party | Partner integrations | `["read:events"]` | Limited to granted scopes |
+
+**Detection:** Auth Resolver plugin determines app type during introspection
+and sets `token_scopes` accordingly. HyperSpot does not maintain a trusted client list.
+
+### Vendor Neutrality
+
+HyperSpot accepts scopes as opaque strings (`Vec<String>`). Different vendors use
+different formats:
+- Google-style: `https://api.vendor.com/auth/tasks.read`
+- Simple strings: `read_all`, `admin`
+- No scopes: Some vendors encode everything in roles
+
+Auth Resolver plugin is responsible for:
+1. Extracting scopes from token (JWT claim or introspection response)
+2. Mapping vendor format to internal representation
+3. Setting `["*"]` for first-party apps
+
+### SecurityContext Integration
+
+```rust
+SecurityContext {
+    subject_id: "user-123",
+    subject_type: "gts.x.core.security.subject.user.v1~",
+    subject_tenant_id: "tenant-456",
+    bearer_token: "eyJ...",
+    token_scopes: ["*"],  // first-party: full access
+    // OR
+    token_scopes: ["read:events", "write:tasks"],  // third-party: limited
+}
+```
+
+### PDP Evaluation Flow
+
+1. **PEP** includes `token_scopes` in evaluation request context
+2. **PDP** applies scope restrictions:
+   - If `token_scopes: ["*"]` → no scope-based restrictions
+   - Otherwise → intersect with user permissions
+3. **PDP** returns constraints reflecting both scopes and permissions
+
+### Gateway Scope Enforcement (Optional)
+
+For performance-critical paths, API Gateway can reject requests early based on
+scope mismatch without calling PDP.
+
+**Configuration:**
+```yaml
+auth:
+  gateway_scope_checks:
+    enabled: true
+    routes:
+      "/admin/*":
+        required_scopes: ["admin"]
+      "/events/v1/*":
+        required_scopes: ["read:events", "write:events"]  # any of these
+```
+
+**Behavior:**
+- If `token_scopes: ["*"]` → always pass
+- If `token_scopes` contains any of `required_scopes` → pass
+- Otherwise → 403 Forbidden (before PDP call)
+
+**Note:** This is coarse-grained optimization. Fine-grained permission checks still happen in PDP.
 
 ---
 
@@ -305,6 +401,7 @@ SecurityContext {
     subject_id: String,           // from `sub` claim
     subject_type: GtsTypeId,      // vendor-specific subject type (optional)
     subject_tenant_id: TenantId,  // Subject Owner Tenant - tenant the subject belongs to
+    token_scopes: Vec<String>,    // capability restrictions from token (["*"] for first-party)
     bearer_token: Option<String>, // original token for forwarding and PDP validation
 }
 ```
@@ -316,6 +413,7 @@ SecurityContext {
 | `subject_id` | `sub` claim | Introspection response `sub` |
 | `subject_type` | Custom claim (vendor-defined) | Plugin maps from response |
 | `subject_tenant_id` | Custom claim (vendor-defined) | Plugin maps from response |
+| `token_scopes` | `scope` claim (space-separated) or plugin detection | Plugin maps from response or detects first-party |
 | `bearer_token` | Original token from `Authorization` header | Original token from `Authorization` header |
 
 **Notes:**
@@ -686,6 +784,9 @@ Content-Type: application/json
       "respect_barrier": true,     // default: false, honor self_managed barrier
       "tenant_status": ["active", "suspended"]  // optional, filter by status
     },
+
+    // Token scopes from SecurityContext — capability restrictions for third-party apps
+    "token_scopes": ["read:events", "write:tasks"],  // or ["*"] for first-party
 
     // PEP enforcement mode
     "require_constraints": true,  // if true, decision without constraints = deny
