@@ -21,8 +21,8 @@
     - [PDP Evaluation Flow](#pdp-evaluation-flow)
     - [Gateway Scope Enforcement (Optional)](#gateway-scope-enforcement-optional)
   - [Authentication](#authentication)
-    - [AuthN Middleware](#authn-middleware)
     - [Overview](#overview-2)
+    - [AuthenticationResult](#authenticationresult)
     - [SecurityContext](#securitycontext)
     - [Plugin Responsibilities](#plugin-responsibilities)
     - [Rationale: Minimalist Interface](#rationale-minimalist-interface)
@@ -214,6 +214,7 @@ flowchart TB
         end
 
         subgraph PEP["Domain Module (PEP)"]
+            AuthNMiddleware["AuthN Middleware"]
             Handler["Handler"]
             subgraph ModuleDB["Module Database"]
                 DomainTables["Domain Tables<br/>(events, ...)"]
@@ -231,6 +232,7 @@ flowchart TB
     RGPlugin --> RGSvc
 
     %% AuthN Resolver flow
+    AuthNMiddleware -->|authenticate| AuthNGW
     AuthNGW --> AuthNPlugin
     AuthNPlugin -->|introspection| IdP
 
@@ -241,21 +243,22 @@ flowchart TB
     AuthZPlugin -.->|group hierarchy,<br/>membership| RGGW
 
     %% PEP flow
-    Handler -->|token introspection| AuthNGW
-    Handler -->|/access/v1/evaluation| AuthZGW
-    Handler -->|constraints → SQL| ModuleDB
+    AuthNMiddleware -->|SecurityContext| Handler
+    Handler -->|access evaluation| AuthZGW
+    Handler -->|constraints to SQL| ModuleDB
 ```
 
 **Communication flow:**
-1. **AuthN Middleware → AuthN Resolver (Gateway)** — Module's middleware calls for token validation and SecurityContext extraction
-2. **AuthN Resolver (Gateway) → AuthN Resolver (Plugin)** — gateway delegates to vendor plugin
-3. **AuthN Resolver (Plugin) → IdP** — token introspection (for opaque tokens or JWT enrichment)
-4. **Handler → AuthZ Resolver (Gateway)** — PEP calls for authorization decisions with SecurityContext
-5. **AuthZ Resolver (Gateway) → AuthZ Resolver (Plugin)** — gateway delegates to vendor plugin (PDP)
-6. **AuthZ Resolver (Plugin) → Authz Svc** — policy evaluation
-7. **AuthZ Resolver (Plugin) → Tenant Resolver (Gateway)** — tenant hierarchy queries
-8. **AuthZ Resolver (Plugin) → RG Resolver (Gateway)** — group hierarchy and membership queries
-9. **Tenant/RG Resolver (Gateway) → Plugin → Vendor Service** — gateway delegates to plugin, plugin syncs from vendor
+1. **AuthN Middleware → AuthN Resolver (Gateway)** — Middleware calls `authenticate(bearer_token)` to validate token and get `AuthenticationResult`
+2. **AuthN Resolver (Gateway) → AuthN Resolver (Plugin)** — Gateway delegates to vendor plugin
+3. **AuthN Resolver (Plugin) → IdP** — Token validation (JWT signature verification or introspection)
+4. **AuthN Middleware → Handler** — Middleware extracts `SecurityContext` from `AuthenticationResult` and passes to handler
+5. **Handler → AuthZ Resolver (Gateway)** — PEP calls `/access/v1/evaluation` for authorization decisions with `SecurityContext`
+6. **AuthZ Resolver (Gateway) → AuthZ Resolver (Plugin)** — Gateway delegates to vendor plugin (PDP)
+7. **AuthZ Resolver (Plugin) → Authz Svc** — Policy evaluation
+8. **AuthZ Resolver (Plugin) → Tenant Resolver (Gateway)** — Tenant hierarchy queries
+9. **AuthZ Resolver (Plugin) → RG Resolver (Gateway)** — Group hierarchy and membership queries
+10. **Tenant/RG Resolver (Gateway) → Plugin → Vendor Service** — Gateway delegates to plugin, plugin syncs from vendor
 
 ### Deployment Modes and Trust Model
 
@@ -372,25 +375,63 @@ auth:
 
 ## Authentication
 
-### AuthN Middleware
+### Overview
 
 Authentication is performed by **AuthN middleware** within the module that accepts the request. The middleware:
 1. Extracts the bearer token from the request
-2. Calls AuthN Resolver (Gateway) for validation (JWT local or introspection)
-3. Receives `SecurityContext` containing validated subject identity
-4. Passes the `SecurityContext` to the module's handler (PEP)
+2. Calls **AuthN Resolver** to do authentication
+3. Receives `AuthenticationResult` containing validated subject identity
+4. Passes the `SecurityContext` from `AuthenticationResult` to the module's handler (PEP)
 
-This pattern applies to any module accepting external requests: API Gateway module, Domain Module (if exposed directly), gRPC Gateway module, etc. The authorization model is entry-point agnostic.
+Authentication is handled by the **AuthN Resolver** — a gateway module with a minimalist interface that validates bearer tokens and produces `AuthenticationResult`.
 
-### Overview
+**Module Structure:**
 
-HyperSpot's authentication is handled by the **AuthN Resolver** — a gateway module with a minimalist interface that validates bearer tokens and produces `SecurityContext`.
+- **authn-resolver-sdk** — SDK package containing:
+  - `AuthNResolverGatewayClient` trait (public API for other modules)
+  - `AuthNResolverPluginClient` trait (API for plugins)
+  - `AuthenticationResult`, `SecurityContext` models
+  - `AuthNResolverError` error types
 
-**Core Interface:**
+- **authn-resolver-gw** — Gateway module that:
+  - Implements `AuthNResolverGatewayClient` trait
+  - Discovers and delegates to vendor-specific plugins via GTS types-registry
+  - Registers gateway client in `ClientHub` for consumption by other modules
+
+**Gateway Client Interface:**
 
 ```rust
-trait AuthNResolverApi {
-    async fn authenticate(&self, bearer_token: &str) -> Result<SecurityContext, AuthNError>;
+#[async_trait]
+pub trait AuthNResolverGatewayClient: Send + Sync {
+    /// Authenticate a bearer token and return the authentication result.
+    ///
+    /// # Errors
+    ///
+    /// - `Unauthorized` if the token is malformed/invalid/expired or authentication fails
+    /// - `ServiceUnavailable` if the IdP is unreachable
+    /// - `NoPluginAvailable` if no plugin is configured
+    ///
+    /// # Arguments
+    ///
+    /// * `bearer_token` - The bearer token from the Authorization header
+    async fn authenticate(&self, bearer_token: &str) -> Result<AuthenticationResult, AuthNResolverError>;
+}
+```
+
+**Plugin Client Interface:**
+
+```rust
+#[async_trait]
+pub trait AuthNResolverPluginClient: Send + Sync {
+    /// Authenticate a bearer token using vendor-specific validation logic.
+    ///
+    /// Plugins implement this method with their validation strategy
+    /// (JWT local validation, token introspection, custom protocols, etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `bearer_token` - The bearer token to validate
+    async fn authenticate(&self, bearer_token: &str) -> Result<AuthenticationResult, AuthNResolverError>;
 }
 ```
 
@@ -398,7 +439,7 @@ trait AuthNResolverApi {
 - **AuthN Middleware** — Extracts bearer token from request headers
 - **AuthN Resolver Gateway** — Delegates to vendor-specific plugin
 - **AuthN Resolver Plugin** — Implements token validation logic (JWT, introspection, custom protocols, etc.)
-- **Output** — `SecurityContext` containing validated subject identity
+- **Output** — `AuthenticationResult` containing `SecurityContext`
 
 **Request Flow:**
 
@@ -417,17 +458,28 @@ sequenceDiagram
     Gateway->>Plugin: authenticate(bearer_token)
     Plugin->>IdP: Validate token (implementation-specific)
     IdP-->>Plugin: Token valid + claims
-    Plugin->>Plugin: Map to SecurityContext
-    Plugin-->>Gateway: SecurityContext
-    Gateway-->>Middleware: SecurityContext
+    Plugin->>Plugin: Map to AuthenticationResult
+    Plugin-->>Gateway: AuthenticationResult
+    Gateway-->>Middleware: AuthenticationResult
     Middleware->>Handler: Request + SecurityContext
     Handler-->>Middleware: Response
     Middleware-->>Client: Response
 ```
 
+### AuthenticationResult
+
+The `AuthenticationResult` is returned by the AuthN Resolver upon successful authentication:
+
+```rust
+pub struct AuthenticationResult {
+    /// The validated security context.
+    pub security_context: SecurityContext,
+}
+```
+
 ### SecurityContext
 
-The `SecurityContext` is the result of successful authentication, flowing from AuthN Resolver to PEPs (via handlers):
+The `SecurityContext` is extracted from `AuthenticationResult` and flows from AuthN Resolver to PEPs (via handlers):
 
 ```rust
 SecurityContext {
@@ -464,7 +516,7 @@ The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. Plugin responsi
 2. **Claim Extraction** — Extract subject identity from token claims or introspection response
 3. **Claim Enrichment** — If IdP doesn't include required claims (`subject_type`, `subject_tenant_id`), fetch from vendor services
 4. **Token Scope Detection** — Determine first-party vs third-party apps and set `token_scopes` accordingly (see [Token Scopes](#token-scopes))
-5. **Response Mapping** — Convert vendor-specific responses to `SecurityContext`
+5. **Response Mapping** — Convert vendor-specific responses to `AuthenticationResult` (containing `SecurityContext`)
 
 ### Rationale: Minimalist Interface
 
@@ -492,8 +544,8 @@ The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. Plugin responsi
 - Discovery mechanisms (OIDC, custom)
 
 **What the gateway DOES specify:**
-- Output format: `SecurityContext`
-- Error semantics: `AuthNError` (unauthorized, invalid token, service unavailable)
+- Output format: `AuthenticationResult` containing `SecurityContext`
+- Error semantics: `AuthNResolverError` (invalid token, unauthorized, service unavailable, no plugin available)
 - Security boundaries: token is credential, must be handled securely
 
 ### Implementation Reference
@@ -931,6 +983,21 @@ The response contains a `decision` and, when `decision: true`, optional `context
 ### Predicate Types Reference
 
 All predicates filter resources based on their properties. The `resource_property` field specifies which property to filter on — these correspond directly to `resource.properties` in the request.
+
+**Extensibility:**
+
+The Rust SQL compilation library supports **extensible predicate types**:
+
+- **Standard predicates** — HyperSpot's built-in modules use only the standard predicates listed below (`eq`, `in`, `in_tenant_subtree`, `in_group`, `in_group_subtree`)
+- **Custom predicates** — Vendors can extend the system by:
+  1. Registering new predicate types with the SQL compilation library
+  2. Providing SQL compilation handlers for these predicates
+  3. Returning custom predicates from their AuthZ Resolver Plugin (PDP)
+  4. Using custom predicates in their domain modules
+
+**Example use case:** A vendor with a custom geospatial authorization model could register a `within_geo_boundary` predicate type and implement its SQL compilation handler using PostGIS functions. Their PDP would return constraints like `{ "type": "within_geo_boundary", "resource_property": "location", "boundary": "...geojson..." }`, and the SQL compiler would generate the corresponding PostGIS query.
+
+**Standard Predicate Types:**
 
 | Type | Description | Required Fields | Optional Fields |
 |------|-------------|-----------------|-----------------|

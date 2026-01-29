@@ -8,7 +8,7 @@ This document describes the **reference implementation** of an AuthN Resolver pl
 - **Opaque tokens** — Validated via Token Introspection endpoint (RFC 7662)
 - **OpenID Connect** — Auto-configuration via Discovery (OpenID Connect Core 1.0, Discovery 1.0)
 
-**Scope:** This is ONE possible implementation of the AuthN Resolver plugin interface. Vendors may implement different authentication strategies (mTLS, API keys, custom protocols) without following this design.
+**Scope:** This is ONE possible implementation of the `AuthNResolverPluginClient` trait. Vendors may implement different authentication strategies (mTLS, API keys, custom protocols) without following this design.
 
 **Use case:** This plugin is suitable for vendors with standard OIDC-compliant Identity Providers that issue JWTs and support token introspection. It ships as part of HyperSpot's standard distribution and can be configured for most OAuth 2.0 / OIDC providers.
 
@@ -99,7 +99,7 @@ sequenceDiagram
 
     Middleware->>Middleware: Validate signature (JWKS)
     Middleware->>Middleware: Check exp, aud
-    Middleware->>Middleware: Extract claims → SecurityContext
+    Middleware->>Middleware: Extract claims → AuthenticationResult
     Middleware->>Handler: Request + SecurityContext
     Handler-->>Middleware: Response
     Middleware-->>Client: Response
@@ -113,7 +113,7 @@ sequenceDiagram
 4. **Signature Validation** — Verify JWT signature using key identified by `kid` header
 5. **Claim Validation** — Verify `exp` (expiration), `aud` (audience), `iss` (issuer)
 6. **Claim Extraction** — Map JWT claims to `SecurityContext` fields
-7. **Scope Detection** — Determine first-party vs third-party and set `token_scopes`
+7. **Result Construction** — Wrap `SecurityContext` in `AuthenticationResult`
 
 ---
 
@@ -137,11 +137,11 @@ sequenceDiagram
 
     Note over Middleware: Token is opaque OR introspection.mode=always
 
-    Middleware->>AuthN: introspect(token)
+    Middleware->>AuthN: authenticate(token)
     AuthN->>IdP: POST /introspect { token }
     IdP-->>AuthN: { active: true, sub, sub_tenant_id, sub_type, exp, ... }
-    AuthN->>AuthN: Map response → SecurityContext
-    AuthN-->>Middleware: SecurityContext
+    AuthN->>AuthN: Map response → AuthenticationResult
+    AuthN-->>Middleware: AuthenticationResult
     Middleware->>Handler: Request + SecurityContext
     Handler-->>Middleware: Response
     Middleware-->>Client: Response
@@ -175,6 +175,13 @@ auth:
       - "https://*.my-company.com"  # glob patterns
       - "https://api.my-company.com"
 
+    # Claim mapping — maps JWT claims to SecurityContext fields
+    claim_mapping:
+      subject_id: "sub"  # default: "sub"
+      subject_type: "sub_type"  # vendor-specific, no default
+      subject_tenant_id: "tenant_id"  # vendor-specific, e.g., "tenant_id", "org_id", "account_id"
+      token_scopes: "scope"  # default: "scope", can be "permissions", "scp"
+
   jwks:
     cache:
       ttl: 1h  # JWKS cache TTL (default: 1h)
@@ -186,6 +193,14 @@ auth:
     # Global introspection endpoint (applies to all issuers)
     # If not set, endpoint is discovered per-issuer via OIDC config
     endpoint: "https://idp.corp.example.com/oauth2/introspect"
+
+    # Claim mapping for introspection response (if different from JWT)
+    # If not specified, uses jwt.claim_mapping
+    claim_mapping:
+      subject_id: "sub"
+      subject_type: "sub_type"
+      subject_tenant_id: "tenant_id"
+      token_scopes: "scope"
 
     # Introspection result caching
     cache:
@@ -245,6 +260,30 @@ List of glob patterns for valid audiences. Supports `*` wildcard.
 - If JWT has `aud` claim but `expected_audience` is empty → validation passes (no restrictions)
 - If JWT lacks `aud` claim → validation passes if `require_audience: false`, fails if `require_audience: true`
 
+#### jwt.claim_mapping
+
+Maps JWT claim names to `SecurityContext` fields. Required to handle vendor-specific claim names.
+
+**Fields:**
+- `subject_id` (string) — Claim name for subject identifier (default: `"sub"`)
+- `subject_type` (string) — Claim name for subject type (vendor-specific, no default)
+- `subject_tenant_id` (string) — Claim name for subject's tenant ID (vendor-specific, e.g., `"tenant_id"`, `"org_id"`, `"account_id"`)
+- `token_scopes` (string) — Claim name for token scopes (default: `"scope"`, can be `"permissions"`, `"scp"`)
+
+**Example:**
+```yaml
+claim_mapping:
+  subject_id: "sub"
+  subject_type: "user_type"
+  subject_tenant_id: "org_id"
+  token_scopes: "permissions"
+```
+
+**Behavior:**
+- Plugin extracts claim value using specified name
+- If claim is missing and field is required (`subject_id`, `subject_tenant_id`) → authentication fails
+- If claim is missing and field is optional (`subject_type`) → field is omitted from SecurityContext
+
 #### jwks.cache.ttl
 
 JWKS (JSON Web Key Set) cache TTL. Default: `1h`.
@@ -285,6 +324,31 @@ Global introspection endpoint URL. If configured, used for all issuers.
 | Opaque | `opaque_only` / `always` | not configured | **401 Unauthorized** (no `iss` claim to discover endpoint) |
 
 **Note:** Discovery requires the `iss` claim to look up the issuer configuration. Opaque tokens don't contain claims, so discovery is only possible for JWTs. For opaque tokens, `introspection.endpoint` must be explicitly configured.
+
+#### introspection.claim_mapping
+
+Maps introspection response field names to `SecurityContext` fields. Optional — if not specified, uses `jwt.claim_mapping`.
+
+**Fields:**
+- `subject_id` (string) — Response field for subject identifier (default: `"sub"`)
+- `subject_type` (string) — Response field for subject type (vendor-specific)
+- `subject_tenant_id` (string) — Response field for subject's tenant ID (vendor-specific)
+- `token_scopes` (string) — Response field for token scopes (default: `"scope"`)
+
+**Example:**
+```yaml
+introspection:
+  claim_mapping:
+    subject_id: "sub"
+    subject_type: "user_type"
+    subject_tenant_id: "organization_id"
+    token_scopes: "scope"
+```
+
+**Behavior:**
+- If not configured, falls back to `jwt.claim_mapping`
+- Useful when introspection response uses different field names than JWT claims
+- If field is missing in response and required → authentication fails
 
 #### introspection.cache
 
@@ -488,7 +552,7 @@ on introspection:
   cache_key = sha256(token)
 
   if cached and not expired:
-    return cached SecurityContext
+    return cached AuthenticationResult
 
   response = POST {introspection_endpoint} { token }
 
@@ -496,11 +560,12 @@ on introspection:
     return 401 Unauthorized
 
   security_context = map_response(response)
+  result = AuthenticationResult { security_context }
 
   cache_ttl = min(response.exp - now, configured_ttl)
-  cache(cache_key, security_context, cache_ttl)
+  cache(cache_key, result, cache_ttl)
 
-  return security_context
+  return result
 ```
 
 **Note:** Introspection results MAY be cached to reduce IdP load and latency (`introspection.cache.*`). Trade-off: revoked tokens remain valid until cache expires. Cache TTL should be shorter than token lifetime; use token `exp` as upper bound for cache entry lifetime.
@@ -526,29 +591,48 @@ on introspection with mode=always and no global endpoint:
 
 ---
 
-## SecurityContext Mapping
+## AuthenticationResult Construction
 
-The plugin maps token claims (JWT or introspection response) to `SecurityContext` fields:
+The plugin maps token claims (JWT or introspection response) to `SecurityContext` fields, then wraps the result in `AuthenticationResult`.
+
+**Result Structure:**
+```rust
+pub struct AuthenticationResult {
+    pub security_context: SecurityContext,
+}
+```
+
+The claim mapping is configured via [jwt.claim_mapping](#jwtclaim_mapping) and [introspection.claim_mapping](#introspectionclaim_mapping).
 
 ### Field Mapping
 
-| SecurityContext Field | JWT Claim | Introspection Response | Notes |
-|-----------------------|-----------|------------------------|-------|
-| `subject_id` | `sub` | `sub` | Required, unique subject identifier |
-| `subject_type` | Custom claim (vendor-defined) | Plugin maps from response | Optional, GTS type ID (e.g., `gts.x.core.security.subject.user.v1~`) |
-| `subject_tenant_id` | Custom claim (vendor-defined) | Plugin maps from response | Required, Subject Owner Tenant |
-| `token_scopes` | `scope` (space-separated string) | Plugin detects or maps | Capability restrictions (see Token Scope Detection) |
-| `bearer_token` | Original token from `Authorization` header | Original token from `Authorization` header | Optional, for PDP forwarding |
+| SecurityContext Field | Default Claim/Field | Configurable Via | Notes |
+|-----------------------|---------------------|------------------|-------|
+| `subject_id` | `sub` | `claim_mapping.subject_id` | Required, unique subject identifier |
+| `subject_type` | (vendor-defined) | `claim_mapping.subject_type` | Optional, GTS type ID (e.g., `gts.x.core.security.subject.user.v1~`) |
+| `subject_tenant_id` | (vendor-defined) | `claim_mapping.subject_tenant_id` | Required, Subject Owner Tenant |
+| `token_scopes` | `scope` (space-separated) | `claim_mapping.token_scopes` | Array of scopes, split on spaces |
+| `bearer_token` | Original from `Authorization` header | N/A | Optional, for PDP forwarding |
 
-**Field sources by validation mode:**
+**Example configuration:**
+```yaml
+auth:
+  jwt:
+    claim_mapping:
+      subject_id: "sub"
+      subject_type: "user_type"
+      subject_tenant_id: "org_id"
+      token_scopes: "scope"
+```
 
-| Field | JWT Local | Introspection |
-|-------|-----------|---------------|
-| `subject_id` | `sub` claim | Introspection response `sub` |
-| `subject_type` | Custom claim (vendor-defined) | Plugin maps from response |
-| `subject_tenant_id` | Custom claim (vendor-defined) | Plugin maps from response |
-| `token_scopes` | `scope` claim (space-separated) or plugin detection | Plugin maps from response or detects first-party |
-| `bearer_token` | Original token from `Authorization` header | Original token from `Authorization` header |
+**Mapping Process:**
+1. Plugin reads token claims (JWT) or introspection response fields
+2. Applies claim mapping configuration to extract values
+3. Validates required fields are present (`subject_id`, `subject_tenant_id`)
+4. Splits `token_scopes` on spaces if it's a string
+5. Constructs `SecurityContext` from extracted claims
+6. Wraps `SecurityContext` in `AuthenticationResult`
+7. Returns `AuthenticationResult` or authentication error if required claims missing
 
 **Notes:**
 - Token expiration (`exp`) is validated during authentication but not included in SecurityContext. Expiration is token metadata, not identity. The caching layer uses `exp` as upper bound for cache entry TTL.
@@ -556,122 +640,31 @@ The plugin maps token claims (JWT or introspection response) to `SecurityContext
   1. **Forwarding** — AuthZ Resolver plugin may need to call external vendor services that require the original bearer token for authentication
   2. **PDP validation** — In out-of-process deployments, AuthZ Resolver (PDP) may independently validate the token as defence-in-depth, not trusting the PEP's claim extraction
 
-### Vendor-Specific Claims
-
-**Standard claims** (defined by OIDC/OAuth):
-- `sub` — Subject identifier
-- `iss` — Issuer
-- `exp` — Expiration
-- `aud` — Audience
-- `scope` — Space-separated scope string (e.g., `"openid profile email"`)
-
-**Custom claims** (vendor-specific):
-- `subject_tenant_id` — Subject Owner Tenant (vendor may use different claim name: `tenant_id`, `org_id`, `account_id`)
-- `subject_type` — GTS type identifier (vendor may not provide this, plugin may need to infer or fetch separately)
-
-**Plugin responsibility:**
-- Map vendor-specific claim names to `SecurityContext` fields
-- If required claims are missing, fetch from vendor services (claim enrichment)
-- Handle vendor-specific formats (e.g., tenant ID in different formats)
-
-### Claim Enrichment
-
-If the IdP doesn't include `subject_type` or `subject_tenant_id` in tokens, the plugin MUST fetch this information from vendor services.
-
-**Enrichment flow:**
-
-```
-1. Validate token (JWT or introspection)
-2. Extract available claims → partial SecurityContext
-3. If subject_tenant_id missing:
-     call vendor's User Info endpoint or Directory API
-     extract tenant_id
-4. If subject_type missing:
-     infer from token (e.g., `client_id` present → API client, else user)
-     or call vendor service for user metadata
-5. Complete SecurityContext
-```
-
-**Caching:**
-- Enrichment results SHOULD be cached (keyed by `subject_id`)
-- Cache TTL SHOULD be shorter than token TTL (e.g., 5-10 minutes)
-
 ---
 
 ## Token Scope Detection
 
-The plugin determines whether the token represents a first-party or third-party application and sets `token_scopes` accordingly.
-
-### First-Party vs Third-Party
-
-| App Type | Example | `token_scopes` | Behavior |
-|----------|---------|----------------|----------|
-| First-party | Official UI, CLI, internal services | `["*"]` | No restrictions, full user permissions |
-| Third-party | Partner integrations, external OAuth apps | `["read:events", "write:tasks"]` | Limited to granted scopes |
-
-### Detection Strategy
-
-**Option 1: Trusted client list (explicit)**
-
-Plugin maintains a list of trusted `client_id` values (first-party apps):
-
-```yaml
-auth:
-  first_party_clients:
-    - "hyperspot-web-ui"
-    - "hyperspot-cli"
-    - "internal-service-1"
-```
-
-**Logic:**
-```
-if token.client_id in first_party_clients:
-  token_scopes = ["*"]
-else:
-  token_scopes = extract_scopes(token)
-```
-
-**Option 2: Scope-based (implicit)**
-
-If token contains specific "full access" scope (e.g., `internal`, `trusted`), treat as first-party:
-
-```
-if "internal" in token.scopes:
-  token_scopes = ["*"]
-else:
-  token_scopes = token.scopes
-```
-
-**Option 3: Vendor metadata (dynamic)**
-
-Fetch client metadata from vendor's OAuth client registry:
-
-```
-client = fetch_client_metadata(token.client_id)
-if client.is_first_party:
-  token_scopes = ["*"]
-else:
-  token_scopes = extract_scopes(token)
-```
-
-**Plugin choice:**
-- The AuthN Resolver plugin decides detection strategy based on vendor capabilities
-- HyperSpot does not maintain a trusted client list — this is plugin responsibility
+The plugin extracts `token_scopes` from the `scope` claim in JWT tokens or introspection responses.
 
 ### Scope Extraction
 
 **JWT:**
-- `scope` claim is space-separated string: `"openid profile email read:events write:tasks"`
-- Plugin splits on spaces, filters out standard OIDC scopes (`openid`, `profile`, `email`, `offline_access`), returns remaining scopes
-- If no application scopes remain → `["*"]` (first-party)
+- Extract `scope` claim (space-separated string): `"openid profile email read:events write:tasks"`
+- Split on spaces to get array: `["openid", "profile", "email", "read:events", "write:tasks"]`
+- Set `token_scopes` to this array
 
 **Introspection:**
-- Response contains `scope` field (space-separated string)
-- Same extraction logic as JWT
+- Extract `scope` field from response (space-separated string)
+- Split on spaces to get array
+- Set `token_scopes` to this array
 
-**Vendor-specific:**
-- Some vendors use different claim names (`permissions`, `scp`)
-- Plugin maps to `token_scopes`
+**Vendor-specific claim names:**
+- Some vendors use different field names: `permissions`, `scp`, `scopes`
+- Plugin maps vendor-specific field to `token_scopes`
+
+**Empty scopes:**
+- If `scope` claim/field is missing or empty, set `token_scopes = []`
+- Authorization decision is then made by PDP based on user permissions alone
 
 ---
 
