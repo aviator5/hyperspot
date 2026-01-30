@@ -2,76 +2,21 @@
 
 ## Table of Contents
 
-- [Authentication \& Authorization Design](#authentication--authorization-design)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-    - [PDP/PEP Model](#pdppep-model)
-    - [Core Terms](#core-terms)
-    - [Request Flow](#request-flow)
-    - [AuthN Resolver and AuthZ Resolver: Gateway + Plugin Architecture](#authn-resolver-and-authz-resolver-gateway--plugin-architecture)
-    - [Plugin Roles](#plugin-roles)
-    - [Integration Architecture](#integration-architecture)
-    - [Deployment Modes and Trust Model](#deployment-modes-and-trust-model)
-  - [Token Scopes](#token-scopes)
-    - [Overview](#overview-1)
-    - [Scope vs Permission](#scope-vs-permission)
-    - [First-party vs Third-party Apps](#first-party-vs-third-party-apps)
-    - [Vendor Neutrality](#vendor-neutrality)
-    - [SecurityContext Integration](#securitycontext-integration)
-    - [PDP Evaluation Flow](#pdp-evaluation-flow)
-    - [Gateway Scope Enforcement (Optional)](#gateway-scope-enforcement-optional)
-  - [Authentication](#authentication)
-    - [Overview](#overview-2)
-    - [AuthenticationResult](#authenticationresult)
-    - [SecurityContext](#securitycontext)
-    - [Plugin Responsibilities](#plugin-responsibilities)
-    - [Rationale: Minimalist Interface](#rationale-minimalist-interface)
-    - [Implementation Reference](#implementation-reference)
-  - [Authorization](#authorization)
-    - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
-      - [Why Access Evaluation API Alone Isn't Enough](#why-access-evaluation-api-alone-isnt-enough)
-        - [LIST Operations](#list-operations)
-        - [Point Operations (GET/UPDATE/DELETE)](#point-operations-getupdatedelete)
-      - [Why Search API Doesn't Work](#why-search-api-doesnt-work)
-      - [Our Solution: Extended Evaluation Response](#our-solution-extended-evaluation-response)
-    - [PEP Enforcement](#pep-enforcement)
-      - [Unified PEP Flow](#unified-pep-flow)
-      - [Constraint Compilation to SQL](#constraint-compilation-to-sql)
-      - [Fail-Closed Rules](#fail-closed-rules)
-    - [Authorization Decision Caching](#authorization-decision-caching)
-      - [Critical Security Requirements](#critical-security-requirements)
-      - [Open Questions (TODO)](#open-questions-todo)
-    - [API Specifications](#api-specifications)
-      - [Access Evaluation API (AuthZEN-extended)](#access-evaluation-api-authzen-extended)
-      - [Design Principles](#design-principles)
-      - [Request](#request)
-      - [Bearer Token in Context](#bearer-token-in-context)
-      - [Response](#response)
-      - [PEP Decision Matrix](#pep-decision-matrix)
-      - [Operation-Specific Behavior](#operation-specific-behavior)
-      - [Response with Resource Group Predicate](#response-with-resource-group-predicate)
-      - [Deny Response](#deny-response)
-    - [Predicate Types Reference](#predicate-types-reference)
-      - [1. Equality Predicate (`type: "eq"`)](#1-equality-predicate-type-eq)
-      - [2. IN Predicate (`type: "in"`)](#2-in-predicate-type-in)
-      - [3. Tenant Subtree Predicate (`type: "in_tenant_subtree"`)](#3-tenant-subtree-predicate-type-in_tenant_subtree)
-      - [4. Group Membership Predicate (`type: "in_group"`)](#4-group-membership-predicate-type-in_group)
-      - [5. Group Subtree Predicate (`type: "in_group_subtree"`)](#5-group-subtree-predicate-type-in_group_subtree)
-      - [Group Tenant Scoping](#group-tenant-scoping)
-    - [PEP Property Mapping](#pep-property-mapping)
-    - [Capabilities -\> Predicate Matrix](#capabilities---predicate-matrix)
-      - [`require_constraints` Flag](#require_constraints-flag)
-      - [Capabilities Array](#capabilities-array)
-    - [Table Schemas (Local Projections)](#table-schemas-local-projections)
-      - [`tenant_closure`](#tenant_closure)
-      - [`resource_group_closure`](#resource_group_closure)
-      - [`resource_group_membership`](#resource_group_membership)
-    - [Usage Scenarios](#usage-scenarios)
-  - [Open Questions](#open-questions)
-  - [References](#references)
-    - [Authentication](#authentication-1)
-    - [Authorization](#authorization-1)
-    - [Internal](#internal)
+- [Overview](#overview)
+- [Token Scopes](#token-scopes)
+- [Authentication](#authentication)
+- [Authorization](#authorization)
+  - [Why AuthZEN (and Why It's Not Enough)](#why-authzen-and-why-its-not-enough)
+  - [PEP Enforcement](#pep-enforcement)
+  - [Authorization Decision Caching](#authorization-decision-caching)
+  - [API Specifications](#api-specifications)
+  - [Predicate Types Reference](#predicate-types-reference)
+  - [PEP Property Mapping](#pep-property-mapping)
+  - [Capabilities -> Predicate Matrix](#capabilities---predicate-matrix)
+  - [Table Schemas (Local Projections)](#table-schemas-local-projections)
+  - [Usage Scenarios](#usage-scenarios)
+- [Open Questions](#open-questions)
+- [References](#references)
 
 ---
 
@@ -728,6 +673,8 @@ Any caching implementation MUST satisfy:
 
 ### API Specifications
 
+> **Note on interface representation:** The Authentication section above uses Rust trait definitions to specify the AuthN Resolver interface, while this Authorization section uses JSON examples (REST API payloads). This is intentional — authorization request/response payloads are more verbose and complex, making JSON more readable for documentation purposes. The Rust trait interface for AuthZ Resolver will be specified in the AuthZ Resolver module design documentation.
+
 #### Access Evaluation API (AuthZEN-extended)
 
 Two endpoints for authorization checks, following AuthZEN structure:
@@ -747,6 +694,15 @@ PDP returns `decision` plus optional `constraints` for each evaluation.
 6. **OR/AND semantics** - Multiple constraints are OR'd (alternative access paths), predicates within constraint are AND'd
 7. **Token passthrough** - Original bearer token optionally included in `context.bearer_token` for PDP validation and external service calls (MUST NOT be logged)
 
+#### Request / Response Example
+
+**Scenario:** Event Broker module handles `GET /events?topic=some_topic` request. The handler:
+1. Receives `SecurityContext` from AuthN middleware
+2. Builds AuthZ request from SecurityContext + HTTP request params + handler config
+3. Sends to AuthZ Resolver (PDP)
+4. Receives decision + constraints
+5. Compiles constraints to SQL WHERE clause
+
 #### Request
 
 ```
@@ -756,72 +712,47 @@ Content-Type: application/json
 
 ```jsonc
 {
-  // AuthZEN standard fields
+  // Subject — from SecurityContext (produced by AuthN Resolver)
   "subject": {
-    "type": "gts.x.core.security.subject.user.v1~",
-    "id": "a254d252-7129-4240-bae5-847c59008fb6",
+    "type": "gts.x.core.security.subject.user.v1~",  // SecurityContext.subject_type
+    "id": "a254d252-7129-4240-bae5-847c59008fb6",    // SecurityContext.subject_id
     "properties": {
-      "tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68"
+      "tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68"  // SecurityContext.subject_tenant_id
     }
   },
+
+  // Action — handler sets based on HTTP method / operation
   "action": {
-    "name": "list"  // or "read", "update", "delete", "create"
+    "name": "list"  // "list", "read", "update", "delete", "create"
   },
+
+  // Resource — handler sets type; id/properties from HTTP request
   "resource": {
-    "type": "gts.x.events.event.v1~",
-    "id": "e81307e5-5ee8-4c0a-8d1f-bd98a65c517e",  // present for point ops, absent for list
+    "type": "gts.x.events.event.v1~",               // handler: module's resource GTS type
+    "id": "e81307e5-5ee8-4c0a-8d1f-bd98a65c517e",   // URL path param (point ops only, absent for list)
     "properties": {
-      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"
+      "topic_id": "gts.x.core.events.topic.v1~z.app._.some_topic.v1"  // from query param ?topic=...
     }
   },
 
-  // HyperSpot extension: context with tenant and PEP capabilities
+  // Context — mix of SecurityContext, request params, and handler config
   "context": {
-    // Tenant context — use ONE of: tenant_id OR tenant_subtree
-
-    // Option 1: Single tenant (simple case)
-    // "tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-
-    // Option 2: Tenant subtree (with hierarchy options)
-    "tenant_subtree": {
-      "root_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-      "include_root": true,        // default: true
-      "barrier_mode": "all",       // default: "all", see Barrier Modes
-      "tenant_status": ["active", "suspended"]  // optional, filter by status
+    // Tenant context (from request header/query param) — use ONE of: tenant_id OR tenant_subtree
+    // "tenant_id": "...",  // Option 1: single tenant
+    "tenant_subtree": {     // Option 2: tenant subtree
+      "root_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",  // request header: X-Tenant-Id
+      "include_root": true,        // request param, default: true
+      "barrier_mode": "all",       // request param, default: "all"
+      "tenant_status": ["active", "suspended"]  // request param, optional
     },
 
-    // Token scopes from SecurityContext — capability restrictions for third-party apps
-    "token_scopes": ["read:events", "write:tasks"],  // or ["*"] for first-party
-
-    // PEP enforcement mode
-    "require_constraints": true,  // if true, decision without constraints = deny
-
-    // PEP capabilities: what predicate types the caller can enforce locally
-    "capabilities": ["tenant_hierarchy", "group_membership", "group_hierarchy"],
-
-    // Original bearer token (optional) — see "Bearer Token in Context" below
-    "bearer_token": "eyJhbGciOiJSUzI1NiIs..."
+    "token_scopes": ["read:events", "write:tasks"],  // SecurityContext.token_scopes
+    "require_constraints": true,   // handler config: LIST requires constraints
+    "capabilities": ["tenant_hierarchy"],  // module config: has tenant_closure table
+    "bearer_token": "eyJhbGciOiJSUzI1NiIs..."  // SecurityContext.bearer_token (optional, see notes below)
   }
 }
 ```
-
-#### Bearer Token in Context
-
-The `context.bearer_token` field is optional. PEP includes it when AuthZ Resolver (PDP) needs access to the original token. Use cases:
-
-1. **PDP validation (defence-in-depth)** — In out-of-process deployments, AuthZ Resolver may not fully trust subject claims extracted by AuthN Resolver. AuthZ Resolver can independently validate the token signature and extract claims to verify `subject.id` and `subject.properties` match the token.
-
-2. **External service calls** — AuthZ Resolver plugin may need to call vendor's external APIs (authorization service, user info endpoint, etc.) that require the original bearer token for authentication.
-
-3. **Token-embedded policies** — Some IdPs embed access policies directly in the token (e.g., `permissions`, `roles`, `scopes` claims in JWT). AuthZ Resolver extracts and evaluates these claims to generate constraints.
-
-4. **Scope narrowing** — Token may contain scope restrictions (e.g., `scope: "read:events"`, resource-specific access tokens). AuthZ Resolver uses these to narrow the access decision beyond what static policies would allow.
-
-5. **Audit and tracing** — Token may contain correlation IDs, session info, or other metadata useful for audit logging in AuthZ Resolver.
-
-**When to omit:** If PDP fully trusts PEP's claim extraction and doesn't need to call external services, `bearer_token` can be omitted to reduce payload size and minimize credential exposure.
-
-**Security:** `bearer_token` is a credential. PDP MUST NOT log it, persist it, or include it in error responses.
 
 #### Response
 
@@ -856,6 +787,8 @@ The response contains a `decision` and, when `decision: true`, optional `context
   }
 }
 ```
+
+**Note on `bearer_token`:** The `context.bearer_token` field is optional. Include it when PDP needs to: (1) validate token independently (defense-in-depth in OoP deployments), (2) call external vendor APIs requiring authentication, or (3) extract token-embedded policies/scopes. Omit it if PDP fully trusts PEP's claim extraction. Security: bearer_token is a credential — PDP MUST NOT log it or persist it.
 
 #### PEP Decision Matrix
 
