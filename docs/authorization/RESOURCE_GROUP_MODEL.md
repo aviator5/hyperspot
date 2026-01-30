@@ -38,6 +38,7 @@ Tenant T1
 │   └── [Group A.1]
 │       └── Resource 3
 ├── [Group B]
+│   ├── Resource 1
 │   └── Resource 4
 └── (ungrouped resources)
 ```
