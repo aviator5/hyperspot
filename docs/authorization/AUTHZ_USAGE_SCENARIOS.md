@@ -14,40 +14,45 @@ All examples use a Task Management domain:
 
 ## Table of Contents
 
-- [Projection Tables](#projection-tables)
-  - [What Are Projection Tables?](#what-are-projection-tables)
-  - [Choosing Projection Tables](#choosing-projection-tables)
-  - [Capabilities and PDP Response](#capabilities-and-pdp-response)
-  - [When No Projection Tables Are Needed](#when-no-projection-tables-are-needed)
-  - [When to Use `tenant_closure`](#when-to-use-tenant_closure)
-  - [When to Use `resource_group_membership`](#when-to-use-resource_group_membership)
-  - [When to Use `resource_group_closure`](#when-to-use-resource_group_closure)
-  - [Combinations Summary](#combinations-summary)
-- [Scenarios](#scenarios)
-  - [With `tenant_closure`](#with-tenant_closure)
-    - [S01: LIST, tenant subtree, PEP has tenant_closure](#s01-list-tenant-subtree-pep-has-tenant_closure)
-    - [S02: GET, tenant subtree, PEP has tenant_closure](#s02-get-tenant-subtree-pep-has-tenant_closure)
-    - [S03: UPDATE, tenant subtree, PEP has tenant_closure](#s03-update-tenant-subtree-pep-has-tenant_closure)
-    - [S04: CREATE, tenant context](#s04-create-tenant-context)
-    - [S05: LIST, tenant subtree with barrier, PEP has tenant_closure](#s05-list-tenant-subtree-with-barrier-pep-has-tenant_closure)
-  - [Without `tenant_closure`](#without-tenant_closure)
-    - [S06: LIST, tenant subtree, PEP without tenant_closure](#s06-list-tenant-subtree-pep-without-tenant_closure)
-    - [S07: GET, tenant subtree, PEP without tenant_closure](#s07-get-tenant-subtree-pep-without-tenant_closure)
-    - [S08: UPDATE, tenant subtree, PEP without tenant_closure (prefetch)](#s08-update-tenant-subtree-pep-without-tenant_closure-prefetch)
-    - [S09: GET, context tenant only (no subtree)](#s09-get-context-tenant-only-no-subtree)
-  - [Resource Groups](#resource-groups)
-    - [S10: LIST, group membership, PEP has resource_group_membership](#s10-list-group-membership-pep-has-resource_group_membership)
-    - [S11: LIST, group subtree, PEP has resource_group_closure](#s11-list-group-subtree-pep-has-resource_group_closure)
-    - [S12: UPDATE, group membership, PEP has resource_group_membership](#s12-update-group-membership-pep-has-resource_group_membership)
-    - [S13: UPDATE, group subtree, PEP has resource_group_closure](#s13-update-group-subtree-pep-has-resource_group_closure)
-    - [S14: GET, group membership, PEP without resource_group_membership](#s14-get-group-membership-pep-without-resource_group_membership)
-    - [S15: LIST, group subtree, PEP has membership but no closure](#s15-list-group-subtree-pep-has-membership-but-no-closure)
-  - [Advanced Patterns](#advanced-patterns)
-    - [S16: LIST, tenant subtree and group membership (AND)](#s16-list-tenant-subtree-and-group-membership-and)
-    - [S17: LIST, multiple access paths (OR)](#s17-list-multiple-access-paths-or)
-    - [S18: Access denied](#s18-access-denied)
-- [TOCTOU Analysis](#toctou-analysis)
-- [References](#references)
+- [Authorization Usage Scenarios](#authorization-usage-scenarios)
+  - [Table of Contents](#table-of-contents)
+  - [Projection Tables](#projection-tables)
+    - [What Are Projection Tables?](#what-are-projection-tables)
+    - [Choosing Projection Tables](#choosing-projection-tables)
+    - [Capabilities and PDP Response](#capabilities-and-pdp-response)
+    - [When No Projection Tables Are Needed](#when-no-projection-tables-are-needed)
+    - [When to Use `tenant_closure`](#when-to-use-tenant_closure)
+    - [When to Use `resource_group_membership`](#when-to-use-resource_group_membership)
+    - [When to Use `resource_group_closure`](#when-to-use-resource_group_closure)
+    - [Combinations Summary](#combinations-summary)
+  - [Scenarios](#scenarios)
+    - [With `tenant_closure`](#with-tenant_closure)
+      - [S01: LIST, tenant subtree, PEP has tenant\_closure](#s01-list-tenant-subtree-pep-has-tenant_closure)
+      - [S02: GET, tenant subtree, PEP has tenant\_closure](#s02-get-tenant-subtree-pep-has-tenant_closure)
+      - [S03: UPDATE, tenant subtree, PEP has tenant\_closure](#s03-update-tenant-subtree-pep-has-tenant_closure)
+      - [S04: CREATE, tenant context](#s04-create-tenant-context)
+      - [S05: LIST, tenant subtree with barrier, PEP has tenant\_closure](#s05-list-tenant-subtree-with-barrier-pep-has-tenant_closure)
+    - [Without `tenant_closure`](#without-tenant_closure)
+      - [S06: LIST, tenant subtree, PEP without tenant\_closure](#s06-list-tenant-subtree-pep-without-tenant_closure)
+      - [S07: GET, tenant subtree, PEP without tenant\_closure](#s07-get-tenant-subtree-pep-without-tenant_closure)
+      - [S08: UPDATE, tenant subtree, PEP without tenant\_closure (prefetch)](#s08-update-tenant-subtree-pep-without-tenant_closure-prefetch)
+      - [S09: GET, context tenant only (no subtree)](#s09-get-context-tenant-only-no-subtree)
+    - [Resource Groups](#resource-groups)
+      - [S10: LIST, group membership, PEP has resource\_group\_membership](#s10-list-group-membership-pep-has-resource_group_membership)
+      - [S11: LIST, group subtree, PEP has resource\_group\_closure](#s11-list-group-subtree-pep-has-resource_group_closure)
+      - [S12: UPDATE, group membership, PEP has resource\_group\_membership](#s12-update-group-membership-pep-has-resource_group_membership)
+      - [S13: UPDATE, group subtree, PEP has resource\_group\_closure](#s13-update-group-subtree-pep-has-resource_group_closure)
+      - [S14: GET, group membership, PEP without resource\_group\_membership](#s14-get-group-membership-pep-without-resource_group_membership)
+      - [S15: LIST, group subtree, PEP has membership but no closure](#s15-list-group-subtree-pep-has-membership-but-no-closure)
+    - [Advanced Patterns](#advanced-patterns)
+      - [S16: LIST, tenant subtree and group membership (AND)](#s16-list-tenant-subtree-and-group-membership-and)
+      - [S17: LIST, multiple access paths (OR)](#s17-list-multiple-access-paths-or)
+      - [S18: Access denied](#s18-access-denied)
+  - [TOCTOU Analysis](#toctou-analysis)
+    - [When TOCTOU Matters](#when-toctou-matters)
+    - [How Each Scenario Handles TOCTOU](#how-each-scenario-handles-toctou)
+    - [Key Insight: Prefetch + Constraint for Mutations](#key-insight-prefetch--constraint-for-mutations)
+  - [References](#references)
 
 ---
 
@@ -1116,7 +1121,7 @@ WHERE id = 'task-456'
 
 `GET /tasks/{id}`
 
-PEP doesn't have resource_group_membership table. For read operations, PEP fetches the resource and sends group membership info to PDP for decision.
+PEP doesn't have resource_group_membership table. PDP resolves group membership internally and returns a tenant constraint for defense in depth.
 
 **Request:**
 ```http
@@ -1124,23 +1129,7 @@ GET /tasks/task-456
 Authorization: Bearer <token>
 ```
 
-**Step 1 — PEP fetches resource with group info:**
-
-PEP must know which groups the resource belongs to. This could come from:
-- A `group_ids` column on the resource itself
-- An application-level join during fetch
-- External service call
-
-```sql
-SELECT t.*, array_agg(g.group_id) as group_ids
-FROM tasks t
-LEFT JOIN task_groups g ON t.id = g.task_id
-WHERE t.id = 'task-456'
-GROUP BY t.id
-```
-Result: task with `owner_tenant_id = 'T1'`, `group_ids = ['ProjectA']`
-
-**Step 2 — PEP → PDP Request (with tenant and group info):**
+**Step 1 — PEP → PDP Request:**
 ```json
 {
   "subject": {
@@ -1151,35 +1140,56 @@ Result: task with `owner_tenant_id = 'T1'`, `group_ids = ['ProjectA']`
   "action": { "name": "read" },
   "resource": {
     "type": "gts.x.tasks.task.v1~",
-    "id": "task-456",
-    "properties": {
-      "owner_tenant_id": "T1",
-      "group_ids": ["ProjectA"]
-    }
+    "id": "task-456"
   },
   "context": {
     "tenant_id": "T1",
-    "require_constraints": false,
+    "require_constraints": true,
     "capabilities": []
   }
 }
 ```
 
+**PDP internally:**
+1. Resolves resource's group membership (via PIP or own storage)
+2. Checks if subject has access to any of those groups
+3. Validates tenant access
+
 **PDP → PEP Response:**
 
-PDP checks both tenant access AND group membership:
+PDP returns tenant constraint as defense in depth (group check already done):
 
 ```json
 {
-  "decision": true
+  "decision": true,
+  "context": {
+    "constraints": [
+      {
+        "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
-**Step 3 — Return result:**
-- `decision: true` → return already-fetched task
-- `decision: false` → **404 Not Found**
+**Step 2 — SQL with constraint:**
+```sql
+SELECT * FROM tasks
+WHERE id = 'task-456'
+  AND owner_tenant_id = 'T1'
+```
 
-**Note:** For LIST operations without resource_group_membership, PDP would need to return explicit resource IDs (impractical for large datasets) or the architecture needs redesign. This scenario works best for point operations.
+**Result interpretation:**
+- 1 row → return task
+- 0 rows → **404 Not Found**
+
+**Note:** This pattern requires PDP to have access to group membership data. For LIST operations without resource_group_membership on PEP side, PDP would need to return explicit resource IDs (impractical for large datasets). This scenario works best for point operations (GET, UPDATE, DELETE by ID).
 
 ---
 
@@ -1370,7 +1380,7 @@ Authorization: Bearer <token>
 
 **PDP → PEP Response:**
 
-Multiple constraints (OR semantics):
+Multiple constraints (OR semantics). Tenant constraint is included in each path:
 
 ```json
 {
@@ -1380,6 +1390,11 @@ Multiple constraints (OR semantics):
       {
         "predicates": [
           {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
+          {
             "type": "in_group",
             "resource_property": "id",
             "group_ids": ["ProjectA"]
@@ -1388,6 +1403,11 @@ Multiple constraints (OR semantics):
       },
       {
         "predicates": [
+          {
+            "type": "eq",
+            "resource_property": "owner_tenant_id",
+            "value": "T1"
+          },
           {
             "type": "in",
             "resource_property": "id",
@@ -1404,13 +1424,15 @@ Multiple constraints (OR semantics):
 ```sql
 SELECT * FROM tasks
 WHERE (
-    id IN (
+    owner_tenant_id = 'T1'
+    AND id IN (
       SELECT resource_id FROM resource_group_membership
       WHERE group_id = 'ProjectA'
     )
   )
   OR (
-    id IN ('task-shared-1', 'task-shared-2')
+    owner_tenant_id = 'T1'
+    AND id IN ('task-shared-1', 'task-shared-2')
   )
 ```
 
@@ -1494,7 +1516,7 @@ TOCTOU is a security concern only for **mutations** (UPDATE, DELETE). For **read
 |----------|-----------|-------------------|------------|-------------------|
 | S10, S11 | LIST | ✅ | `in_group` / `in_group_subtree` | ✅ Atomic SQL check |
 | S12, S13 | UPDATE | ✅ | `in_group` / `in_group_subtree` | ✅ Atomic SQL check |
-| S14 | GET | ❌ | decision only | N/A (read-only) |
+| S14 | GET | ❌ | `eq` (tenant) | N/A (read-only) |
 | S15 | LIST | membership only | `in_group` (expanded) | ✅ Atomic SQL check |
 
 ### Key Insight: Prefetch + Constraint for Mutations
