@@ -465,33 +465,7 @@ The AuthN Resolver plugin bridges HyperSpot to the vendor's IdP. Plugin responsi
 
 ### Rationale: Minimalist Interface
 
-**Why a single `authenticate` method?**
-
-1. **Vendor Neutrality** — Different IdPs use different protocols (JWT local validation, introspection, custom APIs). The interface abstracts these details, allowing plugins to implement vendor-specific logic without changing the gateway.
-
-2. **Separation of Concerns** — The gateway defines *what* authentication produces (SecurityContext), plugins define *how* tokens are validated. This separation keeps the core architecture stable while enabling diverse implementations.
-
-3. **Plugin Flexibility** — Plugins choose validation strategies based on token format and configuration:
-   - JWT tokens: local validation with JWKS caching
-   - Opaque tokens: introspection calls to IdP
-   - Hybrid approaches: JWT validation with enrichment via introspection
-   - Custom protocols: vendor-specific authentication flows (mTLS, API keys, PASETO, etc.)
-
-4. **Caching Autonomy** — Plugins implement caching strategies appropriate to their validation method (JWKS caching, introspection result caching, discovery endpoint caching). The gateway doesn't dictate caching policy.
-
-5. **Future-Proof** — New authentication methods can be added as new plugins without changing the gateway interface.
-
-**What the gateway does NOT specify:**
-- Token format (JWT, opaque, custom)
-- Validation method (local, introspection, hybrid)
-- Claim structure (vendor-specific)
-- Caching strategy (plugin decision)
-- Discovery mechanisms (OIDC, custom)
-
-**What the gateway DOES specify:**
-- Output format: `AuthenticationResult` containing `SecurityContext`
-- Error semantics: `AuthNResolverError` (invalid token, unauthorized, service unavailable, no plugin available)
-- Security boundaries: token is credential, must be handled securely
+For the rationale behind this single-method interface design, see [ADR 0003: AuthN Resolver Minimalist Interface](../adrs/authorization/0003-authn-resolver-minimalist-interface.md).
 
 ### Implementation Reference
 
