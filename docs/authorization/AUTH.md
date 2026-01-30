@@ -635,7 +635,7 @@ We extend AuthZEN's evaluation response with optional `context.constraints`. Ins
     "constraints": [
       {
         "predicates": [
-          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-123", "respect_barrier": true }
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-123", "barrier_mode": "all" }
         ]
       }
     ]
@@ -786,7 +786,7 @@ Content-Type: application/json
     "tenant_subtree": {
       "root_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
       "include_root": true,        // default: true
-      "respect_barrier": true,     // default: false, honor self_managed barrier
+      "barrier_mode": "all",       // default: "all", see Barrier Modes
       "tenant_status": ["active", "suspended"]  // optional, filter by status
     },
 
@@ -841,7 +841,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
             "type": "in_tenant_subtree",
             "resource_property": "owner_tenant_id",
             "root_tenant_id": "51f18034-3b2f-4bfa-bb99-22113bddee68",
-            "respect_barrier": true,
+            "barrier_mode": "all",       // default: "all"
             "tenant_status": ["active", "suspended"]
           },
           {
@@ -904,7 +904,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
     "constraints": [
       {
         "predicates": [
-          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "respect_barrier": true }
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "barrier_mode": "all" }
         ]
       }
     ]
@@ -930,7 +930,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
     "constraints": [
       {
         "predicates": [
-          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "respect_barrier": true }
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "barrier_mode": "all" }
         ]
       }
     ]
@@ -955,7 +955,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
             "type": "in_tenant_subtree",
             "resource_property": "owner_tenant_id",
             "root_tenant_id": "tenant-A",
-            "respect_barrier": true
+            "barrier_mode": "all"  // default: "all"
           },
           {
             // Group subtree predicate - uses resource_group_membership + resource_group_closure tables
@@ -1003,7 +1003,7 @@ The Rust SQL compilation library supports **extensible predicate types**:
 |------|-------------|-----------------|-----------------|
 | `eq` | Property equals value | `resource_property`, `value` | — |
 | `in` | Property in value list | `resource_property`, `values` | — |
-| `in_tenant_subtree` | Tenant subtree via closure table | `resource_property`, `root_tenant_id` | `respect_barrier`, `tenant_status` |
+| `in_tenant_subtree` | Tenant subtree via closure table | `resource_property`, `root_tenant_id` | `barrier_mode`, `tenant_status` |
 | `in_group` | Flat group membership | `resource_property`, `group_ids` | — |
 | `in_group_subtree` | Group subtree via closure table | `resource_property`, `root_group_id` | — |
 
@@ -1046,7 +1046,7 @@ Filters resources by tenant subtree using the closure table. The `resource_prope
 - `type` (required): `"in_tenant_subtree"`
 - `resource_property` (required): Property containing tenant ID (e.g., `owner_tenant_id`)
 - `root_tenant_id` (required): Root of tenant subtree
-- `respect_barrier` (optional): Honor `self_managed` barrier in hierarchy traversal, default `false`
+- `barrier_mode` (optional): Barrier handling mode, default `"all"`. Values: `"all"` (respect all barriers), `"none"` (ignore barriers)
 - `tenant_status` (optional): Filter by tenant status
 
 ```jsonc
@@ -1054,16 +1054,26 @@ Filters resources by tenant subtree using the closure table. The `resource_prope
   "type": "in_tenant_subtree",
   "resource_property": "owner_tenant_id",
   "root_tenant_id": "tenant-A",
-  "respect_barrier": true,
+  "barrier_mode": "all",  // default: "all"
   "tenant_status": ["active", "suspended"]
 }
 // SQL: owner_tenant_id IN (
 //   SELECT descendant_id FROM tenant_closure
 //   WHERE ancestor_id = 'tenant-A'
-//     AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'tenant-A')
+//     AND barrier = 0  -- barrier_mode: "all"
 //     AND descendant_status IN ('active', 'suspended')
 // )
+// Note: barrier_mode: "none" omits the barrier clause
 ```
+
+**Barrier Modes:**
+
+| Mode | SQL Clause | Description |
+|------|------------|-------------|
+| `"all"` | `AND barrier = 0` | (default) Respect all barriers. Stops traversal at `self_managed` tenants. |
+| `"none"` | (omit clause) | Ignore barriers. Use for billing, tenant metadata, or other cross-barrier operations. |
+
+**Future extensibility:** The `barrier` column is INT to allow future use as a bitmask for multiple barrier types. Future modes (e.g., `"data_sovereignty_only"`) can be added with selective checks like `(barrier & mask) = 0` without breaking existing consumers.
 
 #### 4. Group Membership Predicate (`type: "in_group"`)
 
@@ -1206,14 +1216,16 @@ Denormalized closure table for tenant hierarchy. Enables efficient subtree queri
 |--------|------|----------|-------------|
 | `ancestor_id` | UUID | No | Parent tenant in the hierarchy |
 | `descendant_id` | UUID | No | Child tenant (the one we check ownership against) |
-| `barrier_ancestor_id` | UUID | Yes | ID of tenant with `self_managed=true` between ancestor and descendant (NULL if no barrier) |
+| `barrier` | INT | No | 0 = no barrier on path, 1 = barrier exists between ancestor and descendant (default 0) |
 | `descendant_status` | TEXT | No | Status of descendant tenant (`active`, `suspended`, `deleted`) |
 
 **Notes:**
 - Status is denormalized into closure for query simplicity (avoids JOIN). When a tenant's status changes, all rows where it is `descendant_id` are updated.
-- The `barrier_ancestor_id` column enables `respect_barrier` filtering: when set, only include descendants where `barrier_ancestor_id IS NULL OR barrier_ancestor_id = :root_tenant_id`.
+- **Barrier semantics:** The `barrier` column stores barriers **strictly between** ancestor and descendant, **not including the ancestor itself**. This means when T2 is self_managed, rows with `ancestor_id = T2` have `barrier = 0`, while rows with T2 on the path from another ancestor have `barrier = 1`.
+- The `barrier` column enables simple filtering: `barrier_mode: "all"` adds `AND barrier = 0`, `barrier_mode: "none"` omits the clause.
 - Self-referential rows exist: each tenant has a row where `ancestor_id = descendant_id`.
 - **Predicate mapping:** `in_tenant_subtree` predicate compiles to SQL using this closure table.
+- **Future extensibility:** The `barrier` column is INT to allow future use as a bitmask for multiple barrier types (e.g., `(barrier & mask) = 0` for selective enforcement).
 
 **Example query (in_tenant_subtree):**
 ```sql
@@ -1221,7 +1233,7 @@ SELECT * FROM events
 WHERE owner_tenant_id IN (
   SELECT descendant_id FROM tenant_closure
   WHERE ancestor_id = :root_tenant_id
-    AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = :root_tenant_id)  -- respect_barrier
+    AND barrier = 0  -- barrier_mode: "all"
     AND descendant_status IN ('active', 'suspended')  -- tenant_status filter
 )
 ```

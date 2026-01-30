@@ -124,9 +124,9 @@ Barriers are not absolute — their enforcement depends on the type of data and 
 - T1 ✅ can read T2's usage metrics for billing purposes
 - T1 ✅ can see T2's tenant metadata (name, status, plan)
 
-This means `respect_barrier` in authorization requests applies to specific resource types, not globally. Each module/endpoint decides whether barriers apply to its resources.
+This means `barrier_mode` in authorization requests applies to specific resource types, not globally. Each module/endpoint decides whether barriers apply to its resources.
 
-**Implementation:** The `tenant_closure` table includes a `barrier_ancestor_id` column that tracks the nearest barrier between any ancestor-descendant pair. See [Closure Table](#closure-table).
+**Implementation:** The `tenant_closure` table includes a `barrier` column that indicates whether a barrier exists between ancestor and descendant. See [Closure Table](#closure-table).
 
 ---
 
@@ -181,7 +181,7 @@ HyperSpot recommends **closure tables** for production deployments with hierarch
 |-----------|---------|-------------|
 | `root_id` | required | Root tenant of the subtree |
 | `include_root` | `true` | Include root tenant in results |
-| `respect_barrier` | `false` | Stop at `self_managed` tenants |
+| `barrier_mode` | `"all"` | `"all"` (respect barriers) or `"none"` (ignore). See [AUTH.md](./AUTH.md#3-tenant-subtree-predicate-type-in_tenant_subtree). |
 | `tenant_status` | all | Filter by tenant status (`active`, `suspended`) |
 
 ---
@@ -196,8 +196,12 @@ The `tenant_closure` table is a denormalized representation of the tenant hierar
 |--------|------|-------------|
 | `ancestor_id` | UUID | Ancestor tenant |
 | `descendant_id` | UUID | Descendant tenant |
-| `barrier_ancestor_id` | UUID? | Nearest barrier between ancestor and descendant (NULL if none) |
+| `barrier` | INT NOT NULL DEFAULT 0 | 0 = no barrier on path, 1 = barrier exists between ancestor and descendant |
 | `descendant_status` | enum | Status of descendant tenant (denormalized for query efficiency) |
+
+**Barrier semantics:** The `barrier` column stores whether a barrier exists **strictly between** ancestor and descendant, **not including the ancestor itself**. This means:
+- When querying from T2 (a self_managed tenant), rows with `ancestor_id = T2` have `barrier = 0` because T2 is the ancestor, not "between" itself and its descendants
+- When querying from T1 (parent of T2), rows with `ancestor_id = T1` and `descendant_id` in T2's subtree have `barrier = 1` because T2 is between T1 and its descendants
 
 **Example data for the hierarchy:**
 
@@ -208,35 +212,43 @@ T1
 └── T4
 ```
 
-| ancestor_id | descendant_id | barrier_ancestor_id | descendant_status |
-|-------------|---------------|---------------------|-------------------|
-| T1 | T1 | NULL | active |
-| T1 | T2 | T2 | active |
-| T1 | T3 | T2 | active |
-| T1 | T4 | NULL | active |
-| T2 | T2 | NULL | active |
-| T2 | T3 | NULL | active |
-| T3 | T3 | NULL | active |
-| T4 | T4 | NULL | active |
+| ancestor_id | descendant_id | barrier | descendant_status |
+|-------------|---------------|---------|-------------------|
+| T1 | T1 | 0 | active |
+| T1 | T2 | 1 | active |
+| T1 | T3 | 1 | active |
+| T1 | T4 | 0 | active |
+| T2 | T2 | 0 | active |
+| T2 | T3 | 0 | active |
+| T3 | T3 | 0 | active |
+| T4 | T4 | 0 | active |
 
-**Query: "All tenants in T1's subtree, respecting barriers"**
+**Key observations:**
+- `T1 → T2`: barrier = 1 because T2 (self_managed) is on the path
+- `T1 → T3`: barrier = 1 because T2 is on the path from T1 to T3
+- `T2 → T2` and `T2 → T3`: barrier = 0 because T2 is the **ancestor**, not between T2 and its descendants
+
+**Query: "All tenants in T1's subtree, with `barrier_mode: "all"`"**
 
 ```sql
+-- barrier_mode: "all" (default) adds the barrier clause
 SELECT descendant_id FROM tenant_closure
 WHERE ancestor_id = 'T1'
-  AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'T1')
+  AND barrier = 0
+-- barrier_mode: "none" omits the barrier clause
 ```
 
-Result: T1, T4 (T2 and T3 excluded due to barrier)
+Result: T1, T4 (T2 and T3 excluded due to barrier = 1)
 
 **Query: "All tenants in T2's subtree"**
 
 ```sql
-SELECT descendant_id FROM tenant_closure
-WHERE ancestor_id = 'T2'
+SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'T2' AND barrier = 0
 ```
 
-Result: T2, T3 (barrier doesn't apply when querying from T2)
+Result: T2, T3 (barrier = 0 for both rows because T2 is the ancestor, not between T2 and its descendants)
+
+**Future extensibility:** The `barrier` column is INT to allow future use as a bitmask for multiple barrier types (e.g., bit 0 for self_managed, bit 1 for data_sovereignty). SQL would change from `barrier = 0` to `(barrier & mask) = 0` for selective enforcement.
 
 **Synchronization:** How projection tables are synchronized with vendor systems, consistency guarantees, and conflict resolution are out of scope for this document. See Tenant Resolver design documentation (TBD).
 

@@ -180,7 +180,7 @@ Authorization: Bearer <token>
     "tenant_subtree": {
       "root_id": "T1",
       "include_root": true,
-      "respect_barrier": true
+      "barrier_mode": "all"
     },
     "require_constraints": true,
     "capabilities": ["tenant_hierarchy"]
@@ -200,7 +200,7 @@ Authorization: Bearer <token>
             "type": "in_tenant_subtree",
             "resource_property": "owner_tenant_id",
             "root_tenant_id": "T1",
-            "respect_barrier": true
+            "barrier_mode": "all"
           }
         ]
       }
@@ -215,7 +215,7 @@ SELECT * FROM tasks
 WHERE owner_tenant_id IN (
   SELECT descendant_id FROM tenant_closure
   WHERE ancestor_id = 'T1'
-    AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'T1')
+    AND barrier = 0
 )
 ```
 
@@ -284,6 +284,7 @@ WHERE id = 'task-456'
   AND owner_tenant_id IN (
     SELECT descendant_id FROM tenant_closure
     WHERE ancestor_id = 'T1'
+      AND barrier = 0  -- barrier_mode defaults to "all"
   )
 ```
 
@@ -360,6 +361,7 @@ WHERE id = 'task-456'
   AND owner_tenant_id IN (
     SELECT descendant_id FROM tenant_closure
     WHERE ancestor_id = 'T1'
+      AND barrier = 0  -- barrier_mode defaults to "all"
   )
 ```
 
@@ -426,7 +428,7 @@ VALUES ('task-new', 'T2', 'New Task', 'pending')
 
 #### S05: LIST, tenant subtree with barrier, PEP has tenant_closure
 
-`GET /tasks?tenant_subtree=true&respect_barrier=true`
+`GET /tasks?tenant_subtree=true&barrier_mode=all`
 
 User in parent tenant T1 requests tasks, but child tenant T2 is self-managed (barrier). Tasks in T2 subtree should be excluded.
 
@@ -440,7 +442,7 @@ T1 (parent)
 
 **Request:**
 ```http
-GET /tasks?tenant_subtree=true&respect_barrier=true
+GET /tasks?tenant_subtree=true&barrier_mode=all
 Authorization: Bearer <token>
 ```
 
@@ -458,7 +460,7 @@ Authorization: Bearer <token>
     "tenant_subtree": {
       "root_id": "T1",
       "include_root": true,
-      "respect_barrier": true
+      "barrier_mode": "all"
     },
     "require_constraints": true,
     "capabilities": ["tenant_hierarchy"]
@@ -478,7 +480,7 @@ Authorization: Bearer <token>
             "type": "in_tenant_subtree",
             "resource_property": "owner_tenant_id",
             "root_tenant_id": "T1",
-            "respect_barrier": true
+            "barrier_mode": "all"
           }
         ]
       }
@@ -493,24 +495,26 @@ SELECT * FROM tasks
 WHERE owner_tenant_id IN (
   SELECT descendant_id FROM tenant_closure
   WHERE ancestor_id = 'T1'
-    AND (barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'T1')
+    AND barrier = 0
 )
 ```
 
-**Result:** Returns tasks from T1 and T4 only. Tasks from T2 and T3 are excluded because T2 is a barrier.
+**Result:** Returns tasks from T1 and T4 only. Tasks from T2 and T3 are excluded because barrier = 1.
 
 **tenant_closure data example:**
 
-| ancestor_id | descendant_id | barrier_ancestor_id |
-|-------------|---------------|---------------------|
-| T1 | T1 | NULL |
-| T1 | T2 | T2 |
-| T1 | T3 | T2 |
-| T1 | T4 | NULL |
-| T2 | T2 | NULL |
-| T2 | T3 | NULL |
+| ancestor_id | descendant_id | barrier |
+|-------------|---------------|---------|
+| T1 | T1 | 0 |
+| T1 | T2 | 1 |
+| T1 | T3 | 1 |
+| T1 | T4 | 0 |
+| T2 | T2 | 0 |
+| T2 | T3 | 0 |
 
-When querying from T1 with `respect_barrier=true`, only rows where `barrier_ancestor_id IS NULL OR barrier_ancestor_id = 'T1'` match → T1, T4.
+When querying from T1 with `barrier_mode=all`, only rows where `barrier = 0` match → T1, T4.
+
+**Key insight:** T2 → T2 and T2 → T3 have `barrier = 0` because barriers are tracked **strictly between** ancestor and descendant, not including the ancestor itself. When T2 is the query root, its self_managed status doesn't block access to its own subtree.
 
 ---
 
@@ -1324,6 +1328,7 @@ SELECT * FROM tasks
 WHERE owner_tenant_id IN (
     SELECT descendant_id FROM tenant_closure
     WHERE ancestor_id = 'T1'
+      AND barrier = 0  -- barrier_mode defaults to "all"
   )
   AND id IN (
     SELECT resource_id FROM resource_group_membership
