@@ -4,9 +4,9 @@ use tracing::{debug, info, instrument};
 use crate::domain::error::DomainError;
 use crate::domain::repos::CitiesRepository;
 use crate::domain::service::DbProvider;
+use authz_resolver_sdk::AuthZResolverGatewayClient;
 use modkit_odata::{ODataQuery, Page};
-use modkit_security::{PolicyEngineRef, SecurityContext};
-use tenant_resolver_sdk::TenantResolverGatewayClient;
+use modkit_security::SecurityContext;
 use time::OffsetDateTime;
 use user_info_sdk::{City, CityPatch, NewCity};
 use uuid::Uuid;
@@ -24,24 +24,19 @@ use uuid::Uuid;
 /// - Maintains transaction safety via the task-local guard
 pub struct CitiesService<R: CitiesRepository> {
     db: Arc<DbProvider>,
-    policy_engine: PolicyEngineRef,
     repo: Arc<R>,
-    resolver: Arc<dyn TenantResolverGatewayClient>,
+    authz: Arc<dyn AuthZResolverGatewayClient>,
 }
+
+const RESOURCE_TYPE: &str = "users_info.city";
 
 impl<R: CitiesRepository> CitiesService<R> {
     pub fn new(
         db: Arc<DbProvider>,
         repo: Arc<R>,
-        policy_engine: PolicyEngineRef,
-        resolver: Arc<dyn TenantResolverGatewayClient>,
+        authz: Arc<dyn AuthZResolverGatewayClient>,
     ) -> Self {
-        Self {
-            db,
-            policy_engine,
-            repo,
-            resolver,
-        }
+        Self { db, repo, authz }
     }
 }
 
@@ -53,12 +48,7 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "get", RESOURCE_TYPE, Some(id), true).await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
 
@@ -75,12 +65,7 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "list", RESOURCE_TYPE, None, true).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -98,12 +83,7 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "create", RESOURCE_TYPE, None, true).await?;
 
         let now = OffsetDateTime::now_utc();
         let id = new_city.id.unwrap_or_else(Uuid::now_v7);
@@ -134,12 +114,7 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "update", RESOURCE_TYPE, Some(id), true).await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
 
@@ -165,12 +140,7 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "delete", RESOURCE_TYPE, Some(id), true).await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;
 

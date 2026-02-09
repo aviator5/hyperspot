@@ -79,4 +79,27 @@ impl AccessScope {
             resource_ids,
         }
     }
+
+    /// Create an "allow all" scope for operations that don't need constraints
+    /// (e.g., CREATE operations where the PDP returned decision=true with no constraints).
+    ///
+    /// This is **not** a bypass — it represents a legitimate authorization decision
+    /// where the PDP explicitly granted access without row-level constraints.
+    /// The secure ORM treats this as "no additional filtering needed".
+    #[must_use]
+    pub fn allow_all() -> Self {
+        Self {
+            tenant_ids: vec![],
+            types: vec![],
+            resource_ids: vec![],
+        }
+    }
+
+    /// Returns true if this scope represents an "allow all" condition.
+    /// Note: structurally identical to `is_empty()` but semantically different.
+    /// Use this in PEP code to distinguish "no constraints needed" from "deny all".
+    #[must_use]
+    pub fn is_unconstrained(&self) -> bool {
+        self.tenant_ids.is_empty() && self.resource_ids.is_empty()
+    }
 }

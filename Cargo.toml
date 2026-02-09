@@ -67,6 +67,12 @@ members = [
     "modules/system/tenant_resolver/tenant_resolver-gw",
     "modules/system/tenant_resolver/plugins/static_tr_plugin",
     "modules/system/tenant_resolver/plugins/single_tenant_tr_plugin",
+    "modules/system/authn_resolver/authn_resolver-sdk",
+    "modules/system/authn_resolver/authn_resolver-gw",
+    "modules/system/authn_resolver/plugins/static_authn_plugin",
+    "modules/system/authz_resolver/authz_resolver-sdk",
+    "modules/system/authz_resolver/authz_resolver-gw",
+    "modules/system/authz_resolver/plugins/static_authz_plugin",
 ]
 exclude = ["fuzz"]
 resolver = "3"

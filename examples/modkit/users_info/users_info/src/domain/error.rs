@@ -32,6 +32,9 @@ pub enum DomainError {
     #[error("{entity_type} not found: {id}")]
     NotFound { entity_type: String, id: Uuid },
 
+    #[error("Access denied")]
+    Forbidden,
+
     #[error("Internal error")]
     InternalError,
 }
@@ -111,6 +114,7 @@ impl From<DomainError> for UsersInfoError {
             DomainError::UserNotFound { id } | DomainError::NotFound { id, .. } => {
                 UsersInfoError::not_found(id)
             }
+            DomainError::Forbidden => UsersInfoError::forbidden(),
             DomainError::Database { .. } | DomainError::InternalError => UsersInfoError::internal(),
         }
     }

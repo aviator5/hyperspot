@@ -835,8 +835,8 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "axum",
+ "cf-authn-resolver-sdk",
  "cf-modkit",
- "cf-modkit-auth",
  "cf-modkit-http",
  "cf-modkit-macros",
  "cf-modkit-security",
@@ -861,6 +861,77 @@ dependencies = [
  "tracing",
  "ureq 2.12.1",
  "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "cf-authn-resolver-gw"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cf-authn-resolver-sdk",
+ "cf-modkit",
+ "cf-modkit-security",
+ "cf-types-registry-sdk",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "cf-authn-resolver-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cf-modkit",
+ "cf-modkit-security",
+ "gts",
+ "gts-macros",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "cf-authz-resolver-gw"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cf-authz-resolver-sdk",
+ "cf-modkit",
+ "cf-modkit-security",
+ "cf-types-registry-sdk",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "cf-authz-resolver-sdk"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cf-modkit",
+ "cf-modkit-security",
+ "gts",
+ "gts-macros",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
  "uuid",
 ]
 
@@ -1336,6 +1407,42 @@ dependencies = [
  "cf-modkit-odata",
  "cf-modkit-security",
  "cf-tenant-resolver-sdk",
+ "cf-types-registry-sdk",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "cf-static-authn-plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cf-authn-resolver-sdk",
+ "cf-modkit",
+ "cf-modkit-security",
+ "cf-types-registry-sdk",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "cf-static-authz-plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cf-authz-resolver-sdk",
+ "cf-modkit",
+ "cf-modkit-security",
  "cf-types-registry-sdk",
  "inventory",
  "serde",
@@ -3168,6 +3275,8 @@ dependencies = [
  "calculator",
  "calculator_gateway",
  "cf-api-gateway",
+ "cf-authn-resolver-gw",
+ "cf-authz-resolver-gw",
  "cf-file-parser",
  "cf-grpc-hub",
  "cf-modkit",
@@ -3175,6 +3284,8 @@ dependencies = [
  "cf-nodes-registry",
  "cf-simple-user-settings",
  "cf-single-tenant-tr-plugin",
+ "cf-static-authn-plugin",
+ "cf-static-authz-plugin",
  "cf-static-tr-plugin",
  "cf-tenant-resolver-gw",
  "cf-types-registry",
@@ -7128,8 +7239,8 @@ dependencies = [
  "async-trait",
  "axum",
  "cf-api-gateway",
+ "cf-authz-resolver-sdk",
  "cf-modkit",
- "cf-modkit-auth",
  "cf-modkit-db",
  "cf-modkit-db-macros",
  "cf-modkit-errors",
@@ -7139,7 +7250,6 @@ dependencies = [
  "cf-modkit-odata",
  "cf-modkit-sdk",
  "cf-modkit-security",
- "cf-tenant-resolver-sdk",
  "futures-util",
  "http",
  "httpmock",

@@ -1,14 +1,27 @@
-use crate::permission::Permission;
-use crate::{AccessScope, PolicyEngineRef};
 use uuid::Uuid;
 
-/// `SecurityContext` encapsulates the security-related information for a request or operation
+/// `SecurityContext` encapsulates the security-related information for a request or operation.
+///
+/// Built by the AuthN Resolver during authentication and passed through the request lifecycle.
+/// Modules use this context together with the AuthZ Resolver to obtain access scopes.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SecurityContext {
+    /// Context tenant ID — used for query scoping (the tenant being operated on).
     tenant_id: Uuid,
+    /// Subject ID — the authenticated user, service, or system making the request.
     subject_id: Uuid,
+    /// Subject type classification (e.g., "user", "service").
     subject_type: Option<String>,
-    permissions: Vec<Permission>,
+    /// Subject's home tenant (from AuthN). May differ from `tenant_id` in cross-tenant scenarios.
+    subject_tenant_id: Option<Uuid>,
+    /// Token capability restrictions. `["*"]` means first-party / unrestricted.
+    /// Empty means no scopes were asserted (treat as unrestricted for backward compatibility).
+    #[serde(default)]
+    token_scopes: Vec<String>,
+    /// Original bearer token for PDP forwarding. Never serialized/persisted.
+    #[serde(skip)]
+    bearer_token: Option<String>,
+    /// Environmental attributes (e.g., IP address, device type, location).
     environment: Vec<(String, String)>,
 }
 
@@ -25,7 +38,7 @@ impl SecurityContext {
         SecurityContextBuilder::default().build()
     }
 
-    /// Get the tenant ID associated with the security context
+    /// Get the context tenant ID (the tenant being operated on)
     #[must_use]
     pub fn tenant_id(&self) -> Uuid {
         self.tenant_id
@@ -37,10 +50,22 @@ impl SecurityContext {
         self.subject_id
     }
 
-    /// Get the permissions assigned to the security context
+    /// Get the subject's home tenant ID (from AuthN token).
     #[must_use]
-    pub fn permissions(&self) -> Vec<Permission> {
-        self.permissions.clone()
+    pub fn subject_tenant_id(&self) -> Option<Uuid> {
+        self.subject_tenant_id
+    }
+
+    /// Get the token scopes. `["*"]` means first-party / unrestricted.
+    #[must_use]
+    pub fn token_scopes(&self) -> &[String] {
+        &self.token_scopes
+    }
+
+    /// Get the original bearer token (for PDP forwarding).
+    #[must_use]
+    pub fn bearer_token(&self) -> Option<&str> {
+        self.bearer_token.as_deref()
     }
 
     /// Get the environmental attributes associated with the security context
@@ -49,78 +74,6 @@ impl SecurityContext {
     pub fn environment(&self) -> Vec<(String, String)> {
         self.environment.clone()
     }
-
-    pub fn scope(&self, policy_engine: PolicyEngineRef) -> AccessScopeResolver {
-        AccessScopeResolver {
-            _policy_engine: policy_engine,
-            context: self.clone(),
-            accessible_tenants: None,
-        }
-    }
-}
-
-pub struct AccessScopeResolver {
-    _policy_engine: PolicyEngineRef,
-    context: SecurityContext,
-    /// Accessible tenant IDs (set via `include_accessible_tenants`).
-    accessible_tenants: Option<Vec<Uuid>>,
-}
-
-impl AccessScopeResolver {
-    /// Include a list of accessible tenant IDs in the scope.
-    ///
-    /// Use this method when the caller has already resolved which tenants
-    /// the current security context can access (typically via `TenantResolverGatewayClient`).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Discover accessible tenants via hierarchy
-    /// let response = resolver.get_descendants(&ctx, tenant_id, None, None, None).await?;
-    /// let accessible: Vec<Uuid> = std::iter::once(response.tenant.id)
-    ///     .chain(response.descendants.iter().map(|t| t.id))
-    ///     .collect();
-    ///
-    /// // Build scope with accessible tenants
-    /// let scope = ctx
-    ///     .scope(policy_engine)
-    ///     .include_accessible_tenants(accessible)
-    ///     .prepare()
-    ///     .await?;
-    /// ```
-    #[must_use]
-    pub fn include_accessible_tenants(mut self, tenants: Vec<Uuid>) -> Self {
-        self.accessible_tenants = Some(tenants);
-        self
-    }
-
-    #[must_use]
-    pub fn include_resource_ids(&self) -> &Self {
-        self
-    }
-
-    /// Prepare and build the final `AccessScope` based on the resolver configuration
-    ///
-    /// # Errors
-    /// This function may return an error if the scope preparation fails
-    pub async fn prepare(&self) -> Result<AccessScope, Box<dyn std::error::Error>> {
-        // Keep this async to allow future policy-engine / IO-backed resolution without
-        // changing the public API. This no-op await also satisfies clippy::unused_async.
-        std::future::ready(()).await;
-
-        // If accessible tenants were provided, use them
-        if let Some(ref tenants) = self.accessible_tenants {
-            return Ok(AccessScope::tenants_only(tenants.clone()));
-        }
-
-        // Fallback: single tenant from context
-        if self.context.tenant_id != Uuid::default() {
-            return Ok(AccessScope::tenants_only(vec![self.context.tenant_id]));
-        }
-
-        // Empty scope = deny all
-        Ok(AccessScope::default())
-    }
 }
 
 #[derive(Default)]
@@ -128,7 +81,9 @@ pub struct SecurityContextBuilder {
     tenant_id: Option<Uuid>,
     subject_id: Option<Uuid>,
     subject_type: Option<String>,
-    permissions: Vec<Permission>,
+    subject_tenant_id: Option<Uuid>,
+    token_scopes: Vec<String>,
+    bearer_token: Option<String>,
     environment: Vec<(String, String)>,
 }
 
@@ -152,8 +107,20 @@ impl SecurityContextBuilder {
     }
 
     #[must_use]
-    pub fn add_permission(mut self, permission: Permission) -> Self {
-        self.permissions.push(permission);
+    pub fn subject_tenant_id(mut self, subject_tenant_id: Uuid) -> Self {
+        self.subject_tenant_id = Some(subject_tenant_id);
+        self
+    }
+
+    #[must_use]
+    pub fn token_scopes(mut self, scopes: Vec<String>) -> Self {
+        self.token_scopes = scopes;
+        self
+    }
+
+    #[must_use]
+    pub fn bearer_token(mut self, token: String) -> Self {
+        self.bearer_token = Some(token);
         self
     }
 
@@ -169,7 +136,9 @@ impl SecurityContextBuilder {
             tenant_id: self.tenant_id.unwrap_or_default(),
             subject_id: self.subject_id.unwrap_or_default(),
             subject_type: self.subject_type,
-            permissions: self.permissions,
+            subject_tenant_id: self.subject_tenant_id,
+            token_scopes: self.token_scopes,
+            bearer_token: self.bearer_token,
             environment: self.environment,
         }
     }
@@ -184,33 +153,24 @@ mod tests {
     fn test_security_context_builder_full() {
         let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
-
-        let permission1 = Permission::builder()
-            .tenant_id(tenant_id)
-            .resource_pattern("gts.x.core.events.topic.v1~*")
-            .action("publish")
-            .build()
-            .unwrap();
-
-        let permission2 = Permission::builder()
-            .resource_pattern("file_parser")
-            .action("edit")
-            .build()
-            .unwrap();
+        let subject_tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440002").unwrap();
 
         let ctx = SecurityContext::builder()
             .tenant_id(tenant_id)
             .subject_id(subject_id)
             .subject_type("user")
-            .add_permission(permission1)
-            .add_permission(permission2)
+            .subject_tenant_id(subject_tenant_id)
+            .token_scopes(vec!["read:events".to_owned(), "write:events".to_owned()])
+            .bearer_token("test-token-123".to_owned())
             .add_environment_attribute("ip", "192.168.1.1")
             .add_environment_attribute("device", "mobile")
             .build();
 
         assert_eq!(ctx.tenant_id(), tenant_id);
         assert_eq!(ctx.subject_id(), subject_id);
-        assert_eq!(ctx.permissions().len(), 2);
+        assert_eq!(ctx.subject_tenant_id(), Some(subject_tenant_id));
+        assert_eq!(ctx.token_scopes(), &["read:events", "write:events"]);
+        assert_eq!(ctx.bearer_token(), Some("test-token-123"));
         assert_eq!(ctx.environment().len(), 2);
         assert_eq!(
             ctx.environment()[0],
@@ -228,7 +188,9 @@ mod tests {
 
         assert_eq!(ctx.tenant_id(), Uuid::default());
         assert_eq!(ctx.subject_id(), Uuid::default());
-        assert_eq!(ctx.permissions().len(), 0);
+        assert_eq!(ctx.subject_tenant_id(), None);
+        assert!(ctx.token_scopes().is_empty());
+        assert_eq!(ctx.bearer_token(), None);
         assert_eq!(ctx.environment().len(), 0);
     }
 
@@ -243,7 +205,6 @@ mod tests {
 
         assert_eq!(ctx.tenant_id(), tenant_id);
         assert_eq!(ctx.subject_id(), Uuid::default());
-        assert_eq!(ctx.permissions().len(), 0);
         assert_eq!(ctx.environment().len(), 0);
     }
 
@@ -253,51 +214,19 @@ mod tests {
 
         assert_eq!(ctx.tenant_id(), Uuid::default());
         assert_eq!(ctx.subject_id(), Uuid::default());
-        assert_eq!(ctx.permissions().len(), 0);
+        assert_eq!(ctx.subject_tenant_id(), None);
+        assert!(ctx.token_scopes().is_empty());
+        assert_eq!(ctx.bearer_token(), None);
         assert_eq!(ctx.environment().len(), 0);
     }
 
     #[test]
-    fn test_security_context_with_multiple_permissions() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-
-        let permission1 = Permission::builder()
-            .tenant_id(tenant_id)
-            .resource_pattern("gts.x.core.events.topic.v1~vendor.*")
-            .action("publish")
-            .build()
-            .unwrap();
-
-        let permission2 = Permission::builder()
-            .tenant_id(tenant_id)
-            .resource_pattern("gts.x.core.events.topic.v1~vendor.*")
-            .action("subscribe")
-            .build()
-            .unwrap();
-
-        let permission3 = Permission::builder()
-            .resource_pattern("file_parser")
-            .action("edit")
-            .build()
-            .unwrap();
-
+    fn test_security_context_first_party_scopes() {
         let ctx = SecurityContext::builder()
-            .tenant_id(tenant_id)
-            .add_permission(permission1)
-            .add_permission(permission2)
-            .add_permission(permission3)
+            .token_scopes(vec!["*".to_owned()])
             .build();
 
-        let perms = ctx.permissions();
-        assert_eq!(perms.len(), 3);
-        assert_eq!(perms[0].tenant_id(), Some(tenant_id));
-        assert_eq!(
-            perms[0].resource_pattern(),
-            "gts.x.core.events.topic.v1~vendor.*"
-        );
-        assert_eq!(perms[0].action(), "publish");
-        assert_eq!(perms[1].action(), "subscribe");
-        assert_eq!(perms[2].resource_pattern(), "file_parser");
+        assert_eq!(ctx.token_scopes(), &["*"]);
     }
 
     #[test]
@@ -322,7 +251,6 @@ mod tests {
         let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
 
-        // Test that builder methods can be chained fluently
         let ctx = SecurityContext::builder()
             .tenant_id(tenant_id)
             .subject_id(subject_id)
@@ -337,28 +265,15 @@ mod tests {
     fn test_security_context_getters_dont_mutate() {
         let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
 
-        let permission = Permission::builder()
-            .resource_pattern("file_parser")
-            .action("edit")
-            .build()
-            .unwrap();
-
         let ctx = SecurityContext::builder()
             .tenant_id(tenant_id)
-            .add_permission(permission)
             .add_environment_attribute("ip", "192.168.1.1")
             .build();
-
-        // Call getters multiple times
-        let _perms1 = ctx.permissions();
-        let perms2 = ctx.permissions();
-        assert_eq!(perms2.len(), 1);
 
         let _env1 = ctx.environment();
         let env2 = ctx.environment();
         assert_eq!(env2.len(), 1);
 
-        // Original context should be unchanged
         assert_eq!(ctx.tenant_id(), tenant_id);
     }
 
@@ -366,17 +281,14 @@ mod tests {
     fn test_security_context_clone() {
         let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
-
-        let permission = Permission::builder()
-            .resource_pattern("file_parser")
-            .action("edit")
-            .build()
-            .unwrap();
+        let subject_tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440002").unwrap();
 
         let ctx1 = SecurityContext::builder()
             .tenant_id(tenant_id)
             .subject_id(subject_id)
-            .add_permission(permission)
+            .subject_tenant_id(subject_tenant_id)
+            .token_scopes(vec!["*".to_owned()])
+            .bearer_token("secret".to_owned())
             .add_environment_attribute("ip", "192.168.1.1")
             .build();
 
@@ -384,7 +296,9 @@ mod tests {
 
         assert_eq!(ctx2.tenant_id(), ctx1.tenant_id());
         assert_eq!(ctx2.subject_id(), ctx1.subject_id());
-        assert_eq!(ctx2.permissions().len(), ctx1.permissions().len());
+        assert_eq!(ctx2.subject_tenant_id(), ctx1.subject_tenant_id());
+        assert_eq!(ctx2.token_scopes(), ctx1.token_scopes());
+        assert_eq!(ctx2.bearer_token(), ctx1.bearer_token());
         assert_eq!(ctx2.environment().len(), ctx1.environment().len());
     }
 
@@ -392,19 +306,15 @@ mod tests {
     fn test_security_context_serialize_deserialize() {
         let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
-
-        let permission = Permission::builder()
-            .tenant_id(tenant_id)
-            .resource_pattern("gts.x.core.events.topic.v1~*")
-            .action("publish")
-            .build()
-            .unwrap();
+        let subject_tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440002").unwrap();
 
         let original = SecurityContext::builder()
             .tenant_id(tenant_id)
             .subject_id(subject_id)
             .subject_type("user")
-            .add_permission(permission)
+            .subject_tenant_id(subject_tenant_id)
+            .token_scopes(vec!["admin".to_owned()])
+            .bearer_token("secret-token".to_owned())
             .add_environment_attribute("ip", "192.168.1.1")
             .build();
 
@@ -413,8 +323,22 @@ mod tests {
 
         assert_eq!(deserialized.tenant_id(), original.tenant_id());
         assert_eq!(deserialized.subject_id(), original.subject_id());
-        assert_eq!(deserialized.permissions().len(), 1);
+        assert_eq!(deserialized.subject_tenant_id(), original.subject_tenant_id());
+        assert_eq!(deserialized.token_scopes(), original.token_scopes());
+        // bearer_token is skipped during serialization
+        assert_eq!(deserialized.bearer_token(), None);
         assert_eq!(deserialized.environment().len(), 1);
+    }
+
+    #[test]
+    fn test_security_context_bearer_token_not_serialized() {
+        let ctx = SecurityContext::builder()
+            .bearer_token("secret-token".to_owned())
+            .build();
+
+        let serialized = serde_json::to_string(&ctx).unwrap();
+        assert!(!serialized.contains("secret-token"));
+        assert!(!serialized.contains("bearer_token"));
     }
 
     #[test]
@@ -423,14 +347,13 @@ mod tests {
 
         let ctx = SecurityContext::builder().tenant_id(tenant_id).build();
 
-        // subject_type is optional and should be None when not set
         assert_eq!(ctx.tenant_id(), tenant_id);
     }
 
     #[test]
-    fn test_security_context_empty_permissions() {
+    fn test_security_context_empty_scopes() {
         let ctx = SecurityContext::builder().build();
 
-        assert!(ctx.permissions().is_empty());
+        assert!(ctx.token_scopes().is_empty());
     }
 }

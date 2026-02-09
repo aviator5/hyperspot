@@ -4,35 +4,34 @@ use tracing::{debug, info, instrument};
 use crate::domain::error::DomainError;
 use crate::domain::repos::{AddressesRepository, UsersRepository};
 use crate::domain::service::DbProvider;
+use authz_resolver_sdk::AuthZResolverGatewayClient;
 use modkit_odata::{ODataQuery, Page};
-use modkit_security::{PolicyEngineRef, SecurityContext};
-use tenant_resolver_sdk::TenantResolverGatewayClient;
+use modkit_security::SecurityContext;
 use time::OffsetDateTime;
 use user_info_sdk::{Address, AddressPatch, NewAddress};
 use uuid::Uuid;
 
 pub struct AddressesService<R: AddressesRepository, U: UsersRepository> {
     db: Arc<DbProvider>,
-    policy_engine: PolicyEngineRef,
     repo: Arc<R>,
     users_repo: Arc<U>,
-    resolver: Arc<dyn TenantResolverGatewayClient>,
+    authz: Arc<dyn AuthZResolverGatewayClient>,
 }
+
+const RESOURCE_TYPE: &str = "users_info.address";
 
 impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
     pub fn new(
         db: Arc<DbProvider>,
         repo: Arc<R>,
         users_repo: Arc<U>,
-        policy_engine: PolicyEngineRef,
-        resolver: Arc<dyn TenantResolverGatewayClient>,
+        authz: Arc<dyn AuthZResolverGatewayClient>,
     ) -> Self {
         Self {
             db,
-            policy_engine,
             repo,
             users_repo,
-            resolver,
+            authz,
         }
     }
 }
@@ -49,12 +48,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "get", RESOURCE_TYPE, Some(id), true).await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
 
@@ -72,12 +66,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "list", RESOURCE_TYPE, None, true).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -95,12 +84,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "get", RESOURCE_TYPE, None, true).await?;
 
         let found = self.repo.get_by_user_id(&conn, &scope, user_id).await?;
 
@@ -128,12 +112,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "update", RESOURCE_TYPE, None, true).await?;
 
         let user = self
             .users_repo
@@ -187,12 +166,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "delete", RESOURCE_TYPE, None, true).await?;
 
         let rows_affected = self.repo.delete_by_user_id(&conn, &scope, user_id).await?;
 
@@ -214,12 +188,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "create", RESOURCE_TYPE, None, true).await?;
 
         let now = OffsetDateTime::now_utc();
         let id = new_address.id.unwrap_or_else(Uuid::now_v7);
@@ -252,12 +221,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "update", RESOURCE_TYPE, Some(id), true).await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
 
@@ -286,12 +250,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "delete", RESOURCE_TYPE, Some(id), true).await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;
 

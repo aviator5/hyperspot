@@ -20,6 +20,8 @@ tenant-resolver-example = [
 ]
 single-tenant = ["dep:single-tenant-tr-plugin"]
 static-tenants = ["dep:static-tr-plugin"]
+static-authn = ["dep:static-authn-plugin"]
+static-authz = ["dep:static-authz-plugin"]
 otel = ["modkit/otel"]
 
 [dependencies]
@@ -34,10 +36,16 @@ module_orchestrator = { package = "cf-module-orchestrator", path = "../../module
 types = { path = "../../modules/system/types" }
 types_registry = { package = "cf-types-registry", path = "../../modules/system/types_registry/types_registry" }
 tenant-resolver-gw = { package = "cf-tenant-resolver-gw", path = "../../modules/system/tenant_resolver/tenant_resolver-gw" }
+authn-resolver-gw = { package = "cf-authn-resolver-gw", path = "../../modules/system/authn_resolver/authn_resolver-gw" }
+authz-resolver-gw = { package = "cf-authz-resolver-gw", path = "../../modules/system/authz_resolver/authz_resolver-gw" }
 
 # Optional tenant resolver plugins
 single-tenant-tr-plugin = { package = "cf-single-tenant-tr-plugin", path = "../../modules/system/tenant_resolver/plugins/single_tenant_tr_plugin", optional = true }
 static-tr-plugin = { package = "cf-static-tr-plugin", path = "../../modules/system/tenant_resolver/plugins/static_tr_plugin", optional = true }
+
+# Optional authn/authz plugins
+static-authn-plugin = { package = "cf-static-authn-plugin", path = "../../modules/system/authn_resolver/plugins/static_authn_plugin", optional = true }
+static-authz-plugin = { package = "cf-static-authz-plugin", path = "../../modules/system/authz_resolver/plugins/static_authz_plugin", optional = true }
 
 # user modules
 file_parser = { package = "cf-file-parser", path = "../../modules/file_parser" }

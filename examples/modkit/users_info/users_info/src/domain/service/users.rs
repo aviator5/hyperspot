@@ -7,9 +7,9 @@ use crate::domain::ports::{AuditPort, EventPublisher};
 use crate::domain::repos::{AddressesRepository, CitiesRepository, UsersRepository};
 use crate::domain::service::DbProvider;
 use crate::domain::service::{AddressesService, CitiesService, ServiceConfig};
+use authz_resolver_sdk::AuthZResolverGatewayClient;
 use modkit_odata::{ODataQuery, Page};
-use modkit_security::{PolicyEngineRef, SecurityContext};
-use tenant_resolver_sdk::TenantResolverGatewayClient;
+use modkit_security::SecurityContext;
 use time::OffsetDateTime;
 use user_info_sdk::{NewUser, User, UserFull, UserPatch};
 use uuid::Uuid;
@@ -28,15 +28,16 @@ use uuid::Uuid;
 pub struct UsersService<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository>
 {
     db: Arc<DbProvider>,
-    policy_engine: PolicyEngineRef,
     repo: Arc<R>,
     events: Arc<dyn EventPublisher<UserDomainEvent>>,
     audit: Arc<dyn AuditPort>,
-    resolver: Arc<dyn TenantResolverGatewayClient>,
+    authz: Arc<dyn AuthZResolverGatewayClient>,
     config: ServiceConfig,
     cities: Arc<CitiesService<CR>>,
     addresses: Arc<AddressesService<AR, R>>,
 }
+
+const RESOURCE_TYPE: &str = "users_info.user";
 
 impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository>
     UsersService<R, CR, AR>
@@ -47,19 +48,17 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
         repo: Arc<R>,
         events: Arc<dyn EventPublisher<UserDomainEvent>>,
         audit: Arc<dyn AuditPort>,
-        policy_engine: PolicyEngineRef,
-        resolver: Arc<dyn TenantResolverGatewayClient>,
+        authz: Arc<dyn AuthZResolverGatewayClient>,
         config: ServiceConfig,
         cities: Arc<CitiesService<CR>>,
         addresses: Arc<AddressesService<AR, R>>,
     ) -> Self {
         Self {
             db,
-            policy_engine,
             repo,
             events,
             audit,
-            resolver,
+            authz,
             config,
             cities,
             addresses,
@@ -93,12 +92,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         audit_get_user_access_best_effort(self, id).await;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "get", RESOURCE_TYPE, Some(id), true).await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
 
@@ -119,12 +113,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "list", RESOURCE_TYPE, None, true).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -158,12 +147,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let id = provided_id.unwrap_or_else(Uuid::now_v7);
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "create", RESOURCE_TYPE, None, true).await?;
 
         let now = OffsetDateTime::now_utc();
 
@@ -218,12 +202,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "update", RESOURCE_TYPE, Some(id), true).await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
         let mut current: User = match found {
@@ -265,12 +244,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let tenant_ids = super::resolve_accessible_tenants(self.resolver.as_ref(), ctx).await?;
-        let scope = ctx
-            .scope(self.policy_engine.clone())
-            .include_accessible_tenants(tenant_ids)
-            .prepare()
-            .await?;
+        let scope = super::authz_scope(self.authz.as_ref(), ctx, "delete", RESOURCE_TYPE, Some(id), true).await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;
 

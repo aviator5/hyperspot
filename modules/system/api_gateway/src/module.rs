@@ -9,7 +9,6 @@ use arc_swap::ArcSwap;
 use dashmap::DashMap;
 
 use anyhow::Result;
-use axum::extract::State;
 use axum::http::Method;
 use axum::middleware::from_fn_with_state;
 use axum::{Router, extract::DefaultBodyLimit, middleware::from_fn, routing::get};
@@ -26,10 +25,12 @@ use tower_http::{
 };
 use tracing::debug;
 
+use authn_resolver_sdk::AuthNResolverGatewayClient;
+
 use crate::auth;
 use crate::config::ApiGatewayConfig;
 use modkit_security::constants::{DEFAULT_SUBJECT_ID, DEFAULT_TENANT_ID};
-use modkit_security::{PolicyEngineRef, SecurityContext};
+use modkit_security::SecurityContext;
 
 use crate::middleware;
 use crate::router_cache::RouterCache;
@@ -40,7 +41,7 @@ use crate::web;
 #[modkit::module(
 	name = "api_gateway",
 	capabilities = [rest_host, rest, stateful],
-    deps = ["grpc_hub"],
+    deps = ["grpc_hub", "authn_resolver"],
 	lifecycle(entry = "serve", stop_timeout = "30s", await_ready)
 )]
 pub struct ApiGateway {
@@ -52,6 +53,8 @@ pub struct ApiGateway {
     pub(crate) router_cache: RouterCache<axum::Router>,
     // Store the finalized router from REST phase for serving
     pub(crate) final_router: Mutex<Option<axum::Router>>,
+    // AuthN Resolver client (resolved during init, None when auth_disabled)
+    pub(crate) authn_client: Mutex<Option<Arc<dyn AuthNResolverGatewayClient>>>,
 
     // Duplicate detection (per (method, path) and per handler id)
     pub(crate) registered_routes: DashMap<(Method, String), ()>,
@@ -66,6 +69,7 @@ impl Default for ApiGateway {
             openapi_registry: Arc::new(OpenApiRegistryImpl::new()),
             router_cache: RouterCache::new(default_router),
             final_router: Mutex::new(None),
+            authn_client: Mutex::new(None),
             registered_routes: DashMap::new(),
             registered_handlers: DashMap::new(),
         }
@@ -82,6 +86,7 @@ impl ApiGateway {
             openapi_registry: Arc::new(OpenApiRegistryImpl::new()),
             router_cache: RouterCache::new(default_router),
             final_router: Mutex::new(None),
+            authn_client: Mutex::new(None),
             registered_routes: DashMap::new(),
             registered_handlers: DashMap::new(),
         }
@@ -112,8 +117,8 @@ impl ApiGateway {
         Ok(())
     }
 
-    /// Build auth state and route policy from operation specs
-    fn build_auth_state_from_specs(&self) -> Result<(auth::AuthState, auth::GatewayRoutePolicy)> {
+    /// Build route policy from operation specs.
+    fn build_route_policy_from_specs(&self) -> Result<auth::GatewayRoutePolicy> {
         let mut req_map = std::collections::HashMap::new();
         let mut public_routes = std::collections::HashSet::new();
 
@@ -130,7 +135,7 @@ impl ApiGateway {
             if let Some(ref sec) = spec.sec_requirement {
                 req_map.insert(
                     route_key.clone(),
-                    auth::Requirement {
+                    auth::RouteRequirement {
                         resource: sec.resource.clone(),
                         action: sec.action.clone(),
                     },
@@ -146,23 +151,27 @@ impl ApiGateway {
         let requirements_count = req_map.len();
         let public_routes_count = public_routes.len();
 
-        let (auth_state, route_policy) = auth::build_auth_state(&config, req_map, public_routes)?;
+        let route_policy = auth::build_route_policy(&config, req_map, public_routes)?;
 
         tracing::info!(
             auth_disabled = config.auth_disabled,
             require_auth_by_default = config.require_auth_by_default,
             requirements_count = requirements_count,
             public_routes_count = public_routes_count,
-            "Auth state and route policy built from operation specs"
+            "Route policy built from operation specs"
         );
 
-        Ok((auth_state, route_policy))
+        Ok(route_policy)
     }
 
     /// Apply all middleware layers to a router (request ID, tracing, timeout, body limit, CORS, rate limiting, error mapping, auth)
-    pub(crate) fn apply_middleware_stack(&self, mut router: Router) -> Result<Router> {
-        // Build auth state and route policy once
-        let (auth_state, route_policy) = self.build_auth_state_from_specs()?;
+    pub(crate) fn apply_middleware_stack(
+        &self,
+        mut router: Router,
+        authn_client: Option<Arc<dyn AuthNResolverGatewayClient>>,
+    ) -> Result<Router> {
+        // Build route policy once
+        let route_policy = self.build_route_policy_from_specs()?;
 
         // IMPORTANT: `axum::Router::layer(...)` behaves like Tower layers: the **last** added layer
         // becomes the **outermost** layer and therefore runs **first** on the request path.
@@ -184,23 +193,12 @@ impl ApiGateway {
             .map(|e| e.value().clone())
             .collect();
 
-        // 12) License validation
+        // 11) License validation
         let license_map = middleware::license_validation::LicenseRequirementMap::from_specs(&specs);
         router = router.layer(from_fn(
             move |req: axum::extract::Request, next: axum::middleware::Next| {
                 let map = license_map.clone();
                 middleware::license_validation::license_validation_middleware(map, req, next)
-            },
-        ));
-
-        // 11) Inject Policy Engine
-        router = router.layer(from_fn_with_state(
-            auth_state.policy_engine,
-            |State(engine): State<PolicyEngineRef>,
-             mut req: axum::extract::Request,
-             next: axum::middleware::Next| async move {
-                req.extensions_mut().insert(engine);
-                next.run(req).await
             },
         ));
 
@@ -221,19 +219,21 @@ impl ApiGateway {
                 move |mut req: axum::extract::Request, next: axum::middleware::Next| {
                     let sec_context = default_security_context.clone();
                     async move {
-                        // Insert both context types for compatibility during migration
                         req.extensions_mut().insert(sec_context);
                         next.run(req).await
                     }
                 },
             ));
+        } else if let Some(client) = authn_client {
+            let auth_state = auth::AuthState {
+                authn_client: client,
+                route_policy,
+            };
+            router = router.layer(from_fn_with_state(auth_state, auth::authn_middleware));
         } else {
-            let validator = auth_state.validator.clone();
-            let authorizer = auth_state.authorizer.clone();
-            let policy = Arc::new(route_policy) as Arc<dyn modkit_auth::RoutePolicy>;
-
-            router = router.layer(modkit_auth::axum_ext::AuthPolicyLayer::new(
-                validator, authorizer, policy,
+            return Err(anyhow::anyhow!(
+                "auth is enabled but no AuthN Resolver client is available; \
+                 ensure `authn_resolver` module is loaded or set `auth_disabled: true`"
             ));
         }
 
@@ -366,7 +366,8 @@ impl ApiGateway {
             .route("/healthz", get(|| async { "ok" }));
 
         // Apply all middleware layers including auth, above the router
-        router = self.apply_middleware_stack(router)?;
+        let authn_client = self.authn_client.lock().clone();
+        router = self.apply_middleware_stack(router, authn_client)?;
 
         // Cache the built router for future use
         self.router_cache.store(router.clone());
@@ -554,6 +555,13 @@ impl modkit::Module for ApiGateway {
                 tenant_id = %DEFAULT_TENANT_ID,
                 "Auth-disabled mode enabled with default tenant"
             );
+        } else {
+            // Resolve AuthN Resolver client from ClientHub
+            let authn_client = ctx
+                .client_hub()
+                .get::<dyn AuthNResolverGatewayClient>()?;
+            *self.authn_client.lock() = Some(authn_client);
+            tracing::info!("AuthN Resolver client resolved from ClientHub");
         }
 
         Ok(())
@@ -592,7 +600,8 @@ impl modkit::contracts::ApiGatewayCapability for ApiGateway {
 
         // Apply middleware stack (including auth) to the final router
         tracing::debug!("Applying middleware stack to finalized router");
-        router = self.apply_middleware_stack(router)?;
+        let authn_client = self.authn_client.lock().clone();
+        router = self.apply_middleware_stack(router, authn_client)?;
 
         // Keep the finalized router to be used by `serve()`
         *self.final_router.lock() = Some(router.clone());

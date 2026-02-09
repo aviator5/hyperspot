@@ -106,11 +106,6 @@ modules:
       # Authentication Configuration
       auth_disabled: true
       require_auth_by_default: true
-      
-      # JWKS Configuration (replace with your OIDC provider)
-      jwks_uri: "http://localhost:8080/realms/dev/protocol/openid-connect/certs"
-      issuer: "http://localhost:8080/realms/dev"
-      audience: "api-gateway"
 
   module_orchestrator:
     config: {}
@@ -120,6 +115,30 @@ modules:
     config:
       # Use ephemeral port; OoP modules receive the actual bound address from master host
       listen_addr: "uds:///tmp/hyperspot-grpc"
+
+  authn_resolver_gateway:
+    config:
+      vendor: "hyperspot"
+
+  authz_resolver_gateway:
+    config:
+      vendor: "hyperspot"
+
+  static_authn_plugin:
+    config:
+      vendor: "hyperspot"
+      priority: 100
+      mode: accept_all
+      default_identity:
+        subject_id: "11111111-6a88-4768-9dfc-6bcd5187d9ed"
+        subject_tenant_id: "00000000-df51-5b42-9538-d2b56b7ee953"
+        token_scopes: ["*"]
+
+  static_authz_plugin:
+    config:
+      vendor: "hyperspot"
+      priority: 100
+      mode: allow_all
 
   simple_user_settings:
     # Module-specific database configuration
@@ -160,6 +179,8 @@ modules:
     config:
       default_page_size: 5
       max_page_size: 100
+      audit_base_url: "http://localhost:9090"
+      notifications_base_url: "http://localhost:9091"
 
   tenant_resolver_gateway:
     config:

@@ -4,7 +4,7 @@
 //!
 //! These tests verify that:
 //! 1. Auth middleware is properly attached to the router
-//! 2. `SecurityCtx` is always inserted by middleware
+//! 2. `SecurityContext` is always inserted by middleware
 //! 3. Public routes work without authentication
 //! 4. Protected routes enforce authentication when enabled
 
@@ -13,7 +13,7 @@ mod common;
 use anyhow::Result;
 use async_trait::async_trait;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::Body,
     http::{Request, StatusCode},
 };
@@ -28,7 +28,7 @@ use modkit::{
     context::ModuleCtx,
     contracts::{ApiGatewayCapability, OpenApiRegistry, RestApiCapability},
 };
-use modkit_auth::axum_ext::Authz;
+use modkit_security::SecurityContext;
 use serde_json::json;
 use std::sync::Arc;
 use tenant_resolver_sdk::TenantResolverGatewayClient;
@@ -83,8 +83,8 @@ struct TestResponse {
     user_id: String,
 }
 
-/// Handler that requires `SecurityCtx` (via Authz extractor)
-async fn protected_handler(Authz(ctx): Authz) -> Json<TestResponse> {
+/// Handler that requires `SecurityContext` (via Extension extractor)
+async fn protected_handler(Extension(ctx): Extension<SecurityContext>) -> Json<TestResponse> {
     Json(TestResponse {
         message: "Protected resource accessed".to_owned(),
         user_id: ctx.subject_id().to_string(),
@@ -363,7 +363,7 @@ async fn test_middleware_always_inserts_security_ctx() {
         .rest_finalize(&api_ctx, router)
         .expect("Failed to finalize");
 
-    // Make request to protected handler that extracts Authz(SecurityCtx)
+    // Make request to protected handler that extracts SecurityContext
     let response = router
         .oneshot(
             Request::builder()
@@ -390,7 +390,7 @@ async fn test_openapi_includes_security_metadata() {
                 "bind_addr": "0.0.0.0:8080",
                 "enable_docs": true,
                 "cors_enabled": false,
-                "auth_disabled": false,
+                "auth_disabled": true,
                 "require_auth_by_default": true,
             }
         }

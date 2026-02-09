@@ -20,8 +20,8 @@ workspace = true
 [dependencies]
 modkit = { workspace = true }
 modkit-http = { workspace = true }
-modkit-auth = { workspace = true }
 modkit-security = { workspace = true }
+authn-resolver-sdk = { package = "cf-authn-resolver-sdk", version = "0.1.0", path = "../authn_resolver/authn_resolver-sdk" }
 modkit-macros = { workspace = true }
 inventory = { workspace = true }
 anyhow = { workspace = true }

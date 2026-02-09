@@ -9,10 +9,10 @@ use modkit_db::migration_runner::run_migrations_for_module;
 use modkit_db::{ConnectOpts, DBProvider, Db, DbError, connect_db};
 use modkit_security::SecurityContext;
 use serde_json::json;
-use tenant_resolver_sdk::{
-    GetAncestorsOptions, GetAncestorsResponse, GetDescendantsOptions, GetDescendantsResponse,
-    GetTenantsOptions, IsAncestorOptions, TenantRef, TenantResolverError,
-    TenantResolverGatewayClient, TenantStatus,
+use authz_resolver_sdk::{
+    AuthZResolverError, AuthZResolverGatewayClient,
+    constraints::{Constraint, InPredicate, Predicate},
+    models::{EvaluationRequest, EvaluationResponse},
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -20,91 +20,34 @@ use uuid::Uuid;
 use user_info_sdk::{NewUser, UsersInfoClientV1};
 use users_info::UsersInfo;
 
-/// Mock tenant resolver for tests.
-struct MockTenantResolver;
+/// Mock AuthZ resolver for tests (allow_all mode).
+struct MockAuthZResolver;
 
 #[async_trait::async_trait]
-impl TenantResolverGatewayClient for MockTenantResolver {
-    async fn get_tenant(
+impl AuthZResolverGatewayClient for MockAuthZResolver {
+    async fn evaluate(
         &self,
-        _ctx: &SecurityContext,
-        id: tenant_resolver_sdk::TenantId,
-    ) -> Result<tenant_resolver_sdk::TenantInfo, TenantResolverError> {
-        Ok(tenant_resolver_sdk::TenantInfo {
-            id,
-            name: format!("Tenant {id}"),
-            status: TenantStatus::Active,
-            tenant_type: None,
-            parent_id: None,
-            self_managed: false,
+        request: EvaluationRequest,
+    ) -> Result<EvaluationResponse, AuthZResolverError> {
+        let constraints = if request.resource.require_constraints {
+            if let Some(ref tenant_ctx) = request.context.tenant {
+                vec![Constraint {
+                    predicates: vec![Predicate::In(InPredicate {
+                        property: "owner_tenant_id".to_owned(),
+                        values: vec![tenant_ctx.root_id],
+                    })],
+                }]
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        };
+
+        Ok(EvaluationResponse {
+            decision: true,
+            constraints,
         })
-    }
-
-    async fn get_tenants(
-        &self,
-        ctx: &SecurityContext,
-        ids: &[tenant_resolver_sdk::TenantId],
-        _options: &GetTenantsOptions,
-    ) -> Result<Vec<tenant_resolver_sdk::TenantInfo>, TenantResolverError> {
-        let tenant_id = ctx.tenant_id();
-        Ok(ids
-            .iter()
-            .filter(|id| **id == tenant_id)
-            .map(|id| tenant_resolver_sdk::TenantInfo {
-                id: *id,
-                name: format!("Tenant {id}"),
-                status: TenantStatus::Active,
-                tenant_type: None,
-                parent_id: None,
-                self_managed: false,
-            })
-            .collect())
-    }
-
-    async fn get_ancestors(
-        &self,
-        _ctx: &SecurityContext,
-        id: tenant_resolver_sdk::TenantId,
-        _options: &GetAncestorsOptions,
-    ) -> Result<GetAncestorsResponse, TenantResolverError> {
-        Ok(GetAncestorsResponse {
-            tenant: TenantRef {
-                id,
-                status: TenantStatus::Active,
-                tenant_type: None,
-                parent_id: None,
-                self_managed: false,
-            },
-            ancestors: vec![],
-        })
-    }
-
-    async fn get_descendants(
-        &self,
-        _ctx: &SecurityContext,
-        id: tenant_resolver_sdk::TenantId,
-        _options: &GetDescendantsOptions,
-    ) -> Result<GetDescendantsResponse, TenantResolverError> {
-        Ok(GetDescendantsResponse {
-            tenant: TenantRef {
-                id,
-                status: TenantStatus::Active,
-                tenant_type: None,
-                parent_id: None,
-                self_managed: false,
-            },
-            descendants: vec![],
-        })
-    }
-
-    async fn is_ancestor(
-        &self,
-        _ctx: &SecurityContext,
-        _ancestor_id: tenant_resolver_sdk::TenantId,
-        _descendant_id: tenant_resolver_sdk::TenantId,
-        _options: &IsAncestorOptions,
-    ) -> Result<bool, TenantResolverError> {
-        Ok(false)
     }
 }
 
@@ -154,8 +97,8 @@ async fn users_info_registers_sdk_client_and_handles_basic_crud() {
 
     let hub = Arc::new(ClientHub::new());
 
-    // Register mock tenant resolver before initializing the module
-    hub.register::<dyn TenantResolverGatewayClient>(Arc::new(MockTenantResolver));
+    // Register mock AuthZ resolver before initializing the module
+    hub.register::<dyn AuthZResolverGatewayClient>(Arc::new(MockAuthZResolver));
 
     let ctx = ModuleCtx::new(
         "users_info",
