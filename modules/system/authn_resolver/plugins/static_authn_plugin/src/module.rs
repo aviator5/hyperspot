@@ -1,4 +1,4 @@
-//! Static AuthN resolver plugin module.
+//! Static `AuthN` resolver plugin module.
 
 use std::sync::{Arc, OnceLock};
 
@@ -14,7 +14,7 @@ use types_registry_sdk::TypesRegistryClient;
 use crate::config::StaticAuthnPluginConfig;
 use crate::domain::Service;
 
-/// Static AuthN resolver plugin module.
+/// Static `AuthN` resolver plugin module.
 ///
 /// Provides token-to-identity mapping from configuration.
 ///

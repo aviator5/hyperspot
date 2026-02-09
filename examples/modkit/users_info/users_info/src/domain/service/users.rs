@@ -92,7 +92,16 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         audit_get_user_access_best_effort(self, id).await;
 
-        let scope = super::authz_scope(self.authz.as_ref(), ctx, "get", RESOURCE_TYPE, Some(id), true).await?;
+        let scope = super::authz_scope(
+            self.authz.as_ref(),
+            ctx,
+            "get",
+            RESOURCE_TYPE,
+            Some(id),
+            true,
+            ctx.subject_tenant_id(),
+        )
+        .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
 
@@ -113,7 +122,16 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let scope = super::authz_scope(self.authz.as_ref(), ctx, "list", RESOURCE_TYPE, None, true).await?;
+        let scope = super::authz_scope(
+            self.authz.as_ref(),
+            ctx,
+            "list",
+            RESOURCE_TYPE,
+            None,
+            true,
+            ctx.subject_tenant_id(),
+        )
+        .await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -147,7 +165,16 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let id = provided_id.unwrap_or_else(Uuid::now_v7);
 
-        let scope = super::authz_scope(self.authz.as_ref(), ctx, "create", RESOURCE_TYPE, None, true).await?;
+        let scope = super::authz_scope(
+            self.authz.as_ref(),
+            ctx,
+            "create",
+            RESOURCE_TYPE,
+            None,
+            true,
+            ctx.subject_tenant_id(),
+        )
+        .await?;
 
         let now = OffsetDateTime::now_utc();
 
@@ -202,7 +229,16 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let scope = super::authz_scope(self.authz.as_ref(), ctx, "update", RESOURCE_TYPE, Some(id), true).await?;
+        let scope = super::authz_scope(
+            self.authz.as_ref(),
+            ctx,
+            "update",
+            RESOURCE_TYPE,
+            Some(id),
+            true,
+            ctx.subject_tenant_id(),
+        )
+        .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
         let mut current: User = match found {
@@ -244,7 +280,16 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let scope = super::authz_scope(self.authz.as_ref(), ctx, "delete", RESOURCE_TYPE, Some(id), true).await?;
+        let scope = super::authz_scope(
+            self.authz.as_ref(),
+            ctx,
+            "delete",
+            RESOURCE_TYPE,
+            Some(id),
+            true,
+            ctx.subject_tenant_id(),
+        )
+        .await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;
 

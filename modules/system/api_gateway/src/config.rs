@@ -34,7 +34,7 @@ pub struct ApiGatewayConfig {
     /// When true, middleware automatically injects a default `SecurityContext` for all requests,
     /// providing access with no tenant filtering.
     /// This bypasses all tenant isolation and should only be used for single-user on-premise installations.
-    /// Default: false (authentication required via AuthN Resolver).
+    /// Default: false (authentication required via `AuthN` Resolver).
     #[serde(default)]
     pub auth_disabled: bool,
 

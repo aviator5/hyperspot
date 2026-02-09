@@ -29,8 +29,8 @@ use authn_resolver_sdk::AuthNResolverGatewayClient;
 
 use crate::auth;
 use crate::config::ApiGatewayConfig;
-use modkit_security::constants::{DEFAULT_SUBJECT_ID, DEFAULT_TENANT_ID};
 use modkit_security::SecurityContext;
+use modkit_security::constants::{DEFAULT_SUBJECT_ID, DEFAULT_TENANT_ID};
 
 use crate::middleware;
 use crate::router_cache::RouterCache;
@@ -119,7 +119,7 @@ impl ApiGateway {
 
     /// Build route policy from operation specs.
     fn build_route_policy_from_specs(&self) -> Result<auth::GatewayRoutePolicy> {
-        let mut req_map = std::collections::HashMap::new();
+        let mut authenticated_routes = std::collections::HashSet::new();
         let mut public_routes = std::collections::HashSet::new();
 
         // Always mark built-in health check routes as public
@@ -132,14 +132,8 @@ impl ApiGateway {
             let spec = spec.value();
             let route_key = (spec.method.clone(), spec.path.clone());
 
-            if let Some(ref sec) = spec.sec_requirement {
-                req_map.insert(
-                    route_key.clone(),
-                    auth::RouteRequirement {
-                        resource: sec.resource.clone(),
-                        action: sec.action.clone(),
-                    },
-                );
+            if spec.authenticated {
+                authenticated_routes.insert(route_key.clone());
             }
 
             if spec.is_public {
@@ -148,10 +142,10 @@ impl ApiGateway {
         }
 
         let config = self.get_cached_config();
-        let requirements_count = req_map.len();
+        let requirements_count = authenticated_routes.len();
         let public_routes_count = public_routes.len();
 
-        let route_policy = auth::build_route_policy(&config, req_map, public_routes)?;
+        let route_policy = auth::build_route_policy(&config, authenticated_routes, public_routes)?;
 
         tracing::info!(
             auth_disabled = config.auth_disabled,
@@ -206,8 +200,8 @@ impl ApiGateway {
         if config.auth_disabled {
             // Build security contexts for compatibility during migration
             let default_security_context = SecurityContext::builder()
-                .tenant_id(DEFAULT_TENANT_ID)
                 .subject_id(DEFAULT_SUBJECT_ID)
+                .subject_tenant_id(DEFAULT_TENANT_ID)
                 .build();
 
             tracing::warn!(
@@ -557,9 +551,7 @@ impl modkit::Module for ApiGateway {
             );
         } else {
             // Resolve AuthN Resolver client from ClientHub
-            let authn_client = ctx
-                .client_hub()
-                .get::<dyn AuthNResolverGatewayClient>()?;
+            let authn_client = ctx.client_hub().get::<dyn AuthNResolverGatewayClient>()?;
             *self.authn_client.lock() = Some(authn_client);
             tracing::info!("AuthN Resolver client resolved from ClientHub");
         }

@@ -1,13 +1,13 @@
-//! GTS schema definitions for AuthN resolver plugins.
+//! GTS schema definitions for `AuthN` resolver plugins.
 //!
-//! This module defines the GTS type for AuthN resolver plugin instances.
+//! This module defines the GTS type for `AuthN` resolver plugin instances.
 //! Plugins register instances of this type with the types-registry to be
 //! discovered by the gateway.
 
 use gts_macros::struct_to_gts_schema;
 use modkit::gts::BaseModkitPluginV1;
 
-/// GTS type definition for AuthN resolver plugin instances.
+/// GTS type definition for `AuthN` resolver plugin instances.
 ///
 /// Each plugin registers an instance of this type with its vendor-specific
 /// instance ID. The gateway discovers plugins by querying types-registry

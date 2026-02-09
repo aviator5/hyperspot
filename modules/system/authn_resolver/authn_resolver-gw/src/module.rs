@@ -1,4 +1,4 @@
-//! AuthN resolver gateway module.
+//! `AuthN` resolver gateway module.
 
 use std::sync::{Arc, OnceLock};
 
@@ -12,7 +12,7 @@ use types_registry_sdk::TypesRegistryClient;
 use crate::config::AuthNResolverGwConfig;
 use crate::domain::{AuthNResolverGwLocalClient, Service};
 
-/// AuthN Resolver Gateway module.
+/// `AuthN` Resolver Gateway module.
 ///
 /// This module:
 /// 1. Registers the plugin schema in types-registry

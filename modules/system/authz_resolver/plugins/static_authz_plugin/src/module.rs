@@ -1,4 +1,4 @@
-//! Static AuthZ resolver plugin module.
+//! Static `AuthZ` resolver plugin module.
 
 use std::sync::{Arc, OnceLock};
 
@@ -14,7 +14,7 @@ use types_registry_sdk::TypesRegistryClient;
 use crate::config::StaticAuthzPluginConfig;
 use crate::domain::Service;
 
-/// Static AuthZ resolver plugin module.
+/// Static `AuthZ` resolver plugin module.
 #[modkit::module(
     name = "static_authz_plugin",
     deps = ["types_registry"]

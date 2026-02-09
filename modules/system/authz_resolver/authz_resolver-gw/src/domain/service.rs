@@ -1,4 +1,4 @@
-//! Domain service for the AuthZ resolver gateway.
+//! Domain service for the `AuthZ` resolver gateway.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,7 +18,7 @@ use super::error::DomainError;
 /// Throttle interval for unavailable plugin warnings.
 const UNAVAILABLE_LOG_THROTTLE: Duration = Duration::from_secs(10);
 
-/// AuthZ resolver gateway service.
+/// `AuthZ` resolver gateway service.
 pub struct Service {
     hub: Arc<ClientHub>,
     vendor: String,
@@ -92,10 +92,7 @@ impl Service {
         request: EvaluationRequest,
     ) -> Result<EvaluationResponse, DomainError> {
         let plugin = self.get_plugin().await?;
-        plugin
-            .evaluate(request)
-            .await
-            .map_err(DomainError::from)
+        plugin.evaluate(request).await.map_err(DomainError::from)
     }
 }
 

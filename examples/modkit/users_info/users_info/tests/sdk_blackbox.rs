@@ -3,24 +3,24 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use authz_resolver_sdk::{
+    AuthZResolverError, AuthZResolverGatewayClient,
+    constraints::{Constraint, InPredicate, Predicate},
+    models::{EvaluationRequest, EvaluationResponse},
+};
 use modkit::config::ConfigProvider;
 use modkit::{ClientHub, DatabaseCapability, Module, ModuleCtx};
 use modkit_db::migration_runner::run_migrations_for_module;
 use modkit_db::{ConnectOpts, DBProvider, Db, DbError, connect_db};
 use modkit_security::SecurityContext;
 use serde_json::json;
-use authz_resolver_sdk::{
-    AuthZResolverError, AuthZResolverGatewayClient,
-    constraints::{Constraint, InPredicate, Predicate},
-    models::{EvaluationRequest, EvaluationResponse},
-};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use user_info_sdk::{NewUser, UsersInfoClientV1};
 use users_info::UsersInfo;
 
-/// Mock AuthZ resolver for tests (allow_all mode).
+/// Mock `AuthZ` resolver for tests (`allow_all` mode).
 struct MockAuthZResolver;
 
 #[async_trait::async_trait]
@@ -124,8 +124,8 @@ async fn users_info_registers_sdk_client_and_handles_basic_crud() {
     // Create a security context with tenant access
     let tenant_id = Uuid::new_v4();
     let sec = SecurityContext::builder()
-        .tenant_id(tenant_id)
         .subject_id(Uuid::new_v4())
+        .subject_tenant_id(tenant_id)
         .build();
 
     let created = client

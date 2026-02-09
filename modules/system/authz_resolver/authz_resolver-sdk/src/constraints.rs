@@ -13,11 +13,11 @@ use uuid::Uuid;
 
 /// A constraint on a specific resource property.
 ///
-/// Multiple constraints within a response are ORed:
+/// Multiple constraints within a response are `ORed`:
 /// a resource matches if it satisfies ANY constraint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constraint {
-    /// The predicates within this constraint. All predicates are ANDed:
+    /// The predicates within this constraint. All predicates are `ANDed`:
     /// a resource matches this constraint only if ALL predicates are satisfied.
     pub predicates: Vec<Predicate>,
 }
@@ -35,7 +35,7 @@ pub enum Predicate {
 /// Equality predicate: `property = value`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EqPredicate {
-    /// Resource property name (e.g., "owner_tenant_id", "id").
+    /// Resource property name (e.g., "`owner_tenant_id`", "id").
     pub property: String,
     /// The value to match.
     pub value: Uuid,
@@ -44,7 +44,7 @@ pub struct EqPredicate {
 /// Set membership predicate: `property IN (values)`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InPredicate {
-    /// Resource property name (e.g., "owner_tenant_id", "id").
+    /// Resource property name (e.g., "`owner_tenant_id`", "id").
     pub property: String,
     /// The set of values to match against.
     pub values: Vec<Uuid>,

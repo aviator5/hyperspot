@@ -1,4 +1,4 @@
-//! Configuration for the AuthN resolver gateway.
+//! Configuration for the `AuthN` resolver gateway.
 
 use serde::Deserialize;
 

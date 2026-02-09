@@ -1,4 +1,4 @@
-//! Local (in-process) client for the AuthZ resolver gateway.
+//! Local (in-process) client for the `AuthZ` resolver gateway.
 
 use std::sync::Arc;
 

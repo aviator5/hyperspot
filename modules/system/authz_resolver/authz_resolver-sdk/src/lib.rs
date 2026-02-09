@@ -1,4 +1,4 @@
-//! AuthZ Resolver SDK
+//! `AuthZ` Resolver SDK
 //!
 //! This crate provides the public API for the `authz_resolver` module:
 //!

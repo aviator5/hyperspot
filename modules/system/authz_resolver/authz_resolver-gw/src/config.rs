@@ -1,4 +1,4 @@
-//! Configuration for the AuthZ resolver gateway.
+//! Configuration for the `AuthZ` resolver gateway.
 
 use serde::Deserialize;
 

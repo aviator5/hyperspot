@@ -1,4 +1,4 @@
-//! Domain service for the AuthN resolver gateway.
+//! Domain service for the `AuthN` resolver gateway.
 //!
 //! Plugin discovery is lazy: resolved on first API call after
 //! types-registry is ready.
@@ -21,7 +21,7 @@ use super::error::DomainError;
 /// Throttle interval for unavailable plugin warnings.
 const UNAVAILABLE_LOG_THROTTLE: Duration = Duration::from_secs(10);
 
-/// AuthN resolver gateway service.
+/// `AuthN` resolver gateway service.
 ///
 /// Discovers plugins via types-registry and delegates authentication calls.
 pub struct Service {

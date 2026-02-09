@@ -1,4 +1,4 @@
-//! Configuration for the static AuthZ resolver plugin.
+//! Configuration for the static `AuthZ` resolver plugin.
 
 use serde::Deserialize;
 

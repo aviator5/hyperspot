@@ -54,7 +54,9 @@ impl<R: SettingsRepository> Service<R> {
             Ok(settings)
         } else {
             let user_id = ctx.subject_id();
-            let tenant_id = ctx.tenant_id();
+            let tenant_id = ctx
+                .subject_tenant_id()
+                .ok_or_else(|| DomainError::Internal("subject_tenant_id is required".to_owned()))?;
 
             Ok(SimpleUserSettings {
                 user_id,
@@ -123,5 +125,6 @@ impl<R: SettingsRepository> Service<R> {
 ///
 /// Settings are scoped to tenant + user (resource).
 fn build_scope(ctx: &SecurityContext) -> AccessScope {
-    AccessScope::both(vec![ctx.tenant_id()], vec![ctx.subject_id()])
+    let tenant_ids = ctx.subject_tenant_id().into_iter().collect();
+    AccessScope::both(tenant_ids, vec![ctx.subject_id()])
 }

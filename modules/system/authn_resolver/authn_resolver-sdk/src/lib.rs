@@ -1,4 +1,4 @@
-//! AuthN Resolver SDK
+//! `AuthN` Resolver SDK
 //!
 //! This crate provides the public API for the `authn_resolver` module:
 //!

@@ -1,9 +1,9 @@
-//! GTS schema definitions for AuthZ resolver plugins.
+//! GTS schema definitions for `AuthZ` resolver plugins.
 
 use gts_macros::struct_to_gts_schema;
 use modkit::gts::BaseModkitPluginV1;
 
-/// GTS type definition for AuthZ resolver plugin instances.
+/// GTS type definition for `AuthZ` resolver plugin instances.
 ///
 /// # Instance ID Format
 ///

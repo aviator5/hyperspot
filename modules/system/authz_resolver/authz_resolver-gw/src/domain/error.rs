@@ -1,4 +1,4 @@
-//! Domain errors for the AuthZ resolver gateway.
+//! Domain errors for the `AuthZ` resolver gateway.
 
 use authz_resolver_sdk::AuthZResolverError;
 

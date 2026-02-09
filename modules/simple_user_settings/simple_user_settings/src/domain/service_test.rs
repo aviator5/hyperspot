@@ -42,8 +42,8 @@ mod tests {
 
     fn create_test_context() -> SecurityContext {
         SecurityContext::builder()
-            .tenant_id(Uuid::new_v4())
             .subject_id(Uuid::new_v4())
+            .subject_tenant_id(Uuid::new_v4())
             .build()
     }
 
@@ -66,7 +66,7 @@ mod tests {
         let result = service.get_settings(&ctx).await.unwrap();
 
         assert_eq!(result.user_id, ctx.subject_id());
-        assert_eq!(result.tenant_id, ctx.tenant_id());
+        assert_eq!(result.tenant_id, ctx.subject_tenant_id().unwrap());
         assert_eq!(result.theme, None);
         assert_eq!(result.language, None);
     }
@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(result.theme, Some("light".to_owned()));
         assert_eq!(result.language, Some("es".to_owned()));
         assert_eq!(result.user_id, ctx.subject_id());
-        assert_eq!(result.tenant_id, ctx.tenant_id());
+        assert_eq!(result.tenant_id, ctx.subject_tenant_id().unwrap());
     }
 
     #[tokio::test]
@@ -310,12 +310,12 @@ mod tests {
 
         let tenant_id = Uuid::new_v4();
         let user1 = SecurityContext::builder()
-            .tenant_id(tenant_id)
             .subject_id(Uuid::new_v4())
+            .subject_tenant_id(tenant_id)
             .build();
         let user2 = SecurityContext::builder()
-            .tenant_id(tenant_id)
             .subject_id(Uuid::new_v4())
+            .subject_tenant_id(tenant_id)
             .build();
 
         // User 1 creates settings
@@ -344,12 +344,12 @@ mod tests {
 
         let user_id = Uuid::new_v4();
         let tenant1 = SecurityContext::builder()
-            .tenant_id(Uuid::new_v4())
             .subject_id(user_id)
+            .subject_tenant_id(Uuid::new_v4())
             .build();
         let tenant2 = SecurityContext::builder()
-            .tenant_id(Uuid::new_v4())
             .subject_id(user_id)
+            .subject_tenant_id(Uuid::new_v4())
             .build();
 
         // Same user in tenant 1 creates settings
@@ -368,6 +368,6 @@ mod tests {
         let result = service.get_settings(&tenant2).await.unwrap();
         assert_eq!(result.theme, None);
         assert_eq!(result.language, None);
-        assert_eq!(result.tenant_id, tenant2.tenant_id());
+        assert_eq!(result.tenant_id, tenant2.subject_tenant_id().unwrap());
     }
 }

@@ -1,4 +1,4 @@
-//! Client implementation for the static AuthZ resolver plugin.
+//! Client implementation for the static `AuthZ` resolver plugin.
 
 use async_trait::async_trait;
 use authz_resolver_sdk::{

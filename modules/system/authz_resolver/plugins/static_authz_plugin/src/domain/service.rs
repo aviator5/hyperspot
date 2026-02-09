@@ -1,11 +1,11 @@
-//! Service implementation for the static AuthZ resolver plugin.
+//! Service implementation for the static `AuthZ` resolver plugin.
 
 use authz_resolver_sdk::{
     Constraint, EvaluationRequest, EvaluationResponse, InPredicate, Predicate,
 };
 use uuid::Uuid;
 
-/// Static AuthZ resolver service.
+/// Static `AuthZ` resolver service.
 ///
 /// In `allow_all` mode:
 /// - Always returns `decision: true`
@@ -37,7 +37,7 @@ impl Service {
             .tenant
             .as_ref()
             .map(|t| t.root_id)
-            .or_else(|| request.subject.tenant_id);
+            .or(request.subject.tenant_id);
 
         let constraints = if let Some(tid) = tenant_id {
             if tid == Uuid::default() {
@@ -73,9 +73,7 @@ mod tests {
         EvaluationRequest {
             subject: Subject {
                 id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
-                tenant_id: Some(
-                    Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
-                ),
+                tenant_id: Some(Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap()),
                 subject_type: None,
                 properties: HashMap::new(),
             },

@@ -1,4 +1,4 @@
-//! Domain layer for the AuthZ resolver gateway.
+//! Domain layer for the `AuthZ` resolver gateway.
 
 pub mod error;
 pub mod local_client;

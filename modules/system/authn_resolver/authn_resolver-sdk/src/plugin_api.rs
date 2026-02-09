@@ -1,4 +1,4 @@
-//! Plugin API trait for AuthN resolver implementations.
+//! Plugin API trait for `AuthN` resolver implementations.
 //!
 //! Plugins implement this trait to provide token validation.
 //! The gateway discovers plugins via GTS types-registry and delegates
@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use crate::error::AuthNResolverError;
 use crate::models::AuthenticationResult;
 
-/// Plugin API trait for AuthN resolver implementations.
+/// Plugin API trait for `AuthN` resolver implementations.
 ///
 /// Each plugin registers this trait with a scoped `ClientHub` entry
 /// using its GTS instance ID as the scope.

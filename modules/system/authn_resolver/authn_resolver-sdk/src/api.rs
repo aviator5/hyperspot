@@ -1,4 +1,4 @@
-//! Public API trait for the AuthN resolver gateway.
+//! Public API trait for the `AuthN` resolver gateway.
 //!
 //! This trait defines the interface that consumers use to authenticate
 //! bearer tokens. The gateway implements this trait and delegates
@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use crate::error::AuthNResolverError;
 use crate::models::AuthenticationResult;
 
-/// Public API trait for the AuthN resolver gateway.
+/// Public API trait for the `AuthN` resolver gateway.
 ///
 /// This trait is registered in `ClientHub` by the gateway module and
 /// can be consumed by other modules (primarily the API gateway):
@@ -37,7 +37,7 @@ pub trait AuthNResolverGatewayClient: Send + Sync {
     /// # Errors
     ///
     /// - `Unauthorized` if the token is invalid, expired, or malformed
-    /// - `NoPluginAvailable` if no AuthN plugin is registered
+    /// - `NoPluginAvailable` if no `AuthN` plugin is registered
     /// - `ServiceUnavailable` if the plugin is not ready
     /// - `Internal` for unexpected errors
     async fn authenticate(

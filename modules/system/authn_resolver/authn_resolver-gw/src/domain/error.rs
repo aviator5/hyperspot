@@ -1,4 +1,4 @@
-//! Domain errors for the AuthN resolver gateway.
+//! Domain errors for the `AuthN` resolver gateway.
 
 use authn_resolver_sdk::AuthNResolverError;
 

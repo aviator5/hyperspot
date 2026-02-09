@@ -22,7 +22,7 @@ const TEST_DEFAULT_SUBJECT_ID: Uuid = uuid!("11111111-0000-0000-0000-00000000000
 /// Test handler that extracts `SecurityContext` and returns its properties as JSON
 async fn test_handler(Extension(ctx): Extension<SecurityContext>) -> impl IntoResponse {
     axum::Json(serde_json::json!({
-        "tenant_id": ctx.tenant_id(),
+        "tenant_id": ctx.subject_tenant_id(),
         "subject_id": ctx.subject_id()
     }))
 }
@@ -31,7 +31,7 @@ async fn test_handler(Extension(ctx): Extension<SecurityContext>) -> impl IntoRe
 async fn inject_default_tenant_context(mut req: Request, next: Next) -> Response {
     // This simulates what api_gateway does in auth_disabled mode:
     let ctx = SecurityContext::builder()
-        .tenant_id(TEST_DEFAULT_TENANT_ID)
+        .subject_tenant_id(TEST_DEFAULT_TENANT_ID)
         .subject_id(TEST_DEFAULT_SUBJECT_ID)
         .build();
 
@@ -68,7 +68,7 @@ async fn test_auth_disabled_injects_default_tenant_context() {
 
     assert_eq!(
         json["tenant_id"],
-        TEST_DEFAULT_TENANT_ID.to_string(),
+        serde_json::json!(TEST_DEFAULT_TENANT_ID.to_string()),
         "Should have the default tenant"
     );
     assert_eq!(

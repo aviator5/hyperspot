@@ -1,15 +1,15 @@
-//! Error types for the AuthZ resolver module.
+//! Error types for the `AuthZ` resolver module.
 
 use thiserror::Error;
 
-/// Errors that can occur when using the AuthZ resolver API.
+/// Errors that can occur when using the `AuthZ` resolver API.
 #[derive(Debug, Error)]
 pub enum AuthZResolverError {
     /// Access was explicitly denied by the PDP.
     #[error("access denied")]
     Denied,
 
-    /// No AuthZ plugin is available to handle the request.
+    /// No `AuthZ` plugin is available to handle the request.
     #[error("no plugin available")]
     NoPluginAvailable,
 

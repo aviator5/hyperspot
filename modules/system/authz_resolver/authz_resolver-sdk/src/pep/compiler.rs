@@ -4,12 +4,12 @@
 //!
 //! ## Decision Matrix (fail-closed)
 //!
-//! | decision | require_constraints | constraints | Result |
+//! | decision | `require_constraints` | constraints | Result |
 //! |----------|-------------------|-------------|--------|
 //! | false    | *                 | *           | Denied |
-//! | true     | false             | *           | allow_all() |
-//! | true     | true              | empty       | allow_all() (unrestricted) |
-//! | true     | true              | present     | Compile constraints → AccessScope |
+//! | true     | false             | *           | `allow_all()` |
+//! | true     | true              | empty       | `allow_all()` (unrestricted) |
+//! | true     | true              | present     | Compile constraints → `AccessScope` |
 //!
 //! Unknown predicate types fail that constraint (fail-closed).
 
@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::constraints::{Constraint, Predicate};
 use crate::models::EvaluationResponse;
 
-/// Well-known resource properties that map to AccessScope fields.
+/// Well-known resource properties that map to `AccessScope` fields.
 const PROPERTY_OWNER_TENANT_ID: &str = "owner_tenant_id";
 const PROPERTY_ID: &str = "id";
 
@@ -45,7 +45,7 @@ pub enum ConstraintCompileError {
 ///
 /// ## Constraint compilation
 ///
-/// Multiple constraints are ORed: tenant/resource IDs from all constraints
+/// Multiple constraints are `ORed`: tenant/resource IDs from all constraints
 /// are merged into a single `AccessScope`.
 ///
 /// Known predicates:
@@ -121,7 +121,7 @@ struct CompiledConstraint {
 
 /// Compile a single constraint's predicates into tenant/resource ID sets.
 ///
-/// All predicates within a constraint are ANDed, but for our first iteration
+/// All predicates within a constraint are `ANDed`, but for our first iteration
 /// we handle single-property constraints by collecting IDs.
 /// If any predicate targets an unknown property, the constraint fails.
 fn compile_constraint(constraint: &Constraint) -> Result<CompiledConstraint, String> {
@@ -154,9 +154,10 @@ fn compile_constraint(constraint: &Constraint) -> Result<CompiledConstraint, Str
 
     // If any predicate was unknown, fail this constraint (fail-closed)
     if has_unknown {
-        return Err(format!(
+        return Err(
             "constraint has unsupported predicates (only owner_tenant_id and id are supported)"
-        ));
+                .to_owned(),
+        );
     }
 
     Ok(CompiledConstraint {

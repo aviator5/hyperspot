@@ -63,7 +63,9 @@ impl SettingsRepository for SeaOrmSettingsRepository {
         language: Option<String>,
     ) -> Result<SimpleUserSettings, DomainError> {
         let user_id = ctx.subject_id();
-        let tenant_id = ctx.tenant_id();
+        let tenant_id = ctx
+            .subject_tenant_id()
+            .ok_or_else(|| DomainError::internal("subject_tenant_id is required".to_owned()))?;
 
         let active_model = entity::ActiveModel {
             tenant_id: ActiveValue::Set(tenant_id),

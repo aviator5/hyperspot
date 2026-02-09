@@ -1,6 +1,6 @@
-//! Domain models for the AuthZ resolver module.
+//! Domain models for the `AuthZ` resolver module.
 //!
-//! Based on AuthZEN 1.0 evaluation model with constraint extensions.
+//! Based on `AuthZEN` 1.0 evaluation model with constraint extensions.
 
 use std::collections::HashMap;
 
@@ -11,7 +11,7 @@ use crate::constraints::Constraint;
 
 /// Authorization evaluation request.
 ///
-/// Follows the AuthZEN 1.0 model: Subject + Action + Resource + Context.
+/// Follows the `AuthZEN` 1.0 model: Subject + Action + Resource + Context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluationRequest {
     /// The subject (who is making the request).
@@ -48,7 +48,7 @@ pub struct Action {
 /// The resource being accessed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
-    /// Resource type identifier (e.g., "users_info.user").
+    /// Resource type identifier (e.g., "`users_info.user`").
     pub resource_type: String,
     /// Specific resource ID (for GET/UPDATE/DELETE on a single resource).
     pub id: Option<Uuid>,
@@ -70,7 +70,7 @@ pub struct TenantContext {
 pub struct Context {
     /// Tenant context for multi-tenant scoping.
     pub tenant: Option<TenantContext>,
-    /// Token scopes from the AuthN result.
+    /// Token scopes from the `AuthN` result.
     #[serde(default)]
     pub token_scopes: Vec<String>,
     /// Additional context properties for policy evaluation.
@@ -88,7 +88,7 @@ pub struct EvaluationResponse {
     pub decision: bool,
     /// Row-level constraints to apply when `decision` is `true`.
     /// Empty when `require_constraints` was `false` or when access is unrestricted.
-    /// Multiple constraints are ORed (any one matching is sufficient).
+    /// Multiple constraints are `ORed` (any one matching is sufficient).
     #[serde(default)]
     pub constraints: Vec<Constraint>,
 }

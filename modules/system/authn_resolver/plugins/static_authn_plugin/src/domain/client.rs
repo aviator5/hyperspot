@@ -1,4 +1,4 @@
-//! Client implementation for the static AuthN resolver plugin.
+//! Client implementation for the static `AuthN` resolver plugin.
 //!
 //! Implements `AuthNResolverPluginClient` using the domain service.
 

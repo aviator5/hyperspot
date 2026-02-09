@@ -1,4 +1,4 @@
-//! Local (in-process) client for the AuthN resolver gateway.
+//! Local (in-process) client for the `AuthN` resolver gateway.
 
 use std::sync::Arc;
 

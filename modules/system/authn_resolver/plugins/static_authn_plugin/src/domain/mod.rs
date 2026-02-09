@@ -1,4 +1,4 @@
-//! Domain layer for the static AuthN resolver plugin.
+//! Domain layer for the static `AuthN` resolver plugin.
 
 mod client;
 pub mod service;

@@ -20,10 +20,7 @@ use axum::{
 use common::MockTenantResolver;
 use modkit::{
     ClientHub, Module,
-    api::{
-        OperationBuilder,
-        operation_builder::{AuthReqAction, AuthReqResource, LicenseFeature},
-    },
+    api::{OperationBuilder, operation_builder::LicenseFeature},
     config::ConfigProvider,
     context::ModuleCtx,
     contracts::{ApiGatewayCapability, OpenApiRegistry, RestApiCapability},
@@ -109,34 +106,6 @@ impl Module for TestAuthModule {
     }
 }
 
-enum TestResource {
-    Test,
-}
-
-impl AsRef<str> for TestResource {
-    fn as_ref(&self) -> &'static str {
-        match self {
-            TestResource::Test => "test",
-        }
-    }
-}
-
-impl AuthReqResource for TestResource {}
-
-enum Action {
-    Read,
-}
-
-impl AsRef<str> for Action {
-    fn as_ref(&self) -> &'static str {
-        match self {
-            Action::Read => "read",
-        }
-    }
-}
-
-impl AuthReqAction for Action {}
-
 struct License;
 
 impl AsRef<str> for License {
@@ -157,7 +126,7 @@ impl RestApiCapability for TestAuthModule {
         // Protected route with explicit auth requirement
         let router = OperationBuilder::get("/tests/v1/api/protected")
             .operation_id("test.protected")
-            .require_auth(&TestResource::Test, &Action::Read)
+            .authenticated()
             .require_license_features::<License>([])
             .summary("Protected endpoint")
             .handler(protected_handler)
@@ -169,7 +138,7 @@ impl RestApiCapability for TestAuthModule {
         // Protected route with path parameter (to test pattern matching)
         let router = OperationBuilder::get("/tests/v1/api/users/{id}")
             .operation_id("test.get_user")
-            .require_auth(&TestResource::Test, &Action::Read)
+            .authenticated()
             .require_license_features::<License>([])
             .summary("Get user by ID")
             .path_param("id", "User ID")

@@ -1,4 +1,4 @@
-//! Static AuthZ Resolver Plugin
+//! Static `AuthZ` Resolver Plugin
 //!
 //! This plugin provides a static allow-all authorization policy for development and testing.
 //!

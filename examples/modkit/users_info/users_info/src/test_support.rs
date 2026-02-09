@@ -5,8 +5,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use authz_resolver_sdk::{
     AuthZResolverError, AuthZResolverGatewayClient,
+    constraints::{Constraint, InPredicate, Predicate},
     models::{EvaluationRequest, EvaluationResponse},
-    constraints::{Constraint, Predicate, InPredicate},
 };
 use modkit_db::migration_runner::run_migrations_for_testing;
 use modkit_db::secure::DBRunner;
@@ -27,8 +27,8 @@ use crate::module::ConcreteAppServices;
 pub fn ctx_allow_tenants(tenants: &[Uuid]) -> SecurityContext {
     let tenant_id = tenants.first().copied().unwrap_or_else(Uuid::new_v4);
     SecurityContext::builder()
-        .tenant_id(tenant_id)
         .subject_id(Uuid::new_v4())
+        .subject_tenant_id(tenant_id)
         .build()
 }
 
@@ -104,8 +104,8 @@ impl AuditPort for MockAuditPort {
     }
 }
 
-/// Mock AuthZ resolver that allows all requests and returns the context's tenant
-/// as a constraint, mimicking the static_authz_plugin allow_all behavior.
+/// Mock `AuthZ` resolver that allows all requests and returns the context's tenant
+/// as a constraint, mimicking the `static_authz_plugin` `allow_all` behavior.
 pub struct MockAuthZResolver;
 
 #[async_trait]

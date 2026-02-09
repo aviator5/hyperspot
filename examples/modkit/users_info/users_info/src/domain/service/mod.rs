@@ -24,9 +24,9 @@
 //!
 //! ## Security
 //!
-//! All operations use the AuthZ Resolver PEP (Policy Enforcement Point) pattern:
+//! All operations use the `AuthZ` Resolver PEP (Policy Enforcement Point) pattern:
 //! 1. Build evaluation request from `SecurityContext` + operation details
-//! 2. Call AuthZ Resolver to evaluate the request
+//! 2. Call `AuthZ` Resolver to evaluate the request
 //! 3. Compile PDP response into `AccessScope` for row-level filtering
 //! 4. Pass scope to repository methods for tenant-isolated queries
 //!
@@ -46,8 +46,8 @@ use crate::domain::error::DomainError;
 use crate::domain::events::UserDomainEvent;
 use crate::domain::ports::{AuditPort, EventPublisher};
 use crate::domain::repos::{AddressesRepository, CitiesRepository, UsersRepository};
-use authz_resolver_sdk::pep::{compile_to_access_scope, build_evaluation_request};
 use authz_resolver_sdk::AuthZResolverGatewayClient;
+use authz_resolver_sdk::pep::{build_evaluation_request, compile_to_access_scope};
 use modkit_db::DBProvider;
 use modkit_db::odata::LimitCfg;
 use modkit_security::{AccessScope, SecurityContext};
@@ -63,11 +63,11 @@ pub(crate) use users::UsersService;
 
 pub(crate) type DbProvider = DBProvider<modkit_db::DbError>;
 
-/// Resolve access scope for the current security context using the AuthZ Resolver.
+/// Resolve access scope for the current security context using the `AuthZ` Resolver.
 ///
 /// This is the PEP (Policy Enforcement Point) helper that:
 /// 1. Builds an `EvaluationRequest` from the security context + operation details
-/// 2. Calls the AuthZ Resolver PDP to evaluate the request
+/// 2. Calls the `AuthZ` Resolver PDP to evaluate the request
 /// 3. Compiles the PDP response into an `AccessScope` for row-level filtering
 pub(crate) async fn authz_scope(
     authz: &dyn AuthZResolverGatewayClient,
@@ -76,9 +76,16 @@ pub(crate) async fn authz_scope(
     resource_type: &str,
     resource_id: Option<Uuid>,
     require_constraints: bool,
+    context_tenant_id: Option<Uuid>,
 ) -> Result<AccessScope, DomainError> {
-    let eval_request =
-        build_evaluation_request(ctx, action, resource_type, resource_id, require_constraints);
+    let eval_request = build_evaluation_request(
+        ctx,
+        action,
+        resource_type,
+        resource_id,
+        require_constraints,
+        context_tenant_id,
+    );
     let eval_response = authz.evaluate(eval_request).await.map_err(|e| {
         tracing::error!(error = %e, "AuthZ evaluation failed");
         DomainError::InternalError

@@ -2,17 +2,15 @@ use uuid::Uuid;
 
 /// `SecurityContext` encapsulates the security-related information for a request or operation.
 ///
-/// Built by the AuthN Resolver during authentication and passed through the request lifecycle.
-/// Modules use this context together with the AuthZ Resolver to obtain access scopes.
+/// Built by the `AuthN` Resolver during authentication and passed through the request lifecycle.
+/// Modules use this context together with the `AuthZ` Resolver to obtain access scopes.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SecurityContext {
-    /// Context tenant ID — used for query scoping (the tenant being operated on).
-    tenant_id: Uuid,
     /// Subject ID — the authenticated user, service, or system making the request.
     subject_id: Uuid,
     /// Subject type classification (e.g., "user", "service").
     subject_type: Option<String>,
-    /// Subject's home tenant (from AuthN). May differ from `tenant_id` in cross-tenant scenarios.
+    /// Subject's home tenant (from `AuthN`). May differ from `tenant_id` in cross-tenant scenarios.
     subject_tenant_id: Option<Uuid>,
     /// Token capability restrictions. `["*"]` means first-party / unrestricted.
     /// Empty means no scopes were asserted (treat as unrestricted for backward compatibility).
@@ -21,8 +19,6 @@ pub struct SecurityContext {
     /// Original bearer token for PDP forwarding. Never serialized/persisted.
     #[serde(skip)]
     bearer_token: Option<String>,
-    /// Environmental attributes (e.g., IP address, device type, location).
-    environment: Vec<(String, String)>,
 }
 
 impl SecurityContext {
@@ -38,19 +34,13 @@ impl SecurityContext {
         SecurityContextBuilder::default().build()
     }
 
-    /// Get the context tenant ID (the tenant being operated on)
-    #[must_use]
-    pub fn tenant_id(&self) -> Uuid {
-        self.tenant_id
-    }
-
     /// Get the subject ID (user, service, or system) associated with the security context
     #[must_use]
     pub fn subject_id(&self) -> Uuid {
         self.subject_id
     }
 
-    /// Get the subject's home tenant ID (from AuthN token).
+    /// Get the subject's home tenant ID (from `AuthN` token).
     #[must_use]
     pub fn subject_tenant_id(&self) -> Option<Uuid> {
         self.subject_tenant_id
@@ -67,33 +57,18 @@ impl SecurityContext {
     pub fn bearer_token(&self) -> Option<&str> {
         self.bearer_token.as_deref()
     }
-
-    /// Get the environmental attributes associated with the security context
-    /// (e.g., IP address, device type, location, time, etc.)
-    #[must_use]
-    pub fn environment(&self) -> Vec<(String, String)> {
-        self.environment.clone()
-    }
 }
 
 #[derive(Default)]
 pub struct SecurityContextBuilder {
-    tenant_id: Option<Uuid>,
     subject_id: Option<Uuid>,
     subject_type: Option<String>,
     subject_tenant_id: Option<Uuid>,
     token_scopes: Vec<String>,
     bearer_token: Option<String>,
-    environment: Vec<(String, String)>,
 }
 
 impl SecurityContextBuilder {
-    #[must_use]
-    pub fn tenant_id(mut self, tenant_id: Uuid) -> Self {
-        self.tenant_id = Some(tenant_id);
-        self
-    }
-
     #[must_use]
     pub fn subject_id(mut self, subject_id: Uuid) -> Self {
         self.subject_id = Some(subject_id);
@@ -125,21 +100,13 @@ impl SecurityContextBuilder {
     }
 
     #[must_use]
-    pub fn add_environment_attribute(mut self, key: &str, value: &str) -> Self {
-        self.environment.push((key.to_owned(), value.to_owned()));
-        self
-    }
-
-    #[must_use]
     pub fn build(self) -> SecurityContext {
         SecurityContext {
-            tenant_id: self.tenant_id.unwrap_or_default(),
             subject_id: self.subject_id.unwrap_or_default(),
             subject_type: self.subject_type,
             subject_tenant_id: self.subject_tenant_id,
             token_scopes: self.token_scopes,
             bearer_token: self.bearer_token,
-            environment: self.environment,
         }
     }
 }
@@ -151,73 +118,48 @@ mod tests {
 
     #[test]
     fn test_security_context_builder_full() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
         let subject_tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440002").unwrap();
 
         let ctx = SecurityContext::builder()
-            .tenant_id(tenant_id)
             .subject_id(subject_id)
             .subject_type("user")
             .subject_tenant_id(subject_tenant_id)
             .token_scopes(vec!["read:events".to_owned(), "write:events".to_owned()])
             .bearer_token("test-token-123".to_owned())
-            .add_environment_attribute("ip", "192.168.1.1")
-            .add_environment_attribute("device", "mobile")
             .build();
 
-        assert_eq!(ctx.tenant_id(), tenant_id);
         assert_eq!(ctx.subject_id(), subject_id);
         assert_eq!(ctx.subject_tenant_id(), Some(subject_tenant_id));
         assert_eq!(ctx.token_scopes(), &["read:events", "write:events"]);
         assert_eq!(ctx.bearer_token(), Some("test-token-123"));
-        assert_eq!(ctx.environment().len(), 2);
-        assert_eq!(
-            ctx.environment()[0],
-            ("ip".to_owned(), "192.168.1.1".to_owned())
-        );
-        assert_eq!(
-            ctx.environment()[1],
-            ("device".to_owned(), "mobile".to_owned())
-        );
     }
 
     #[test]
     fn test_security_context_builder_minimal() {
         let ctx = SecurityContext::builder().build();
 
-        assert_eq!(ctx.tenant_id(), Uuid::default());
         assert_eq!(ctx.subject_id(), Uuid::default());
         assert_eq!(ctx.subject_tenant_id(), None);
         assert!(ctx.token_scopes().is_empty());
         assert_eq!(ctx.bearer_token(), None);
-        assert_eq!(ctx.environment().len(), 0);
     }
 
     #[test]
     fn test_security_context_builder_partial() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let ctx = SecurityContext::builder().subject_type("service").build();
 
-        let ctx = SecurityContext::builder()
-            .tenant_id(tenant_id)
-            .subject_type("service")
-            .build();
-
-        assert_eq!(ctx.tenant_id(), tenant_id);
         assert_eq!(ctx.subject_id(), Uuid::default());
-        assert_eq!(ctx.environment().len(), 0);
     }
 
     #[test]
     fn test_security_context_anonymous() {
         let ctx = SecurityContext::anonymous();
 
-        assert_eq!(ctx.tenant_id(), Uuid::default());
         assert_eq!(ctx.subject_id(), Uuid::default());
         assert_eq!(ctx.subject_tenant_id(), None);
         assert!(ctx.token_scopes().is_empty());
         assert_eq!(ctx.bearer_token(), None);
-        assert_eq!(ctx.environment().len(), 0);
     }
 
     #[test]
@@ -230,104 +172,61 @@ mod tests {
     }
 
     #[test]
-    fn test_security_context_with_multiple_environment_attributes() {
-        let ctx = SecurityContext::builder()
-            .add_environment_attribute("ip", "192.168.1.1")
-            .add_environment_attribute("device", "mobile")
-            .add_environment_attribute("location", "US")
-            .add_environment_attribute("time_zone", "PST")
-            .build();
-
-        let env = ctx.environment();
-        assert_eq!(env.len(), 4);
-        assert_eq!(env[0], ("ip".to_owned(), "192.168.1.1".to_owned()));
-        assert_eq!(env[1], ("device".to_owned(), "mobile".to_owned()));
-        assert_eq!(env[2], ("location".to_owned(), "US".to_owned()));
-        assert_eq!(env[3], ("time_zone".to_owned(), "PST".to_owned()));
-    }
-
-    #[test]
     fn test_security_context_builder_chaining() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
 
         let ctx = SecurityContext::builder()
-            .tenant_id(tenant_id)
             .subject_id(subject_id)
             .subject_type("user")
             .build();
 
-        assert_eq!(ctx.tenant_id(), tenant_id);
         assert_eq!(ctx.subject_id(), subject_id);
     }
 
     #[test]
-    fn test_security_context_getters_dont_mutate() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-
-        let ctx = SecurityContext::builder()
-            .tenant_id(tenant_id)
-            .add_environment_attribute("ip", "192.168.1.1")
-            .build();
-
-        let _env1 = ctx.environment();
-        let env2 = ctx.environment();
-        assert_eq!(env2.len(), 1);
-
-        assert_eq!(ctx.tenant_id(), tenant_id);
-    }
-
-    #[test]
     fn test_security_context_clone() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
         let subject_tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440002").unwrap();
 
         let ctx1 = SecurityContext::builder()
-            .tenant_id(tenant_id)
             .subject_id(subject_id)
             .subject_tenant_id(subject_tenant_id)
             .token_scopes(vec!["*".to_owned()])
             .bearer_token("secret".to_owned())
-            .add_environment_attribute("ip", "192.168.1.1")
             .build();
 
         let ctx2 = ctx1.clone();
 
-        assert_eq!(ctx2.tenant_id(), ctx1.tenant_id());
         assert_eq!(ctx2.subject_id(), ctx1.subject_id());
         assert_eq!(ctx2.subject_tenant_id(), ctx1.subject_tenant_id());
         assert_eq!(ctx2.token_scopes(), ctx1.token_scopes());
         assert_eq!(ctx2.bearer_token(), ctx1.bearer_token());
-        assert_eq!(ctx2.environment().len(), ctx1.environment().len());
     }
 
     #[test]
     fn test_security_context_serialize_deserialize() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
         let subject_tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440002").unwrap();
 
         let original = SecurityContext::builder()
-            .tenant_id(tenant_id)
             .subject_id(subject_id)
             .subject_type("user")
             .subject_tenant_id(subject_tenant_id)
             .token_scopes(vec!["admin".to_owned()])
             .bearer_token("secret-token".to_owned())
-            .add_environment_attribute("ip", "192.168.1.1")
             .build();
 
         let serialized = serde_json::to_string(&original).unwrap();
         let deserialized: SecurityContext = serde_json::from_str(&serialized).unwrap();
 
-        assert_eq!(deserialized.tenant_id(), original.tenant_id());
         assert_eq!(deserialized.subject_id(), original.subject_id());
-        assert_eq!(deserialized.subject_tenant_id(), original.subject_tenant_id());
+        assert_eq!(
+            deserialized.subject_tenant_id(),
+            original.subject_tenant_id()
+        );
         assert_eq!(deserialized.token_scopes(), original.token_scopes());
         // bearer_token is skipped during serialization
         assert_eq!(deserialized.bearer_token(), None);
-        assert_eq!(deserialized.environment().len(), 1);
     }
 
     #[test]
@@ -343,11 +242,11 @@ mod tests {
 
     #[test]
     fn test_security_context_with_no_subject_type() {
-        let tenant_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let subject_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
 
-        let ctx = SecurityContext::builder().tenant_id(tenant_id).build();
+        let ctx = SecurityContext::builder().subject_id(subject_id).build();
 
-        assert_eq!(ctx.tenant_id(), tenant_id);
+        assert_eq!(ctx.subject_id(), subject_id);
     }
 
     #[test]

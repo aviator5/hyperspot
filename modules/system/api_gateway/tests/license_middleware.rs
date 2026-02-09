@@ -14,7 +14,7 @@ use common::MockTenantResolver;
 use modkit::{
     ClientHub, Module,
     api::OperationBuilder,
-    api::operation_builder::{AuthReqAction, AuthReqResource, LicenseFeature},
+    api::operation_builder::LicenseFeature,
     config::ConfigProvider,
     context::ModuleCtx,
     contracts::{ApiGatewayCapability, OpenApiRegistry, RestApiCapability},
@@ -73,34 +73,6 @@ impl Module for TestLicenseModule {
     }
 }
 
-enum TestResource {
-    Test,
-}
-
-impl AsRef<str> for TestResource {
-    fn as_ref(&self) -> &'static str {
-        match self {
-            TestResource::Test => "test",
-        }
-    }
-}
-
-impl AuthReqResource for TestResource {}
-
-enum TestAction {
-    Read,
-}
-
-impl AsRef<str> for TestAction {
-    fn as_ref(&self) -> &'static str {
-        match self {
-            TestAction::Read => "read",
-        }
-    }
-}
-
-impl AuthReqAction for TestAction {}
-
 struct NonBaseFeature;
 
 impl AsRef<str> for NonBaseFeature {
@@ -132,7 +104,7 @@ impl RestApiCapability for TestLicenseModule {
 
         let router = OperationBuilder::get("/tests/v1/license/bad")
             .operation_id("test.license.bad")
-            .require_auth(&TestResource::Test, &TestAction::Read)
+            .authenticated()
             .require_license_features([&feature])
             .handler(ok_handler)
             .json_response(http::StatusCode::OK, "OK")
@@ -142,7 +114,7 @@ impl RestApiCapability for TestLicenseModule {
 
         let router = OperationBuilder::get("/tests/v1/license/good")
             .operation_id("test.license.good")
-            .require_auth(&TestResource::Test, &TestAction::Read)
+            .authenticated()
             .require_license_features([&base_feature])
             .handler(ok_handler)
             .json_response(http::StatusCode::OK, "OK")
@@ -150,7 +122,7 @@ impl RestApiCapability for TestLicenseModule {
 
         let router = OperationBuilder::get("/tests/v1/license/none")
             .operation_id("test.license.none")
-            .require_auth(&TestResource::Test, &TestAction::Read)
+            .authenticated()
             .require_license_features::<BaseFeature>([])
             .handler(ok_handler)
             .json_response(http::StatusCode::OK, "OK")

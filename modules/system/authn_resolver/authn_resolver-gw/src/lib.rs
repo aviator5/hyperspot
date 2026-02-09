@@ -1,6 +1,6 @@
-//! AuthN Resolver Gateway Module
+//! `AuthN` Resolver Gateway Module
 //!
-//! This module discovers AuthN resolver plugins via types-registry
+//! This module discovers `AuthN` resolver plugins via types-registry
 //! and routes authentication calls to the selected plugin based on vendor configuration.
 //!
 //! The gateway provides the `AuthNResolverGatewayClient` trait registered

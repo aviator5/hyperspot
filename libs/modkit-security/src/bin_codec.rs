@@ -2,7 +2,7 @@ use crate::SecurityContext;
 use postcard::Error as PostcardError;
 use thiserror::Error;
 
-pub const SECCTX_BIN_VERSION: u8 = 2;
+pub const SECCTX_BIN_VERSION: u8 = 3;
 
 #[derive(Debug, Error)]
 pub enum SecCtxEncodeError {

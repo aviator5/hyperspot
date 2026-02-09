@@ -1,6 +1,6 @@
-//! AuthZ Resolver Gateway Module
+//! `AuthZ` Resolver Gateway Module
 //!
-//! This module discovers AuthZ resolver plugins via types-registry
+//! This module discovers `AuthZ` resolver plugins via types-registry
 //! and routes evaluation calls to the selected plugin based on vendor configuration.
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 

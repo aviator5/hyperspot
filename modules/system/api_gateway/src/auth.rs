@@ -5,17 +5,10 @@ use std::{collections::HashMap, sync::Arc};
 use authn_resolver_sdk::{AuthNResolverError, AuthNResolverGatewayClient};
 use modkit_security::SecurityContext;
 
-/// Route matcher for a specific HTTP method (secured routes with requirements)
+/// Route matcher for a specific HTTP method (authenticated routes).
 #[derive(Clone)]
 pub struct RouteMatcher {
-    matcher: matchit::Router<RouteRequirement>,
-}
-
-/// Route-level requirement: a resource + action pair registered by an operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RouteRequirement {
-    pub resource: String,
-    pub action: String,
+    matcher: matchit::Router<()>,
 }
 
 impl RouteMatcher {
@@ -25,16 +18,12 @@ impl RouteMatcher {
         }
     }
 
-    fn insert(
-        &mut self,
-        path: &str,
-        requirement: RouteRequirement,
-    ) -> Result<(), matchit::InsertError> {
-        self.matcher.insert(path, requirement)
+    fn insert(&mut self, path: &str) -> Result<(), matchit::InsertError> {
+        self.matcher.insert(path, ())
     }
 
-    fn find(&self, path: &str) -> Option<&RouteRequirement> {
-        self.matcher.at(path).ok().map(|m| m.value)
+    fn find(&self, path: &str) -> bool {
+        self.matcher.at(path).is_ok()
     }
 }
 
@@ -92,8 +81,8 @@ fn convert_axum_path_to_matchit(path: &str) -> String {
 pub enum AuthRequirement {
     /// No authentication required (public route).
     None,
-    /// Authentication required; an optional requirement pair may apply.
-    Required(Option<RouteRequirement>),
+    /// Authentication required.
+    Required,
 }
 
 /// Gateway-specific route policy implementation
@@ -119,12 +108,11 @@ impl GatewayRoutePolicy {
 
     /// Resolve the authentication requirement for a given (method, path).
     pub fn resolve(&self, method: &Method, path: &str) -> AuthRequirement {
-        // Find requirement using pattern matching
-        let requirement = self
+        // Check if route is explicitly authenticated
+        let is_authenticated = self
             .route_matchers
             .get(method)
-            .and_then(|matcher| matcher.find(path))
-            .cloned();
+            .is_some_and(|matcher| matcher.find(path));
 
         // Check if route is explicitly public using pattern matching
         let is_public = self
@@ -133,10 +121,10 @@ impl GatewayRoutePolicy {
             .is_some_and(|matcher| matcher.find(path));
 
         // Public routes should not be forced to auth by default
-        let needs_authn = requirement.is_some() || (self.require_auth_by_default && !is_public);
+        let needs_authn = is_authenticated || (self.require_auth_by_default && !is_public);
 
         if needs_authn {
-            AuthRequirement::Required(requirement)
+            AuthRequirement::Required
         } else {
             AuthRequirement::None
         }
@@ -153,20 +141,20 @@ pub struct AuthState {
 /// Helper to build `GatewayRoutePolicy` from operation requirements.
 pub fn build_route_policy(
     cfg: &crate::config::ApiGatewayConfig,
-    requirements: HashMap<(Method, String), RouteRequirement>,
+    authenticated_routes: std::collections::HashSet<(Method, String)>,
     public_routes: std::collections::HashSet<(Method, String)>,
 ) -> Result<GatewayRoutePolicy, anyhow::Error> {
-    // Build route matchers per HTTP method (secured routes with requirements)
+    // Build route matchers per HTTP method (authenticated routes)
     let mut route_matchers_map: HashMap<Method, RouteMatcher> = HashMap::new();
 
-    for ((method, path), requirement) in requirements {
+    for (method, path) in authenticated_routes {
         let matcher = route_matchers_map
             .entry(method)
             .or_insert_with(RouteMatcher::new);
         // Convert Axum path syntax (:param) to matchit syntax ({param})
         let matchit_path = convert_axum_path_to_matchit(&path);
         matcher
-            .insert(&matchit_path, requirement)
+            .insert(&matchit_path)
             .map_err(|e| anyhow::anyhow!("Failed to insert route pattern '{path}': {e}"))?;
     }
 
@@ -191,13 +179,13 @@ pub fn build_route_policy(
     ))
 }
 
-/// Authentication middleware that uses the AuthN Resolver to validate bearer tokens.
+/// Authentication middleware that uses the `AuthN` Resolver to validate bearer tokens.
 ///
 /// For each request:
 /// 1. Skips CORS preflight requests
 /// 2. Resolves the route's auth requirement via `GatewayRoutePolicy`
 /// 3. For public routes: inserts anonymous `SecurityContext`
-/// 4. For required routes: extracts bearer token, calls AuthN Resolver, inserts `SecurityContext`
+/// 4. For required routes: extracts bearer token, calls `AuthN` Resolver, inserts `SecurityContext`
 pub async fn authn_middleware(
     axum::extract::State(state): axum::extract::State<AuthState>,
     mut req: axum::extract::Request,
@@ -215,7 +203,7 @@ pub async fn authn_middleware(
             req.extensions_mut().insert(SecurityContext::anonymous());
             next.run(req).await
         }
-        AuthRequirement::Required(_sec_requirement) => {
+        AuthRequirement::Required => {
             let Some(token) = extract_bearer_token(req.headers()) else {
                 return (
                     axum::http::StatusCode::UNAUTHORIZED,
@@ -367,34 +355,24 @@ mod tests {
     }
 
     #[test]
-    fn explicit_secured_route_with_requirement_returns_required() {
+    fn explicit_authenticated_route_returns_required() {
         let mut route_matchers = HashMap::new();
         let mut matcher = RouteMatcher::new();
-        let req = RouteRequirement {
-            resource: "admin".to_owned(),
-            action: "access".to_owned(),
-        };
-        matcher.insert("/admin/metrics", req).unwrap();
+        matcher.insert("/admin/metrics").unwrap();
         route_matchers.insert(Method::GET, matcher);
 
         let policy = build_test_policy(route_matchers, HashMap::new(), false);
 
         let result = policy.resolve(&Method::GET, "/admin/metrics");
-        match result {
-            AuthRequirement::Required(Some(req)) => {
-                assert_eq!(req.resource, "admin");
-                assert_eq!(req.action, "access");
-            }
-            _ => panic!("Expected Required with RouteRequirement"),
-        }
+        assert_eq!(result, AuthRequirement::Required);
     }
 
     #[test]
-    fn route_without_requirement_with_require_auth_by_default_returns_required_none() {
+    fn route_without_requirement_with_require_auth_by_default_returns_required() {
         let policy = build_test_policy(HashMap::new(), HashMap::new(), true);
 
         let result = policy.resolve(&Method::GET, "/profile");
-        assert_eq!(result, AuthRequirement::Required(None));
+        assert_eq!(result, AuthRequirement::Required);
     }
 
     #[test]
@@ -410,7 +388,7 @@ mod tests {
         let policy = build_test_policy(HashMap::new(), HashMap::new(), true);
 
         let result = policy.resolve(&Method::POST, "/unknown");
-        assert_eq!(result, AuthRequirement::Required(None));
+        assert_eq!(result, AuthRequirement::Required);
     }
 
     #[test]
@@ -435,50 +413,34 @@ mod tests {
     }
 
     #[test]
-    fn secured_route_has_priority_over_default() {
+    fn authenticated_route_has_priority_over_default() {
         let mut route_matchers = HashMap::new();
         let mut matcher = RouteMatcher::new();
-        let req = RouteRequirement {
-            resource: "users".to_owned(),
-            action: "read".to_owned(),
-        };
         // matchit 0.8 uses {param} syntax
-        matcher.insert("/users/{id}", req).unwrap();
+        matcher.insert("/users/{id}").unwrap();
         route_matchers.insert(Method::GET, matcher);
 
         let policy = build_test_policy(route_matchers, HashMap::new(), false);
 
         let result = policy.resolve(&Method::GET, "/users/123");
-        match result {
-            AuthRequirement::Required(Some(req)) => {
-                assert_eq!(req.resource, "users");
-                assert_eq!(req.action, "read");
-            }
-            _ => panic!("Expected Required with RouteRequirement"),
-        }
+        assert_eq!(result, AuthRequirement::Required);
     }
 
     #[test]
     fn different_methods_resolve_independently() {
         let mut route_matchers = HashMap::new();
 
-        // GET /users is secured
+        // GET /users is authenticated
         let mut get_matcher = RouteMatcher::new();
-        let req = RouteRequirement {
-            resource: "users".to_owned(),
-            action: "read".to_owned(),
-        };
-        get_matcher
-            .insert("/user-management/v1/users", req)
-            .unwrap();
+        get_matcher.insert("/user-management/v1/users").unwrap();
         route_matchers.insert(Method::GET, get_matcher);
 
         // POST /users is not in matchers
         let policy = build_test_policy(route_matchers, HashMap::new(), false);
 
-        // GET should be secured
+        // GET should be authenticated
         let get_result = policy.resolve(&Method::GET, "/user-management/v1/users");
-        assert!(matches!(get_result, AuthRequirement::Required(Some(_))));
+        assert_eq!(get_result, AuthRequirement::Required);
 
         // POST should be public (no requirement, require_auth_by_default=false)
         let post_result = policy.resolve(&Method::POST, "/user-management/v1/users");

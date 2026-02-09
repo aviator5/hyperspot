@@ -1,4 +1,4 @@
-//! AuthZ resolver gateway module.
+//! `AuthZ` resolver gateway module.
 
 use std::sync::{Arc, OnceLock};
 
@@ -12,7 +12,7 @@ use types_registry_sdk::TypesRegistryClient;
 use crate::config::AuthZResolverGwConfig;
 use crate::domain::{AuthZResolverGwLocalClient, Service};
 
-/// AuthZ Resolver Gateway module.
+/// `AuthZ` Resolver Gateway module.
 ///
 /// This module:
 /// 1. Registers the plugin schema in types-registry

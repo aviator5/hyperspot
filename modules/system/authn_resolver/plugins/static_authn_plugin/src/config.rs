@@ -1,4 +1,4 @@
-//! Configuration for the static AuthN resolver plugin.
+//! Configuration for the static `AuthN` resolver plugin.
 
 use serde::Deserialize;
 use uuid::Uuid;
@@ -58,10 +58,6 @@ pub struct IdentityConfig {
     /// Subject's home tenant.
     pub subject_tenant_id: Uuid,
 
-    /// Context tenant ID (the tenant being operated on).
-    /// If not set, defaults to `subject_tenant_id`.
-    pub tenant_id: Option<Uuid>,
-
     /// Token scopes. `["*"]` means first-party / unrestricted.
     pub token_scopes: Vec<String>,
 }
@@ -71,7 +67,6 @@ impl Default for IdentityConfig {
         Self {
             subject_id: DEFAULT_SUBJECT_ID,
             subject_tenant_id: DEFAULT_TENANT_ID,
-            tenant_id: None,
             token_scopes: vec!["*".to_owned()],
         }
     }
