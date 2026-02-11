@@ -5,8 +5,10 @@ use crate::domain::error::DomainError;
 use crate::domain::repos::{AddressesRepository, UsersRepository};
 use crate::domain::service::DbProvider;
 use authz_resolver_sdk::PolicyEnforcer;
+use authz_resolver_sdk::models::TenantMode;
+use authz_resolver_sdk::pep::AccessRequest;
 use modkit_odata::{ODataQuery, Page};
-use modkit_security::SecurityContext;
+use modkit_security::{AccessScope, SecurityContext, properties};
 use time::OffsetDateTime;
 use user_info_sdk::{Address, AddressPatch, NewAddress};
 use uuid::Uuid;
@@ -46,6 +48,8 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: consider prefetch pattern (AUTHZ_USAGE_SCENARIOS.md, S07).
         let scope = self
             .enforcer
             .access_scope(ctx, "get", Some(id), true)
@@ -67,6 +71,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
         let scope = self.enforcer.access_scope(ctx, "list", None, true).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
@@ -85,6 +90,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
         let scope = self.enforcer.access_scope(ctx, "get", None, true).await?;
 
         let found = self.repo.get_by_user_id(&conn, &scope, user_id).await?;
@@ -113,22 +119,35 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let scope = self
+        // Read scope to look up user and existing address.
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        let read_scope = self
             .enforcer
-            .access_scope(ctx, "update", None, true)
+            .access_scope(ctx, "get", None, true)
             .await?;
 
         let user = self
             .users_repo
-            .get(&conn, &scope, user_id)
+            .get(&conn, &read_scope, user_id)
             .await?
             .ok_or_else(|| DomainError::user_not_found(user_id))?;
 
-        let existing = self.repo.get_by_user_id(&conn, &scope, user_id).await?;
+        let existing = self
+            .repo
+            .get_by_user_id(&conn, &read_scope, user_id)
+            .await?;
 
         let now = OffsetDateTime::now_utc();
 
         if let Some(existing_model) = existing {
+            // UPDATE path — use "update" action with existing resource ID.
+            // TODO: prefetch owner_tenant_id would narrow scope and improve
+            // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
+            let scope = self
+                .enforcer
+                .access_scope(ctx, "update", Some(existing_model.id), true)
+                .await?;
+
             let mut updated: Address = existing_model;
             updated.city_id = address.city_id;
             updated.street = address.street;
@@ -140,6 +159,26 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
             info!("Successfully updated address for user");
             Ok(updated)
         } else {
+            // CREATE path — evaluate "create" action with target tenant
+            let _decision = self
+                .enforcer
+                .access_scope_with(
+                    ctx,
+                    "create",
+                    None,
+                    false,
+                    &AccessRequest::new()
+                        .context_tenant_id(user.tenant_id)
+                        .tenant_mode(TenantMode::RootOnly)
+                        .resource_property(
+                            properties::OWNER_TENANT_ID,
+                            serde_json::json!(user.tenant_id.to_string()),
+                        ),
+                )
+                .await?;
+
+            let scope = AccessScope::for_tenant(user.tenant_id);
+
             let id = address.id.unwrap_or_else(Uuid::now_v7);
 
             let new_address = Address {
@@ -170,6 +209,9 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: prefetch owner_tenant_id would narrow scope and improve
+        // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
             .access_scope(ctx, "delete", None, true)
@@ -195,17 +237,48 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let scope = self
+        // Validate user exists — need a read scope first.
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        let read_scope = self
             .enforcer
-            .access_scope(ctx, "create", None, true)
+            .access_scope(ctx, "get", Some(new_address.user_id), true)
             .await?;
+
+        let user = self
+            .users_repo
+            .get(&conn, &read_scope, new_address.user_id)
+            .await?
+            .ok_or_else(|| DomainError::user_not_found(new_address.user_id))?;
+
+        // Force tenant to match user's tenant (defense in depth)
+        let tenant_id = user.tenant_id;
+
+        // Pass target tenant to PDP for CREATE validation.
+        let _decision = self
+            .enforcer
+            .access_scope_with(
+                ctx,
+                "create",
+                None,
+                false,
+                &AccessRequest::new()
+                    .context_tenant_id(tenant_id)
+                    .tenant_mode(TenantMode::RootOnly)
+                    .resource_property(
+                        properties::OWNER_TENANT_ID,
+                        serde_json::json!(tenant_id.to_string()),
+                    ),
+            )
+            .await?;
+
+        let scope = AccessScope::for_tenant(tenant_id);
 
         let now = OffsetDateTime::now_utc();
         let id = new_address.id.unwrap_or_else(Uuid::now_v7);
 
         let address = Address {
             id,
-            tenant_id: new_address.tenant_id,
+            tenant_id,
             user_id: new_address.user_id,
             city_id: new_address.city_id,
             street: new_address.street,
@@ -231,6 +304,9 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: prefetch owner_tenant_id would narrow scope and improve
+        // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
             .access_scope(ctx, "update", Some(id), true)
@@ -263,6 +339,9 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: prefetch owner_tenant_id would narrow scope and improve
+        // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
             .access_scope(ctx, "delete", Some(id), true)

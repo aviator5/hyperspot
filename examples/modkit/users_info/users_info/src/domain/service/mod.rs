@@ -31,6 +31,23 @@
 //! 3. The enforcer builds the request, evaluates via PDP, and compiles to `AccessScope`
 //! 4. Pass scope to repository methods for tenant-isolated queries
 //!
+//! ### Subtree authorization (no closure table)
+//!
+//! Enforcers are created with empty `capabilities` (no `tenant_hierarchy`).
+//! This means the PDP must expand the subtree into explicit tenant IDs in
+//! the constraints it returns.
+//!
+//! For **point operations** (GET/UPDATE/DELETE by ID), a prefetch pattern
+//! would be more efficient: PEP fetches the resource first, sends its
+//! `owner_tenant_id` as a resource property, and PDP returns a narrow `eq`
+//! constraint instead of an expanded subtree. This also improves TOCTOU
+//! protection for mutations.
+//!
+//! Reference: `docs/arch/authorization/AUTHZ_USAGE_SCENARIOS.md`
+//! - **S06** — LIST without closure (current approach for list operations)
+//! - **S07** — GET with prefetch (optimal for point reads)
+//! - **S08** — UPDATE/DELETE with prefetch + TOCTOU protection
+//!
 //! ## Connection Management
 //!
 //! Services acquire database connections internally via `DBProvider`. Handlers

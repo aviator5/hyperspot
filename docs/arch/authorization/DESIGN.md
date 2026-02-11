@@ -826,7 +826,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `mode` | No | `"subtree"` | `"root_only"` (single tenant) or `"subtree"` (tenant + descendants) |
-| `root_id` | No | — | Root tenant ID. If absent, PDP determines from `token_scopes`, `bearer_token`, or `subject.properties.tenant_id` |
+| `root_id` | No | — | Root tenant ID. If absent, PDP determines from `token_scopes`, `bearer_token`,`subject.properties.tenant_id`, getting it from the subject (if it's a user), or something else - it's fully up to the PDP implementation |
 | `barrier_mode` | No | `"all"` | `"all"` (respect barriers) or `"none"` (ignore barriers) |
 | `tenant_status` | No | — | Filter by tenant status (e.g., `["active", "suspended"]`) |
 

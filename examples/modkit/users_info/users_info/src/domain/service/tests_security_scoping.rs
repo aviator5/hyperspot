@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::domain::service::ServiceConfig;
 use crate::test_support::{build_services, ctx_allow_tenants, ctx_deny_all, inmem_db, seed_user};
 use modkit_db::DBProvider;
-use user_info_sdk::NewUser;
+use user_info_sdk::{NewAddress, NewCity, NewUser};
 
 #[tokio::test]
 async fn tenant_scope_only_sees_its_tenant() {
@@ -110,4 +110,150 @@ async fn dbprovider_transaction_smoke() {
         })
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn create_address_validates_user_exists() {
+    let db = inmem_db().await;
+    let tenant_id = Uuid::new_v4();
+
+    let services = build_services(db.clone(), ServiceConfig::default());
+    let ctx = ctx_allow_tenants(&[tenant_id]);
+
+    let bogus_user_id = Uuid::new_v4();
+    let result = services
+        .addresses
+        .create_address(
+            &ctx,
+            NewAddress {
+                id: None,
+                tenant_id,
+                user_id: bogus_user_id,
+                city_id: Uuid::new_v4(),
+                street: "Nowhere St".to_owned(),
+                postal_code: "00000".to_owned(),
+            },
+        )
+        .await;
+
+    assert!(result.is_err(), "Expected error for non-existent user");
+}
+
+#[tokio::test]
+async fn create_address_forces_user_tenant() {
+    let db = inmem_db().await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let conn = db.conn().unwrap();
+    seed_user(&conn, user_id, tenant_id, "addr@example.com", "Addr User").await;
+
+    let services = build_services(db.clone(), ServiceConfig::default());
+    let ctx = ctx_allow_tenants(&[tenant_id]);
+
+    // Create a city in the same tenant
+    let city = services
+        .cities
+        .create_city(
+            &ctx,
+            NewCity {
+                id: None,
+                tenant_id,
+                name: "Test City".to_owned(),
+                country: "TC".to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+
+    // Pass a different tenant_id in NewAddress — the service must override it
+    let different_tenant = Uuid::new_v4();
+    let created = services
+        .addresses
+        .create_address(
+            &ctx,
+            NewAddress {
+                id: None,
+                tenant_id: different_tenant,
+                user_id,
+                city_id: city.id,
+                street: "123 Main St".to_owned(),
+                postal_code: "12345".to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        created.tenant_id, tenant_id,
+        "Address tenant must match user's tenant, not the request"
+    );
+}
+
+#[tokio::test]
+async fn put_user_address_creates_then_updates() {
+    let db = inmem_db().await;
+    let tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let conn = db.conn().unwrap();
+    seed_user(&conn, user_id, tenant_id, "put@example.com", "Put User").await;
+
+    let services = build_services(db.clone(), ServiceConfig::default());
+    let ctx = ctx_allow_tenants(&[tenant_id]);
+
+    let city = services
+        .cities
+        .create_city(
+            &ctx,
+            NewCity {
+                id: None,
+                tenant_id,
+                name: "City A".to_owned(),
+                country: "CA".to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+
+    // First PUT — should create
+    let created = services
+        .addresses
+        .put_user_address(
+            &ctx,
+            user_id,
+            NewAddress {
+                id: None,
+                tenant_id,
+                user_id,
+                city_id: city.id,
+                street: "First St".to_owned(),
+                postal_code: "11111".to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(created.street, "First St");
+    assert_eq!(created.tenant_id, tenant_id);
+
+    // Second PUT — should update
+    let updated = services
+        .addresses
+        .put_user_address(
+            &ctx,
+            user_id,
+            NewAddress {
+                id: None,
+                tenant_id,
+                user_id,
+                city_id: city.id,
+                street: "Second St".to_owned(),
+                postal_code: "22222".to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.id, created.id, "Should update the same address");
+    assert_eq!(updated.street, "Second St");
+    assert_eq!(updated.postal_code, "22222");
 }

@@ -51,7 +51,7 @@ pub enum EnforcerError {
 /// ```ignore
 /// use authz_resolver_sdk::pep::{AccessRequest, PolicyEnforcer};
 ///
-/// // S04: CREATE with target tenant + resource properties
+/// // CREATE with target tenant + resource properties
 /// let scope = enforcer.access_scope_with(
 ///     &ctx, "create", None, false,
 ///     &AccessRequest::new()
@@ -60,7 +60,7 @@ pub enum EnforcerError {
 ///         .resource_property("owner_tenant_id", json!(target_tenant_id.to_string())),
 /// ).await?;
 ///
-/// // S05: Billing — ignore barriers
+/// // Billing — ignore barriers
 /// let scope = enforcer.access_scope_with(
 ///     &ctx, "list", None, true,
 ///     &AccessRequest::new().barrier_mode(BarrierMode::Ignore),

@@ -5,8 +5,10 @@ use crate::domain::error::DomainError;
 use crate::domain::repos::CitiesRepository;
 use crate::domain::service::DbProvider;
 use authz_resolver_sdk::PolicyEnforcer;
+use authz_resolver_sdk::models::TenantMode;
+use authz_resolver_sdk::pep::AccessRequest;
 use modkit_odata::{ODataQuery, Page};
-use modkit_security::SecurityContext;
+use modkit_security::{AccessScope, SecurityContext, properties};
 use time::OffsetDateTime;
 use user_info_sdk::{City, CityPatch, NewCity};
 use uuid::Uuid;
@@ -42,6 +44,8 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: consider prefetch pattern (AUTHZ_USAGE_SCENARIOS.md, S07).
         let scope = self
             .enforcer
             .access_scope(ctx, "get", Some(id), true)
@@ -62,6 +66,7 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
         let scope = self.enforcer.access_scope(ctx, "list", None, true).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
@@ -80,17 +85,34 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        let scope = self
+        let tenant_id = new_city.tenant_id;
+
+        // Pass target tenant to PDP for CREATE validation.
+        let _decision = self
             .enforcer
-            .access_scope(ctx, "create", None, true)
+            .access_scope_with(
+                ctx,
+                "create",
+                None,
+                false,
+                &AccessRequest::new()
+                    .context_tenant_id(tenant_id)
+                    .tenant_mode(TenantMode::RootOnly)
+                    .resource_property(
+                        properties::OWNER_TENANT_ID,
+                        serde_json::json!(tenant_id.to_string()),
+                    ),
+            )
             .await?;
+
+        let scope = AccessScope::for_tenant(tenant_id);
 
         let now = OffsetDateTime::now_utc();
         let id = new_city.id.unwrap_or_else(Uuid::now_v7);
 
         let city = City {
             id,
-            tenant_id: new_city.tenant_id,
+            tenant_id,
             name: new_city.name,
             country: new_city.country,
             created_at: now,
@@ -114,6 +136,9 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: prefetch owner_tenant_id would narrow scope and improve
+        // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
             .access_scope(ctx, "update", Some(id), true)
@@ -143,6 +168,9 @@ impl<R: CitiesRepository> CitiesService<R> {
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
+        // Subtree without closure — PDP expands tenant hierarchy (see module doc).
+        // TODO: prefetch owner_tenant_id would narrow scope and improve
+        // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
             .access_scope(ctx, "delete", Some(id), true)
