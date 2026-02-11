@@ -17,13 +17,13 @@
 //! let resource_id = Uuid::new_v4();
 //!
 //! // Scope to specific tenants
-//! let scope = AccessScope::tenants_only(vec![tenant_id]);
+//! let scope = AccessScope::for_tenants(vec![tenant_id]);
 //!
 //! // Scope to specific resources
-//! let scope = AccessScope::resources_only(vec![resource_id]);
+//! let scope = AccessScope::for_resources(vec![resource_id]);
 //!
 //! // Scope to both (AND relationship)
-//! let scope = AccessScope::both(vec![tenant_id], vec![resource_id]);
+//! let scope = AccessScope::for_tenants_and_resources(vec![tenant_id], vec![resource_id]);
 //!
 //! // Empty scope (will deny all)
 //! let scope = AccessScope::default();
@@ -113,7 +113,7 @@
 //!     db: &modkit_db::secure::SecureConn,
 //!     tenant_id: Uuid,
 //! ) -> Result<Vec<user::Model>, anyhow::Error> {
-//!     let scope = AccessScope::tenants_only(vec![tenant_id]);
+//!     let scope = AccessScope::for_tenants(vec![tenant_id]);
 //!     
 //!     let users = user::Entity::find()
 //!         .secure()
@@ -136,7 +136,7 @@
 //!     user_id: Uuid,
 //! ) -> Result<Option<user::Model>, anyhow::Error> {
 //!     // This ensures the user belongs to the tenant (implicit AND)
-//!     let scope = AccessScope::both(vec![tenant_id], vec![user_id]);
+//!     let scope = AccessScope::for_tenants_and_resources(vec![tenant_id], vec![user_id]);
 //!     
 //!     let user = user::Entity::find()
 //!         .secure()
@@ -156,7 +156,7 @@
 //!     db: &modkit_db::secure::SecureConn,
 //!     user_ids: Vec<Uuid>,
 //! ) -> Result<Vec<user::Model>, anyhow::Error> {
-//!     let scope = AccessScope::resources_only(user_ids);
+//!     let scope = AccessScope::for_resources(user_ids);
 //!     
 //!     let users = user::Entity::find()
 //!         .secure()
@@ -177,7 +177,7 @@
 //!     db: &modkit_db::secure::SecureConn,
 //!     tenant_id: Uuid,
 //! ) -> Result<Vec<user::Model>, anyhow::Error> {
-//!     let scope = AccessScope::tenants_only(vec![tenant_id]);
+//!     let scope = AccessScope::for_tenants(vec![tenant_id]);
 //!     
 //!     let users = user::Entity::find()
 //!         .secure()
@@ -200,7 +200,7 @@
 //!     db: &modkit_db::secure::SecureConn,
 //!     config_id: Uuid,
 //! ) -> Result<Option<system_config::Model>, anyhow::Error> {
-//!     let scope = AccessScope::resources_only(vec![config_id]);
+//!     let scope = AccessScope::for_resources(vec![config_id]);
 //!     
 //!     let config = system_config::Entity::find()
 //!         .secure()
@@ -247,7 +247,7 @@
 //!         tenant_id: Uuid,
 //!         user_id: Uuid,
 //!     ) -> Result<Option<user::Model>, ScopeError> {
-//!         let scope = AccessScope::both(vec![tenant_id], vec![user_id]);
+//!         let scope = AccessScope::for_tenants_and_resources(vec![tenant_id], vec![user_id]);
 //!         
 //!         user::Entity::find()
 //!             .secure()

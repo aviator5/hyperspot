@@ -126,5 +126,5 @@ impl<R: SettingsRepository> Service<R> {
 /// Settings are scoped to tenant + user (resource).
 fn build_scope(ctx: &SecurityContext) -> AccessScope {
     let tenant_ids = ctx.subject_tenant_id().into_iter().collect();
-    AccessScope::both(tenant_ids, vec![ctx.subject_id()])
+    AccessScope::for_tenants_and_resources(tenant_ids, vec![ctx.subject_id()])
 }

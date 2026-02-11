@@ -80,7 +80,7 @@ pub async fn seed_user(
         updated_at: Set(now),
     };
 
-    let scope = AccessScope::tenants_only(vec![tenant_id]);
+    let scope = AccessScope::for_tenants(vec![tenant_id]);
     let _ = secure_insert::<UserEntity>(user, &scope, db)
         .await
         .expect("Failed to seed user");

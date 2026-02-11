@@ -99,4 +99,23 @@ pub trait ScopableEntity: EntityTrait {
     ///
     /// Must be explicitly specified via `type_col = "..."` or `no_type`.
     fn type_col() -> Option<Self::Column>;
+
+    /// Resolve an authorization property name to a database column.
+    ///
+    /// The default implementation maps well-known properties to their
+    /// corresponding columns:
+    /// - `"owner_tenant_id"` → `tenant_col()`
+    /// - `"id"` → `resource_col()`
+    /// - `"owner_id"` → `owner_col()`
+    ///
+    /// Domain modules can override to add custom property mappings.
+    #[must_use]
+    fn resolve_property(property: &str) -> Option<Self::Column> {
+        match property {
+            modkit_security::properties::OWNER_TENANT_ID => Self::tenant_col(),
+            modkit_security::properties::RESOURCE_ID => Self::resource_col(),
+            modkit_security::properties::OWNER_ID => Self::owner_col(),
+            _ => None,
+        }
+    }
 }

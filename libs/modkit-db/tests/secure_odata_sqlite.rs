@@ -129,7 +129,7 @@ impl TestDb {
             .expect("migrate");
 
         let tenant_id = Uuid::new_v4();
-        let scope = AccessScope::tenants_only(vec![tenant_id]);
+        let scope = AccessScope::for_tenants(vec![tenant_id]);
 
         Self {
             db,

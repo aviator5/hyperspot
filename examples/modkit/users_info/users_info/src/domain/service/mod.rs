@@ -140,16 +140,23 @@ where
         let cities_repo = Arc::new(cities_repo);
         let addresses_repo = Arc::new(addresses_repo);
 
+        let default_props = vec![
+            modkit_security::properties::OWNER_TENANT_ID.to_owned(),
+            modkit_security::properties::RESOURCE_ID.to_owned(),
+        ];
+
         let cities = Arc::new(CitiesService::new(
             Arc::clone(&db),
             Arc::clone(&cities_repo),
-            PolicyEnforcer::new("users_info.city", authz.clone()),
+            PolicyEnforcer::new("users_info.city", authz.clone())
+                .with_supported_properties(default_props.clone()),
         ));
         let addresses = Arc::new(AddressesService::new(
             Arc::clone(&db),
             Arc::clone(&addresses_repo),
             Arc::clone(&users_repo),
-            PolicyEnforcer::new("users_info.address", authz.clone()),
+            PolicyEnforcer::new("users_info.address", authz.clone())
+                .with_supported_properties(default_props.clone()),
         ));
 
         Self {
@@ -158,7 +165,8 @@ where
                 Arc::clone(&users_repo),
                 events,
                 audit,
-                PolicyEnforcer::new("users_info.user", authz),
+                PolicyEnforcer::new("users_info.user", authz)
+                    .with_supported_properties(default_props),
                 config,
                 cities.clone(),
                 addresses.clone(),

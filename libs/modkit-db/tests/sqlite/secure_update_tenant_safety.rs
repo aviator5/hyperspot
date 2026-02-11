@@ -140,7 +140,7 @@ async fn tenant_scoped_update_allows_row_in_scope_and_no_tenant_change() {
     let test_db = TestDb::new().await;
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
-    let scope_a = AccessScope::tenant(tenant_a);
+    let scope_a = AccessScope::for_tenant(tenant_a);
 
     let id = Uuid::new_v4();
     let created = secure_insert::<tenant_ent::Entity>(
@@ -180,8 +180,8 @@ async fn tenant_scoped_update_rejects_cross_tenant_update_by_id() {
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let scope_a = AccessScope::tenant(tenant_a);
-    let scope_b = AccessScope::tenant(tenant_b);
+    let scope_a = AccessScope::for_tenant(tenant_a);
+    let scope_b = AccessScope::for_tenant(tenant_b);
 
     let id_b = Uuid::new_v4();
     let _ = secure_insert::<tenant_ent::Entity>(
@@ -218,7 +218,7 @@ async fn tenant_scoped_update_rejects_attempt_to_change_tenant_id() {
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let scope_a = AccessScope::tenant(tenant_a);
+    let scope_a = AccessScope::for_tenant(tenant_a);
 
     let id = Uuid::new_v4();
     let _ = secure_insert::<tenant_ent::Entity>(
@@ -257,7 +257,7 @@ async fn update_many_rejects_setting_tenant_id() {
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let scope_a = AccessScope::tenant(tenant_a);
+    let scope_a = AccessScope::for_tenant(tenant_a);
 
     let id = Uuid::new_v4();
     let _ = secure_insert::<tenant_ent::Entity>(

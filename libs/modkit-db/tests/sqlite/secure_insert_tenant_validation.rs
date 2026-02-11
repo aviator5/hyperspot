@@ -199,7 +199,7 @@ async fn tenant_scoped_insert_allows_tenant_in_scope() {
     let test_db = setup().await;
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
-    let scope = AccessScope::tenants_only(vec![tenant_a]);
+    let scope = AccessScope::for_tenants(vec![tenant_a]);
 
     let am = tenant_ent::ActiveModel {
         tenant_id: Set(tenant_a),
@@ -218,7 +218,7 @@ async fn tenant_scoped_insert_rejects_tenant_not_in_scope() {
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let scope = AccessScope::tenants_only(vec![tenant_a]);
+    let scope = AccessScope::for_tenants(vec![tenant_a]);
 
     let am = tenant_ent::ActiveModel {
         tenant_id: Set(tenant_b),
@@ -264,7 +264,7 @@ async fn tenant_scoped_insert_requires_tenant_id_in_active_model() {
     let test_db = setup().await;
     let conn = test_db.conn();
     let tenant_a = Uuid::new_v4();
-    let scope = AccessScope::tenants_only(vec![tenant_a]);
+    let scope = AccessScope::for_tenants(vec![tenant_a]);
 
     let am = tenant_ent::ActiveModel {
         // tenant_id intentionally not set

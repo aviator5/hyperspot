@@ -11,17 +11,12 @@
 //! | true     | true              | empty       | `ConstraintsRequiredButAbsent` |
 //! | true     | true              | present     | Compile constraints → `AccessScope` |
 //!
-//! Unknown predicate types fail that constraint (fail-closed).
+//! Unknown/unsupported properties fail that constraint (fail-closed).
 
-use modkit_security::AccessScope;
-use uuid::Uuid;
+use modkit_security::{AccessScope, FilterOp, ScopeConstraint, ScopeFilter};
 
 use crate::constraints::{Constraint, Predicate};
 use crate::models::{DenyReason, EvaluationResponse};
-
-/// Well-known resource properties that map to `AccessScope` fields.
-const PROPERTY_OWNER_TENANT_ID: &str = "owner_tenant_id";
-const PROPERTY_ID: &str = "id";
 
 /// Error during constraint compilation.
 #[derive(Debug, thiserror::Error)]
@@ -55,14 +50,12 @@ pub enum ConstraintCompileError {
 ///
 /// ## Constraint compilation
 ///
-/// Multiple constraints are `ORed`: tenant/resource IDs from all constraints
-/// are merged into a single `AccessScope`.
+/// Each PDP constraint compiles to a `ScopeConstraint` (AND of filters).
+/// Multiple constraints become `AccessScope::from_constraints` (OR-ed).
 ///
-/// Known predicates:
-/// - `owner_tenant_id` with `eq`/`in` → `AccessScope::tenants_only(ids)`
-/// - `id` with `eq`/`in` → `AccessScope::resources_only(ids)`
-///
-/// Unknown predicates are skipped (fail-closed for that constraint).
+/// The compiler is property-agnostic: it validates predicates against the
+/// provided `supported_properties` list and converts them structurally.
+/// Unknown properties fail that constraint (fail-closed).
 /// If ALL constraints fail compilation, returns `AllConstraintsFailed`.
 ///
 /// # Errors
@@ -73,6 +66,7 @@ pub enum ConstraintCompileError {
 pub fn compile_to_access_scope(
     response: &EvaluationResponse,
     require_constraints: bool,
+    supported_properties: &[String],
 ) -> Result<AccessScope, ConstraintCompileError> {
     // Step 1: Check decision
     if !response.decision {
@@ -91,92 +85,56 @@ pub fn compile_to_access_scope(
         return Err(ConstraintCompileError::ConstraintsRequiredButAbsent);
     }
 
-    // Step 4: Compile constraints (ORed — merge all tenant/resource IDs)
-    let mut tenant_ids: Vec<Uuid> = Vec::new();
-    let mut resource_ids: Vec<Uuid> = Vec::new();
-    let mut any_compiled = false;
+    // Step 4: Compile each constraint
+    let mut constraints = Vec::new();
     let mut fail_reasons: Vec<String> = Vec::new();
 
     for constraint in &response.constraints {
-        match compile_constraint(constraint) {
-            Ok(compiled) => {
-                any_compiled = true;
-                tenant_ids.extend_from_slice(&compiled.tenant_ids);
-                resource_ids.extend_from_slice(&compiled.resource_ids);
-            }
-            Err(reason) => {
-                fail_reasons.push(reason);
-            }
+        match compile_constraint(constraint, supported_properties) {
+            Ok(sc) => constraints.push(sc),
+            Err(reason) => fail_reasons.push(reason),
         }
     }
 
     // If no constraint compiled successfully, fail-closed
-    if !any_compiled {
+    if constraints.is_empty() {
         return Err(ConstraintCompileError::AllConstraintsFailed {
             reason: fail_reasons.join("; "),
         });
     }
 
-    // Build final scope from merged IDs
-    if tenant_ids.is_empty() && resource_ids.is_empty() {
-        // All compiled constraints produced empty results
+    // If all compiled constraints are empty (no filters), it means allow-all
+    if constraints.iter().all(ScopeConstraint::is_empty) {
         return Ok(AccessScope::allow_all());
     }
 
-    Ok(AccessScope::both(tenant_ids, resource_ids))
+    Ok(AccessScope::from_constraints(constraints))
 }
 
-/// Intermediate result from compiling a single constraint.
-struct CompiledConstraint {
-    tenant_ids: Vec<Uuid>,
-    resource_ids: Vec<Uuid>,
-}
-
-/// Compile a single constraint's predicates into tenant/resource ID sets.
+/// Compile a single PDP constraint into a `ScopeConstraint`.
 ///
-/// All predicates within a constraint are `ANDed`, but for our first iteration
-/// we handle single-property constraints by collecting IDs.
-/// If any predicate targets an unknown property, the constraint fails.
-fn compile_constraint(constraint: &Constraint) -> Result<CompiledConstraint, String> {
-    let mut tenant_ids = Vec::new();
-    let mut resource_ids = Vec::new();
-    let mut has_unknown = false;
+/// Each predicate becomes a `ScopeFilter`. If any predicate's property
+/// is not in `supported_properties`, the entire constraint fails (fail-closed).
+fn compile_constraint(
+    constraint: &Constraint,
+    supported_properties: &[String],
+) -> Result<ScopeConstraint, String> {
+    let mut filters = Vec::new();
 
     for predicate in &constraint.predicates {
-        match predicate {
-            Predicate::Eq(eq) => {
-                if eq.property == PROPERTY_OWNER_TENANT_ID {
-                    tenant_ids.push(eq.value);
-                } else if eq.property == PROPERTY_ID {
-                    resource_ids.push(eq.value);
-                } else {
-                    has_unknown = true;
-                }
-            }
-            Predicate::In(in_pred) => {
-                if in_pred.property == PROPERTY_OWNER_TENANT_ID {
-                    tenant_ids.extend_from_slice(&in_pred.values);
-                } else if in_pred.property == PROPERTY_ID {
-                    resource_ids.extend_from_slice(&in_pred.values);
-                } else {
-                    has_unknown = true;
-                }
-            }
+        let (property, values) = match predicate {
+            Predicate::Eq(eq) => (eq.property.as_str(), vec![eq.value]),
+            Predicate::In(p) => (p.property.as_str(), p.values.clone()),
+        };
+
+        if !supported_properties.iter().any(|sp| sp == property) {
+            return Err(format!("unsupported property: {property}"));
         }
+
+        filters.push(ScopeFilter::new(property, FilterOp::In, values));
     }
 
-    // If any predicate was unknown, fail this constraint (fail-closed)
-    if has_unknown {
-        return Err(
-            "constraint has unsupported predicates (only owner_tenant_id and id are supported)"
-                .to_owned(),
-        );
-    }
-
-    Ok(CompiledConstraint {
-        tenant_ids,
-        resource_ids,
-    })
+    Ok(ScopeConstraint::new(filters))
 }
 
 #[cfg(test)]
@@ -184,6 +142,8 @@ fn compile_constraint(constraint: &Constraint) -> Result<CompiledConstraint, Str
 mod tests {
     use super::*;
     use crate::constraints::{EqPredicate, InPredicate};
+    use modkit_security::properties;
+    use uuid::Uuid;
 
     fn uuid(s: &str) -> Uuid {
         Uuid::parse_str(s).unwrap()
@@ -192,6 +152,13 @@ mod tests {
     const T1: &str = "11111111-1111-1111-1111-111111111111";
     const T2: &str = "22222222-2222-2222-2222-222222222222";
     const R1: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+    fn default_props() -> Vec<String> {
+        vec![
+            "owner_tenant_id".to_owned(),
+            "id".to_owned(),
+        ]
+    }
 
     // === Decision Matrix Tests ===
 
@@ -203,7 +170,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true);
+        let result = compile_to_access_scope(&response, true, &default_props());
         assert!(matches!(result, Err(ConstraintCompileError::Denied { .. })));
     }
 
@@ -218,7 +185,7 @@ mod tests {
             }),
         };
 
-        let result = compile_to_access_scope(&response, true);
+        let result = compile_to_access_scope(&response, true, &default_props());
         match result {
             Err(ConstraintCompileError::Denied { deny_reason }) => {
                 let reason = deny_reason.unwrap();
@@ -237,7 +204,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, false).unwrap();
+        let scope = compile_to_access_scope(&response, false, &default_props()).unwrap();
         assert!(scope.is_unconstrained());
     }
 
@@ -249,7 +216,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true);
+        let result = compile_to_access_scope(&response, true, &default_props());
         assert!(matches!(
             result,
             Err(ConstraintCompileError::ConstraintsRequiredButAbsent)
@@ -271,9 +238,9 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        assert_eq!(scope.tenant_ids(), &[uuid(T1)]);
-        assert!(scope.resource_ids().is_empty());
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1)]);
+        assert!(scope.all_values_for(properties::RESOURCE_ID).is_empty());
     }
 
     #[test]
@@ -289,8 +256,8 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        assert_eq!(scope.tenant_ids(), &[uuid(T1), uuid(T2)]);
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1), uuid(T2)]);
     }
 
     #[test]
@@ -306,13 +273,13 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        assert!(scope.tenant_ids().is_empty());
-        assert_eq!(scope.resource_ids(), &[uuid(R1)]);
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        assert!(scope.all_values_for(properties::OWNER_TENANT_ID).is_empty());
+        assert_eq!(scope.all_values_for(properties::RESOURCE_ID), &[uuid(R1)]);
     }
 
     #[test]
-    fn multiple_constraints_ored() {
+    fn multiple_constraints_produce_or_scope() {
         let response = EvaluationResponse {
             decision: true,
             constraints: vec![
@@ -332,9 +299,12 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        // IDs from both constraints are merged
-        assert_eq!(scope.tenant_ids(), &[uuid(T1), uuid(T2)]);
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        // Each constraint is a separate ScopeConstraint (ORed)
+        assert_eq!(scope.constraints().len(), 2);
+        // Both tenants accessible
+        assert!(scope.contains_value("owner_tenant_id", uuid(T1)));
+        assert!(scope.contains_value("owner_tenant_id", uuid(T2)));
     }
 
     #[test]
@@ -350,7 +320,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true);
+        let result = compile_to_access_scope(&response, true, &default_props());
         assert!(matches!(
             result,
             Err(ConstraintCompileError::AllConstraintsFailed { .. })
@@ -381,12 +351,12 @@ mod tests {
         };
 
         // Should succeed — the second constraint compiled
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        assert_eq!(scope.tenant_ids(), &[uuid(T2)]);
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T2)]);
     }
 
     #[test]
-    fn both_tenant_and_resource_ids() {
+    fn both_tenant_and_resource_in_single_constraint() {
         let response = EvaluationResponse {
             decision: true,
             constraints: vec![Constraint {
@@ -404,8 +374,68 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        assert_eq!(scope.tenant_ids(), &[uuid(T1)]);
-        assert_eq!(scope.resource_ids(), &[uuid(R1)]);
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        // Single constraint with both properties (AND)
+        assert_eq!(scope.constraints().len(), 1);
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1)]);
+        assert_eq!(scope.all_values_for(properties::RESOURCE_ID), &[uuid(R1)]);
+    }
+
+    #[test]
+    fn mixed_shape_constraints_produce_or_scope() {
+        // T1+R1 (AND) OR T2 — two different-shaped constraints
+        let response = EvaluationResponse {
+            decision: true,
+            constraints: vec![
+                Constraint {
+                    predicates: vec![
+                        Predicate::In(InPredicate {
+                            property: "owner_tenant_id".to_owned(),
+                            values: vec![uuid(T1)],
+                        }),
+                        Predicate::Eq(EqPredicate {
+                            property: "id".to_owned(),
+                            value: uuid(R1),
+                        }),
+                    ],
+                },
+                Constraint {
+                    predicates: vec![Predicate::In(InPredicate {
+                        property: "owner_tenant_id".to_owned(),
+                        values: vec![uuid(T2)],
+                    })],
+                },
+            ],
+            deny_reason: None,
+        };
+
+        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        assert_eq!(scope.constraints().len(), 2);
+        // First constraint has 2 filters (AND), second has 1 filter
+        assert_eq!(scope.constraints()[0].filters().len(), 2);
+        assert_eq!(scope.constraints()[1].filters().len(), 1);
+    }
+
+    #[test]
+    fn supported_properties_validation() {
+        // Only owner_tenant_id is supported — id should fail
+        let limited_props = vec!["owner_tenant_id".to_owned()];
+
+        let response = EvaluationResponse {
+            decision: true,
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::Eq(EqPredicate {
+                    property: "id".to_owned(),
+                    value: uuid(R1),
+                })],
+            }],
+            deny_reason: None,
+        };
+
+        let result = compile_to_access_scope(&response, true, &limited_props);
+        assert!(matches!(
+            result,
+            Err(ConstraintCompileError::AllConstraintsFailed { .. })
+        ));
     }
 }

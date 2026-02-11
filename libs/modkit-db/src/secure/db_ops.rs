@@ -211,18 +211,25 @@ where
 /// Use this when manually setting `tenant_id` in `ActiveModels` to ensure
 /// the value matches the security scope.
 ///
+/// For unconstrained scopes (allow-all), this always succeeds.
+///
 /// # Errors
-/// Returns `ScopeError::Invalid` if the tenant ID is not in the scope.
+/// Returns `ScopeError::Denied` if tenant scope is missing.
+/// Returns `ScopeError::TenantNotInScope` if the tenant ID is not in any constraint.
 pub fn validate_tenant_in_scope(
     tenant_id: uuid::Uuid,
     scope: &AccessScope,
 ) -> Result<(), ScopeError> {
-    if !scope.has_tenants() {
+    if scope.is_unconstrained() {
+        return Ok(());
+    }
+    let prop = modkit_security::properties::OWNER_TENANT_ID;
+    if !scope.has_property(prop) {
         return Err(ScopeError::Denied(
             "tenant scope required for tenant-scoped insert",
         ));
     }
-    if scope.tenant_ids().contains(&tenant_id) {
+    if scope.contains_value(prop, tenant_id) {
         return Ok(());
     }
     Err(ScopeError::TenantNotInScope { tenant_id })
@@ -241,7 +248,7 @@ pub fn validate_tenant_in_scope(
 /// use modkit_db::secure::{AccessScope, SecureInsertExt};
 /// use sea_orm::sea_query::OnConflict;
 ///
-/// let scope = AccessScope::tenants_only(vec![tenant_id]);
+/// let scope = AccessScope::for_tenants(vec![tenant_id]);
 /// let am = user::ActiveModel {
 ///     tenant_id: Set(tenant_id),
 ///     email: Set("user@example.com".to_string()),
@@ -458,7 +465,7 @@ where
 /// use modkit_db::secure::{SecureOnConflict, SecureInsertExt};
 /// use sea_orm::ActiveValue::Set;
 ///
-/// let scope = AccessScope::both(vec![tenant_id], vec![user_id]);
+/// let scope = AccessScope::for_tenants_and_resources(vec![tenant_id], vec![user_id]);
 /// let am = settings::ActiveModel {
 ///     tenant_id: Set(tenant_id),
 ///     user_id: Set(user_id),
@@ -588,7 +595,7 @@ where
 /// ```ignore
 /// use modkit_db::secure::{AccessScope, SecureUpdateExt};
 ///
-/// let scope = AccessScope::tenants_only(vec![tenant_id]);
+/// let scope = AccessScope::for_tenants(vec![tenant_id]);
 /// let result = user::Entity::update_many()
 ///     .col_expr(user::Column::Status, Expr::value("active"))
 ///     .secure()           // Returns SecureUpdateMany<E, Unscoped>
@@ -714,7 +721,7 @@ where
 /// ```ignore
 /// use modkit_db::secure::{AccessScope, SecureDeleteExt};
 ///
-/// let scope = AccessScope::tenants_only(vec![tenant_id]);
+/// let scope = AccessScope::for_tenants(vec![tenant_id]);
 /// let result = user::Entity::delete_many()
 ///     .filter(user::Column::Status.eq("inactive"))
 ///     .secure()           // Returns SecureDeleteMany<E, Unscoped>
@@ -885,7 +892,7 @@ mod tests {
     #[test]
     fn test_validate_tenant_in_scope() {
         let tenant_id = uuid::Uuid::new_v4();
-        let scope = crate::secure::AccessScope::tenants_only(vec![tenant_id]);
+        let scope = crate::secure::AccessScope::for_tenants(vec![tenant_id]);
 
         assert!(validate_tenant_in_scope(tenant_id, &scope).is_ok());
 
@@ -910,7 +917,7 @@ mod tests {
         // Verify that validate_tenant_in_scope properly rejects tenant IDs not in scope
         let allowed_tenant = uuid::Uuid::new_v4();
         let disallowed_tenant = uuid::Uuid::new_v4();
-        let scope = crate::secure::AccessScope::tenants_only(vec![allowed_tenant]);
+        let scope = crate::secure::AccessScope::for_tenants(vec![allowed_tenant]);
 
         // Allowed tenant should succeed
         assert!(validate_tenant_in_scope(allowed_tenant, &scope).is_ok());

@@ -1,1 +1,1 @@
-pub use crate::{AccessScope, SecurityContext};
+pub use crate::{AccessScope, FilterOp, ScopeConstraint, ScopeFilter, SecurityContext, properties};

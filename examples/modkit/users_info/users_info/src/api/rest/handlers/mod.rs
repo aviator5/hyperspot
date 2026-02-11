@@ -92,11 +92,11 @@ pub(crate) async fn create_user(
 
     // Authorization check:
     // - root scope: allow any tenant_id
-    // - non-root: tenant_id must be present in scope.tenant_ids()
+    // - non-root: tenant_id must be present in scope
     // TODO(phase-1): Move tenant_id authorization check to service layer for proper separation of concerns
     // let scope = ctx.scope();
     // if !scope.is_root() {
-    //     let allowed = scope.tenant_ids().iter().any(|t| t == &tenant_id);
+    //     let allowed = scope.contains_value(properties::OWNER_TENANT_ID, tenant_id);
     //     if !allowed {
     //         return Err(DomainError::validation(
     //             "tenant_id",

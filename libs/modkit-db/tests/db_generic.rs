@@ -128,7 +128,7 @@ async fn run_common_suite(database_url: &str) -> Result<()> {
     let secure_db = db;
 
     let tenant_id = uuid::Uuid::new_v4();
-    let scope = modkit_security::AccessScope::tenants_only(vec![tenant_id]);
+    let scope = modkit_security::AccessScope::for_tenants(vec![tenant_id]);
     let scope_for_tx = scope.clone();
     let id = uuid::Uuid::new_v4();
 

@@ -91,7 +91,7 @@ async fn dbprovider_transaction_smoke() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
     let now = OffsetDateTime::now_utc();
-    let scope = AccessScope::tenants_only(vec![tenant_id]);
+    let scope = AccessScope::for_tenants(vec![tenant_id]);
 
     provider
         .transaction(|tx| {

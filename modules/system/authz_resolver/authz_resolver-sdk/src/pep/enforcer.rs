@@ -317,7 +317,11 @@ impl PolicyEnforcer {
         let eval_request =
             self.build_request_with(ctx, action, resource_id, require_constraints, request);
         let response = self.authz.evaluate(eval_request).await?;
-        Ok(compile_to_access_scope(&response, require_constraints)?)
+        Ok(compile_to_access_scope(
+            &response,
+            require_constraints,
+            &self.supported_properties,
+        )?)
     }
 }
 
@@ -339,6 +343,7 @@ mod tests {
     use super::*;
     use crate::constraints::{Constraint, InPredicate, Predicate};
     use crate::models::EvaluationResponse;
+    use modkit_security::properties;
 
     fn uuid(s: &str) -> Uuid {
         Uuid::parse_str(s).expect("valid test UUID")
@@ -406,6 +411,10 @@ mod tests {
 
     fn enforcer(mock: impl AuthZResolverGatewayClient + 'static) -> PolicyEnforcer {
         PolicyEnforcer::new("test.resource", Arc::new(mock))
+            .with_supported_properties(vec![
+                "owner_tenant_id".to_owned(),
+                "id".to_owned(),
+            ])
     }
 
     // ── build_request ────────────────────────────────────────────────
@@ -463,7 +472,7 @@ mod tests {
             .await;
 
         let scope = scope.expect("should succeed");
-        assert_eq!(scope.tenant_ids(), &[uuid(TENANT)]);
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(TENANT)]);
     }
 
     #[tokio::test]
@@ -654,7 +663,7 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(scope.tenant_ids(), &[custom_tenant]);
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[custom_tenant]);
     }
 
     #[tokio::test]
@@ -677,7 +686,7 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(scope.tenant_ids(), &[uuid(TENANT)]);
+        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(TENANT)]);
     }
 
     // ── request builder internals ────────────────────────────────────
