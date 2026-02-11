@@ -40,6 +40,12 @@ impl SecurityContext {
         self.subject_id
     }
 
+    /// Get the subject type classification (e.g., "user", "service").
+    #[must_use]
+    pub fn subject_type(&self) -> Option<&str> {
+        self.subject_type.as_deref()
+    }
+
     /// Get the subject's home tenant ID (from `AuthN` token).
     #[must_use]
     pub fn subject_tenant_id(&self) -> Option<Uuid> {

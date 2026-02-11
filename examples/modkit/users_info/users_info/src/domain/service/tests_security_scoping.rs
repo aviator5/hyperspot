@@ -32,7 +32,7 @@ async fn tenant_scope_only_sees_its_tenant() {
 }
 
 #[tokio::test]
-async fn deny_all_sees_nothing() {
+async fn deny_all_returns_forbidden() {
     let db = inmem_db().await;
     let tenant = Uuid::new_v4();
     let conn = db.conn().unwrap();
@@ -41,12 +41,16 @@ async fn deny_all_sees_nothing() {
     let services = build_services(db.clone(), ServiceConfig::default());
     let ctx = ctx_deny_all();
 
-    let page = services
+    // Anonymous context has no tenant → mock returns empty constraints
+    // → Decision Matrix: require_constraints=true + empty → ConstraintsRequiredButAbsent → Forbidden
+    let result = services
         .users
         .list_users_page(&ctx, &modkit_odata::ODataQuery::default())
-        .await
-        .unwrap();
-    assert!(page.items.is_empty());
+        .await;
+    assert!(
+        result.is_err(),
+        "Expected Forbidden error for anonymous context"
+    );
 }
 
 #[tokio::test]

@@ -33,7 +33,6 @@ mod tests {
         let request = EvaluationRequest {
             subject: Subject {
                 id: Uuid::nil(),
-                tenant_id: None,
                 subject_type: None,
                 properties: HashMap::new(),
             },
@@ -43,13 +42,18 @@ mod tests {
             resource: Resource {
                 resource_type: "test".to_owned(),
                 id: None,
-                require_constraints: false,
+                properties: HashMap::new(),
             },
             context: Context {
-                tenant: Some(TenantContext {
-                    root_id: Uuid::nil(),
+                tenant_context: Some(TenantContext {
+                    root_id: Some(Uuid::nil()),
+                    ..TenantContext::default()
                 }),
                 token_scopes: vec![],
+                require_constraints: false,
+                capabilities: vec![],
+                supported_properties: vec![],
+                bearer_token: None,
                 properties: HashMap::new(),
             },
         };

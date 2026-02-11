@@ -8,7 +8,7 @@
 //! |----------|-------------------|-------------|--------|
 //! | false    | *                 | *           | Denied |
 //! | true     | false             | *           | `allow_all()` |
-//! | true     | true              | empty       | `allow_all()` (unrestricted) |
+//! | true     | true              | empty       | `ConstraintsRequiredButAbsent` |
 //! | true     | true              | present     | Compile constraints → `AccessScope` |
 //!
 //! Unknown predicate types fail that constraint (fail-closed).
@@ -17,7 +17,7 @@ use modkit_security::AccessScope;
 use uuid::Uuid;
 
 use crate::constraints::{Constraint, Predicate};
-use crate::models::EvaluationResponse;
+use crate::models::{DenyReason, EvaluationResponse};
 
 /// Well-known resource properties that map to `AccessScope` fields.
 const PROPERTY_OWNER_TENANT_ID: &str = "owner_tenant_id";
@@ -28,7 +28,17 @@ const PROPERTY_ID: &str = "id";
 pub enum ConstraintCompileError {
     /// The PDP explicitly denied access.
     #[error("access denied by PDP")]
-    Denied,
+    Denied {
+        /// Optional deny reason from the PDP.
+        deny_reason: Option<DenyReason>,
+    },
+
+    /// Constraints were required but the PDP returned none.
+    ///
+    /// Per the design Decision Matrix, this is a deny: the PEP asked for
+    /// row-level constraints but received an empty set. Fail-closed.
+    #[error("constraints required but PDP returned none (fail-closed)")]
+    ConstraintsRequiredButAbsent,
 
     /// All constraints contained unknown predicates (fail-closed).
     #[error("all constraints failed compilation (fail-closed): {reason}")]
@@ -40,7 +50,7 @@ pub enum ConstraintCompileError {
 /// Implements the PEP Decision Matrix:
 /// - `decision=false` → `Err(Denied)`
 /// - `decision=true, require_constraints=false` → `Ok(allow_all())`
-/// - `decision=true, require_constraints=true, constraints=[]` → `Ok(allow_all())`
+/// - `decision=true, require_constraints=true, constraints=[]` → `Err(ConstraintsRequiredButAbsent)`
 /// - `decision=true, require_constraints=true, constraints=[..]` → compile predicates
 ///
 /// ## Constraint compilation
@@ -58,6 +68,7 @@ pub enum ConstraintCompileError {
 /// # Errors
 ///
 /// - `Denied` if `decision` is `false`
+/// - `ConstraintsRequiredButAbsent` if constraints were required but empty
 /// - `AllConstraintsFailed` if all constraints have unsupported predicates
 pub fn compile_to_access_scope(
     response: &EvaluationResponse,
@@ -65,7 +76,9 @@ pub fn compile_to_access_scope(
 ) -> Result<AccessScope, ConstraintCompileError> {
     // Step 1: Check decision
     if !response.decision {
-        return Err(ConstraintCompileError::Denied);
+        return Err(ConstraintCompileError::Denied {
+            deny_reason: response.deny_reason.clone(),
+        });
     }
 
     // Step 2: If constraints not required, return allow_all
@@ -73,9 +86,9 @@ pub fn compile_to_access_scope(
         return Ok(AccessScope::allow_all());
     }
 
-    // Step 3: If no constraints provided, treat as unrestricted
+    // Step 3: If no constraints provided and they were required, fail-closed
     if response.constraints.is_empty() {
-        return Ok(AccessScope::allow_all());
+        return Err(ConstraintCompileError::ConstraintsRequiredButAbsent);
     }
 
     // Step 4: Compile constraints (ORed — merge all tenant/resource IDs)
@@ -187,10 +200,33 @@ mod tests {
         let response = EvaluationResponse {
             decision: false,
             constraints: vec![],
+            deny_reason: None,
         };
 
         let result = compile_to_access_scope(&response, true);
-        assert!(matches!(result, Err(ConstraintCompileError::Denied)));
+        assert!(matches!(result, Err(ConstraintCompileError::Denied { .. })));
+    }
+
+    #[test]
+    fn decision_false_with_deny_reason() {
+        let response = EvaluationResponse {
+            decision: false,
+            constraints: vec![],
+            deny_reason: Some(DenyReason {
+                error_code: "INSUFFICIENT_PERMISSIONS".to_owned(),
+                details: Some("Missing admin role".to_owned()),
+            }),
+        };
+
+        let result = compile_to_access_scope(&response, true);
+        match result {
+            Err(ConstraintCompileError::Denied { deny_reason }) => {
+                let reason = deny_reason.unwrap();
+                assert_eq!(reason.error_code, "INSUFFICIENT_PERMISSIONS");
+                assert_eq!(reason.details.as_deref(), Some("Missing admin role"));
+            }
+            other => panic!("Expected Denied with reason, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -198,6 +234,7 @@ mod tests {
         let response = EvaluationResponse {
             decision: true,
             constraints: vec![],
+            deny_reason: None,
         };
 
         let scope = compile_to_access_scope(&response, false).unwrap();
@@ -205,14 +242,18 @@ mod tests {
     }
 
     #[test]
-    fn decision_true_require_constraints_empty_returns_allow_all() {
+    fn decision_true_require_constraints_empty_returns_error() {
         let response = EvaluationResponse {
             decision: true,
             constraints: vec![],
+            deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true).unwrap();
-        assert!(scope.is_unconstrained());
+        let result = compile_to_access_scope(&response, true);
+        assert!(matches!(
+            result,
+            Err(ConstraintCompileError::ConstraintsRequiredButAbsent)
+        ));
     }
 
     // === Constraint Compilation Tests ===
@@ -227,6 +268,7 @@ mod tests {
                     value: uuid(T1),
                 })],
             }],
+            deny_reason: None,
         };
 
         let scope = compile_to_access_scope(&response, true).unwrap();
@@ -244,6 +286,7 @@ mod tests {
                     values: vec![uuid(T1), uuid(T2)],
                 })],
             }],
+            deny_reason: None,
         };
 
         let scope = compile_to_access_scope(&response, true).unwrap();
@@ -260,6 +303,7 @@ mod tests {
                     value: uuid(R1),
                 })],
             }],
+            deny_reason: None,
         };
 
         let scope = compile_to_access_scope(&response, true).unwrap();
@@ -285,6 +329,7 @@ mod tests {
                     })],
                 },
             ],
+            deny_reason: None,
         };
 
         let scope = compile_to_access_scope(&response, true).unwrap();
@@ -302,6 +347,7 @@ mod tests {
                     value: uuid(T1),
                 })],
             }],
+            deny_reason: None,
         };
 
         let result = compile_to_access_scope(&response, true);
@@ -331,6 +377,7 @@ mod tests {
                     })],
                 },
             ],
+            deny_reason: None,
         };
 
         // Should succeed — the second constraint compiled
@@ -354,6 +401,7 @@ mod tests {
                     }),
                 ],
             }],
+            deny_reason: None,
         };
 
         let scope = compile_to_access_scope(&response, true).unwrap();

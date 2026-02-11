@@ -24,10 +24,11 @@
 //!
 //! ## Security
 //!
-//! All operations use the `AuthZ` Resolver PEP (Policy Enforcement Point) pattern:
-//! 1. Build evaluation request from `SecurityContext` + operation details
-//! 2. Call `AuthZ` Resolver to evaluate the request
-//! 3. Compile PDP response into `AccessScope` for row-level filtering
+//! All operations use the `AuthZ` Resolver PEP (Policy Enforcement Point) pattern
+//! via [`PolicyEnforcer`](authz_resolver_sdk::PolicyEnforcer):
+//! 1. Construct a `PolicyEnforcer` per resource type (once, during init)
+//! 2. Call `enforcer.access_scope(&ctx, action, resource_id, require_constraints)`
+//! 3. The enforcer builds the request, evaluates via PDP, and compiles to `AccessScope`
 //! 4. Pass scope to repository methods for tenant-isolated queries
 //!
 //! ## Connection Management
@@ -42,16 +43,13 @@
 
 use std::sync::Arc;
 
-use crate::domain::error::DomainError;
 use crate::domain::events::UserDomainEvent;
 use crate::domain::ports::{AuditPort, EventPublisher};
 use crate::domain::repos::{AddressesRepository, CitiesRepository, UsersRepository};
 use authz_resolver_sdk::AuthZResolverGatewayClient;
-use authz_resolver_sdk::pep::{build_evaluation_request, compile_to_access_scope};
+use authz_resolver_sdk::PolicyEnforcer;
 use modkit_db::DBProvider;
 use modkit_db::odata::LimitCfg;
-use modkit_security::{AccessScope, SecurityContext};
-use uuid::Uuid;
 
 mod addresses;
 mod cities;
@@ -62,39 +60,6 @@ pub(crate) use cities::CitiesService;
 pub(crate) use users::UsersService;
 
 pub(crate) type DbProvider = DBProvider<modkit_db::DbError>;
-
-/// Resolve access scope for the current security context using the `AuthZ` Resolver.
-///
-/// This is the PEP (Policy Enforcement Point) helper that:
-/// 1. Builds an `EvaluationRequest` from the security context + operation details
-/// 2. Calls the `AuthZ` Resolver PDP to evaluate the request
-/// 3. Compiles the PDP response into an `AccessScope` for row-level filtering
-pub(crate) async fn authz_scope(
-    authz: &dyn AuthZResolverGatewayClient,
-    ctx: &SecurityContext,
-    action: &str,
-    resource_type: &str,
-    resource_id: Option<Uuid>,
-    require_constraints: bool,
-    context_tenant_id: Option<Uuid>,
-) -> Result<AccessScope, DomainError> {
-    let eval_request = build_evaluation_request(
-        ctx,
-        action,
-        resource_type,
-        resource_id,
-        require_constraints,
-        context_tenant_id,
-    );
-    let eval_response = authz.evaluate(eval_request).await.map_err(|e| {
-        tracing::error!(error = %e, "AuthZ evaluation failed");
-        DomainError::InternalError
-    })?;
-    compile_to_access_scope(&eval_response, require_constraints).map_err(|e| {
-        tracing::error!(error = %e, "Failed to compile AuthZ constraints to access scope");
-        DomainError::Forbidden
-    })
-}
 
 /// Configuration for the domain service
 #[derive(Debug, Clone)]
@@ -178,13 +143,13 @@ where
         let cities = Arc::new(CitiesService::new(
             Arc::clone(&db),
             Arc::clone(&cities_repo),
-            authz.clone(),
+            PolicyEnforcer::new("users_info.city", authz.clone()),
         ));
         let addresses = Arc::new(AddressesService::new(
             Arc::clone(&db),
             Arc::clone(&addresses_repo),
             Arc::clone(&users_repo),
-            authz.clone(),
+            PolicyEnforcer::new("users_info.address", authz.clone()),
         ));
 
         Self {
@@ -193,7 +158,7 @@ where
                 Arc::clone(&users_repo),
                 events,
                 audit,
-                authz,
+                PolicyEnforcer::new("users_info.user", authz),
                 config,
                 cities.clone(),
                 addresses.clone(),

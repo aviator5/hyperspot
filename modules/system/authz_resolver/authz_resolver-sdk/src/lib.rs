@@ -8,24 +8,29 @@
 //! - [`Constraint`], [`Predicate`] - Constraint types
 //! - [`AuthZResolverError`] - Error types
 //! - [`AuthZResolverPluginSpecV1`] - GTS schema for plugin discovery
-//! - [`pep`] - PEP helpers (compiler, request builder)
+//! - [`pep`] - PEP helpers ([`PolicyEnforcer`], [`AccessRequest`], compiler)
 //!
 //! ## Usage
 //!
 //! ```ignore
-//! use authz_resolver_sdk::{AuthZResolverGatewayClient, pep};
+//! use authz_resolver_sdk::{AuthZResolverGatewayClient, pep::{AccessRequest, PolicyEnforcer}};
 //!
 //! // Get the client from ClientHub
 //! let authz = hub.get::<dyn AuthZResolverGatewayClient>()?;
 //!
-//! // Build evaluation request
-//! let request = pep::build_evaluation_request(&ctx, "list", "users_info.user", None, true);
+//! // Create a per-resource-type enforcer (once, during init)
+//! let enforcer = PolicyEnforcer::new("users_info.user", authz);
 //!
-//! // Evaluate
-//! let response = authz.evaluate(request).await?;
+//! // Simple case — full PEP flow in one call
+//! let scope = enforcer.access_scope(&ctx, "get", Some(id), true).await?;
 //!
-//! // Compile to AccessScope
-//! let scope = pep::compile_to_access_scope(&response, true)?;
+//! // Advanced case — with per-request overrides
+//! let scope = enforcer.access_scope_with(
+//!     &ctx, "create", None, false,
+//!     &AccessRequest::new()
+//!         .context_tenant_id(target_tenant_id)
+//!         .resource_property("owner_tenant_id", json!(target_tenant_id.to_string())),
+//! ).await?;
 //! ```
 
 pub mod api;
@@ -42,6 +47,8 @@ pub use constraints::{Constraint, EqPredicate, InPredicate, Predicate};
 pub use error::AuthZResolverError;
 pub use gts::AuthZResolverPluginSpecV1;
 pub use models::{
-    Action, Context, EvaluationRequest, EvaluationResponse, Resource, Subject, TenantContext,
+    Action, BarrierMode, Capability, Context, DenyReason, EvaluationRequest, EvaluationResponse,
+    Resource, Subject, TenantContext, TenantMode,
 };
+pub use pep::{AccessRequest, EnforcerError, PolicyEnforcer};
 pub use plugin_api::AuthZResolverPluginClient;

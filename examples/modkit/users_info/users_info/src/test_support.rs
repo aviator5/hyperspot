@@ -115,14 +115,18 @@ impl AuthZResolverGatewayClient for MockAuthZResolver {
         request: EvaluationRequest,
     ) -> Result<EvaluationResponse, AuthZResolverError> {
         // allow_all mode: decision=true with tenant constraint from context
-        let constraints = if request.resource.require_constraints {
-            if let Some(ref tenant_ctx) = request.context.tenant {
-                vec![Constraint {
-                    predicates: vec![Predicate::In(InPredicate {
-                        property: "owner_tenant_id".to_owned(),
-                        values: vec![tenant_ctx.root_id],
-                    })],
-                }]
+        let constraints = if request.context.require_constraints {
+            if let Some(ref tenant_ctx) = request.context.tenant_context {
+                if let Some(root_id) = tenant_ctx.root_id {
+                    vec![Constraint {
+                        predicates: vec![Predicate::In(InPredicate {
+                            property: "owner_tenant_id".to_owned(),
+                            values: vec![root_id],
+                        })],
+                    }]
+                } else {
+                    vec![]
+                }
             } else {
                 vec![]
             }
@@ -133,6 +137,7 @@ impl AuthZResolverGatewayClient for MockAuthZResolver {
         Ok(EvaluationResponse {
             decision: true,
             constraints,
+            deny_reason: None,
         })
     }
 }
