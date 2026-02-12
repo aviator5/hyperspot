@@ -66,7 +66,7 @@ pub enum ConstraintCompileError {
 pub fn compile_to_access_scope(
     response: &EvaluationResponse,
     require_constraints: bool,
-    supported_properties: &[String],
+    supported_properties: &[&str],
 ) -> Result<AccessScope, ConstraintCompileError> {
     // Step 1: Check decision
     if !response.decision {
@@ -117,7 +117,7 @@ pub fn compile_to_access_scope(
 /// is not in `supported_properties`, the entire constraint fails (fail-closed).
 fn compile_constraint(
     constraint: &Constraint,
-    supported_properties: &[String],
+    supported_properties: &[&str],
 ) -> Result<ScopeConstraint, String> {
     let mut filters = Vec::new();
 
@@ -127,7 +127,7 @@ fn compile_constraint(
             Predicate::In(p) => (p.property.as_str(), p.values.clone()),
         };
 
-        if !supported_properties.iter().any(|sp| sp == property) {
+        if !supported_properties.contains(&property) {
             return Err(format!("unsupported property: {property}"));
         }
 
@@ -153,12 +153,7 @@ mod tests {
     const T2: &str = "22222222-2222-2222-2222-222222222222";
     const R1: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
-    fn default_props() -> Vec<String> {
-        vec![
-            "owner_tenant_id".to_owned(),
-            "id".to_owned(),
-        ]
-    }
+    const DEFAULT_PROPS: &[&str] = &["owner_tenant_id", "id"];
 
     // === Decision Matrix Tests ===
 
@@ -170,7 +165,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true, &default_props());
+        let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
         assert!(matches!(result, Err(ConstraintCompileError::Denied { .. })));
     }
 
@@ -185,7 +180,7 @@ mod tests {
             }),
         };
 
-        let result = compile_to_access_scope(&response, true, &default_props());
+        let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
         match result {
             Err(ConstraintCompileError::Denied { deny_reason }) => {
                 let reason = deny_reason.unwrap();
@@ -204,7 +199,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, false, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, false, DEFAULT_PROPS).unwrap();
         assert!(scope.is_unconstrained());
     }
 
@@ -216,7 +211,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true, &default_props());
+        let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
         assert!(matches!(
             result,
             Err(ConstraintCompileError::ConstraintsRequiredButAbsent)
@@ -238,7 +233,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1)]);
         assert!(scope.all_values_for(properties::RESOURCE_ID).is_empty());
     }
@@ -256,7 +251,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1), uuid(T2)]);
     }
 
@@ -273,7 +268,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         assert!(scope.all_values_for(properties::OWNER_TENANT_ID).is_empty());
         assert_eq!(scope.all_values_for(properties::RESOURCE_ID), &[uuid(R1)]);
     }
@@ -299,7 +294,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         // Each constraint is a separate ScopeConstraint (ORed)
         assert_eq!(scope.constraints().len(), 2);
         // Both tenants accessible
@@ -320,7 +315,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true, &default_props());
+        let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
         assert!(matches!(
             result,
             Err(ConstraintCompileError::AllConstraintsFailed { .. })
@@ -351,7 +346,7 @@ mod tests {
         };
 
         // Should succeed — the second constraint compiled
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T2)]);
     }
 
@@ -374,7 +369,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         // Single constraint with both properties (AND)
         assert_eq!(scope.constraints().len(), 1);
         assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1)]);
@@ -409,7 +404,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let scope = compile_to_access_scope(&response, true, &default_props()).unwrap();
+        let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         assert_eq!(scope.constraints().len(), 2);
         // First constraint has 2 filters (AND), second has 1 filter
         assert_eq!(scope.constraints()[0].filters().len(), 2);
@@ -419,7 +414,7 @@ mod tests {
     #[test]
     fn supported_properties_validation() {
         // Only owner_tenant_id is supported — id should fail
-        let limited_props = vec!["owner_tenant_id".to_owned()];
+        let limited_props: &[&str] = &["owner_tenant_id"];
 
         let response = EvaluationResponse {
             decision: true,
@@ -432,7 +427,7 @@ mod tests {
             deny_reason: None,
         };
 
-        let result = compile_to_access_scope(&response, true, &limited_props);
+        let result = compile_to_access_scope(&response, true, limited_props);
         assert!(matches!(
             result,
             Err(ConstraintCompileError::AllConstraintsFailed { .. })

@@ -7,6 +7,8 @@ use crate::domain::service::DbProvider;
 use authz_resolver_sdk::PolicyEnforcer;
 use authz_resolver_sdk::models::TenantMode;
 use authz_resolver_sdk::pep::AccessRequest;
+
+use super::{actions, resources};
 use modkit_odata::{ODataQuery, Page};
 use modkit_security::{AccessScope, SecurityContext, properties};
 use time::OffsetDateTime;
@@ -48,7 +50,7 @@ impl<R: CitiesRepository> CitiesService<R> {
         // TODO: consider prefetch pattern (AUTHZ_USAGE_SCENARIOS.md, S07).
         let scope = self
             .enforcer
-            .access_scope(ctx, "get", Some(id), true)
+            .access_scope(ctx, &resources::CITY, actions::GET, Some(id))
             .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
@@ -67,7 +69,7 @@ impl<R: CitiesRepository> CitiesService<R> {
         let conn = self.db.conn().map_err(DomainError::from)?;
 
         // Subtree without closure — PDP expands tenant hierarchy (see module doc).
-        let scope = self.enforcer.access_scope(ctx, "list", None, true).await?;
+        let scope = self.enforcer.access_scope(ctx, &resources::CITY, actions::LIST, None).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -88,13 +90,12 @@ impl<R: CitiesRepository> CitiesService<R> {
         let tenant_id = new_city.tenant_id;
 
         // Pass target tenant to PDP for CREATE validation.
-        let _decision = self
-            .enforcer
-            .access_scope_with(
+        self.enforcer
+            .check_access_with(
                 ctx,
-                "create",
+                &resources::CITY,
+                actions::CREATE,
                 None,
-                false,
                 &AccessRequest::new()
                     .context_tenant_id(tenant_id)
                     .tenant_mode(TenantMode::RootOnly)
@@ -141,7 +142,7 @@ impl<R: CitiesRepository> CitiesService<R> {
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "update", Some(id), true)
+            .access_scope(ctx, &resources::CITY, actions::UPDATE, Some(id))
             .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
@@ -173,7 +174,7 @@ impl<R: CitiesRepository> CitiesService<R> {
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "delete", Some(id), true)
+            .access_scope(ctx, &resources::CITY, actions::DELETE, Some(id))
             .await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;

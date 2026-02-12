@@ -49,38 +49,62 @@ EvaluationResponse {
 
 ### PEP Pattern
 
-The SDK provides helpers for the common PEP flow:
+The SDK provides [`PolicyEnforcer`](authz_resolver-sdk/src/pep/enforcer.rs) — a high-level PEP object that encapsulates the full flow: build request → evaluate via PDP → compile constraints to `AccessScope`.
+
+A single enforcer serves all resource types; the resource type is supplied per call via a [`ResourceType`](authz_resolver-sdk/src/pep/enforcer.rs) descriptor. Action names are plain `&str` constants defined by the consuming module (not by the SDK).
 
 ```rust
-use authz_resolver_sdk::pep::{build_evaluation_request, compile_to_access_scope};
+use authz_resolver_sdk::pep::{PolicyEnforcer, ResourceType};
 
-// 1. Build request from SecurityContext
-let request = build_evaluation_request(
-    &ctx,
-    "list",                    // action
-    "users_info.user",         // resource_type
-    None,                      // resource_id (None for collection operations)
-    true,                      // require_constraints (true for LIST/GET/UPDATE/DELETE)
-    ctx.subject_tenant_id(),   // context_tenant_id
-);
+const USER: ResourceType = ResourceType {
+    name: "users_info.user",
+    supported_properties: &["owner_tenant_id", "id"],
+};
 
-// 2. Evaluate via PDP
-let response = authz.evaluate(request).await?;
+// Create once during init (serves all resource types)
+let enforcer = PolicyEnforcer::new(authz);
 
-// 3. Compile constraints to AccessScope for SecureORM
-let scope = compile_to_access_scope(&response, true)?;
+// Constrained — returns AccessScope (GET/LIST/UPDATE/DELETE)
+let scope = enforcer.access_scope(&ctx, &USER, "get", Some(id)).await?;
+
+// Unconstrained — checks decision only (CREATE)
+enforcer.check_access(&ctx, &USER, "create", None).await?;
+```
+
+For advanced scenarios (ABAC resource properties, custom tenant mode, barrier bypass), use `access_scope_with` or `check_access_with` with an `AccessRequest`:
+
+```rust
+use authz_resolver_sdk::pep::AccessRequest;
+
+// CREATE with target tenant + resource properties
+enforcer.check_access_with(
+    &ctx, &USER, "create", None,
+    &AccessRequest::new()
+        .context_tenant_id(target_tenant_id)
+        .tenant_mode(TenantMode::RootOnly)
+        .resource_property("owner_tenant_id", json!(target_tenant_id.to_string())),
+).await?;
+
+// Billing — ignore barriers (constrained scope)
+let scope = enforcer.access_scope_with(
+    &ctx, &USER, "list", None,
+    &AccessRequest::new().barrier_mode(BarrierMode::Ignore),
+).await?;
 ```
 
 **Decision Matrix** (fail-closed):
+
+| Method | `require_constraints` | Use case |
+|--------|----------------------|----------|
+| `access_scope` / `access_scope_with` | `true` | GET, LIST, UPDATE, DELETE — returns `AccessScope` |
+| `check_access` / `check_access_with` | `false` | CREATE — returns `()`, scope built from validated tenant |
 
 | decision | require_constraints | constraints | Result |
 |----------|-------------------|-------------|--------|
 | false    | *                 | *           | Denied |
 | true     | false             | *           | `allow_all()` |
-| true     | true              | empty       | `allow_all()` |
+| true     | true              | empty       | `ConstraintsRequiredButAbsent` |
 | true     | true              | present     | Compile to `AccessScope` |
-
-**Note:** CREATE operations need `require_constraints=true` because the SecureORM always needs tenant scope for INSERTs.
 
 ### Errors
 
@@ -115,47 +139,34 @@ This is suitable for development and single-tenant deployments.
 
 ## Usage
 
-### Direct API
+### Typical Module Setup
 
 ```rust
+use authz_resolver_sdk::pep::{PolicyEnforcer, ResourceType};
+
+// Define resource type and action constants (once, in module)
+mod resources {
+    use super::ResourceType;
+    pub const USER: ResourceType = ResourceType {
+        name: "users_info.user",
+        supported_properties: &["owner_tenant_id", "id"],
+    };
+}
+mod actions {
+    pub const LIST: &str = "list";
+    pub const CREATE: &str = "create";
+    // ...
+}
+
+// During init — create one enforcer, share across services
 let authz = hub.get::<dyn AuthZResolverGatewayClient>()?;
+let enforcer = PolicyEnforcer::new(authz);
 
-let request = build_evaluation_request(
-    &ctx, "list", "users_info.user", None, true, ctx.subject_tenant_id(),
-);
-let response = authz.evaluate(request).await?;
-
-if !response.decision {
-    return Err(DomainError::Forbidden);
-}
-
-let scope = compile_to_access_scope(&response, true)?;
+// In a service method — constrained (returns AccessScope)
+let scope = enforcer
+    .access_scope(&ctx, &resources::USER, actions::LIST, None)
+    .await?;
 let users = secure_conn.find::<user::Entity>(&scope)?.all(conn).await?;
-```
-
-### Helper Pattern
-
-Modules typically wrap the PEP flow in a helper:
-
-```rust
-async fn authz_scope(
-    authz: &dyn AuthZResolverGatewayClient,
-    ctx: &SecurityContext,
-    action: &str,
-    resource_type: &str,
-    resource_id: Option<Uuid>,
-    require_constraints: bool,
-    context_tenant_id: Option<Uuid>,
-) -> Result<AccessScope, DomainError> {
-    let request = build_evaluation_request(
-        ctx, action, resource_type, resource_id,
-        require_constraints, context_tenant_id,
-    );
-    let response = authz.evaluate(request).await
-        .map_err(|_| DomainError::Forbidden)?;
-    compile_to_access_scope(&response, require_constraints)
-        .map_err(|_| DomainError::Forbidden)
-}
 ```
 
 ## Technical Decisions

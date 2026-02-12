@@ -7,6 +7,8 @@ use crate::domain::service::DbProvider;
 use authz_resolver_sdk::PolicyEnforcer;
 use authz_resolver_sdk::models::TenantMode;
 use authz_resolver_sdk::pep::AccessRequest;
+
+use super::{actions, resources};
 use modkit_odata::{ODataQuery, Page};
 use modkit_security::{AccessScope, SecurityContext, properties};
 use time::OffsetDateTime;
@@ -52,7 +54,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         // TODO: consider prefetch pattern (AUTHZ_USAGE_SCENARIOS.md, S07).
         let scope = self
             .enforcer
-            .access_scope(ctx, "get", Some(id), true)
+            .access_scope(ctx, &resources::ADDRESS, actions::GET, Some(id))
             .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
@@ -72,7 +74,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         let conn = self.db.conn().map_err(DomainError::from)?;
 
         // Subtree without closure — PDP expands tenant hierarchy (see module doc).
-        let scope = self.enforcer.access_scope(ctx, "list", None, true).await?;
+        let scope = self.enforcer.access_scope(ctx, &resources::ADDRESS, actions::LIST, None).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -91,7 +93,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         let conn = self.db.conn().map_err(DomainError::from)?;
 
         // Subtree without closure — PDP expands tenant hierarchy (see module doc).
-        let scope = self.enforcer.access_scope(ctx, "get", None, true).await?;
+        let scope = self.enforcer.access_scope(ctx, &resources::ADDRESS, actions::GET, None).await?;
 
         let found = self.repo.get_by_user_id(&conn, &scope, user_id).await?;
 
@@ -123,7 +125,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         // Subtree without closure — PDP expands tenant hierarchy (see module doc).
         let read_scope = self
             .enforcer
-            .access_scope(ctx, "get", None, true)
+            .access_scope(ctx, &resources::ADDRESS, actions::GET, None)
             .await?;
 
         let user = self
@@ -145,7 +147,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
             // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
             let scope = self
                 .enforcer
-                .access_scope(ctx, "update", Some(existing_model.id), true)
+                .access_scope(ctx, &resources::ADDRESS, actions::UPDATE, Some(existing_model.id))
                 .await?;
 
             let mut updated: Address = existing_model;
@@ -160,13 +162,12 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
             Ok(updated)
         } else {
             // CREATE path — evaluate "create" action with target tenant
-            let _decision = self
-                .enforcer
-                .access_scope_with(
+            self.enforcer
+                .check_access_with(
                     ctx,
-                    "create",
+                    &resources::ADDRESS,
+                    actions::CREATE,
                     None,
-                    false,
                     &AccessRequest::new()
                         .context_tenant_id(user.tenant_id)
                         .tenant_mode(TenantMode::RootOnly)
@@ -214,7 +215,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "delete", None, true)
+            .access_scope(ctx, &resources::ADDRESS, actions::DELETE, None)
             .await?;
 
         let rows_affected = self.repo.delete_by_user_id(&conn, &scope, user_id).await?;
@@ -241,7 +242,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         // Subtree without closure — PDP expands tenant hierarchy (see module doc).
         let read_scope = self
             .enforcer
-            .access_scope(ctx, "get", Some(new_address.user_id), true)
+            .access_scope(ctx, &resources::ADDRESS, actions::GET, Some(new_address.user_id))
             .await?;
 
         let user = self
@@ -254,13 +255,12 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         let tenant_id = user.tenant_id;
 
         // Pass target tenant to PDP for CREATE validation.
-        let _decision = self
-            .enforcer
-            .access_scope_with(
+        self.enforcer
+            .check_access_with(
                 ctx,
-                "create",
+                &resources::ADDRESS,
+                actions::CREATE,
                 None,
-                false,
                 &AccessRequest::new()
                     .context_tenant_id(tenant_id)
                     .tenant_mode(TenantMode::RootOnly)
@@ -309,7 +309,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "update", Some(id), true)
+            .access_scope(ctx, &resources::ADDRESS, actions::UPDATE, Some(id))
             .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
@@ -344,7 +344,7 @@ impl<R: AddressesRepository, U: UsersRepository> AddressesService<R, U> {
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "delete", Some(id), true)
+            .access_scope(ctx, &resources::ADDRESS, actions::DELETE, Some(id))
             .await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;

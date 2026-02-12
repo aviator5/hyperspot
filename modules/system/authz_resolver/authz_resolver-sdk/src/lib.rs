@@ -8,25 +8,33 @@
 //! - [`Constraint`], [`Predicate`] - Constraint types
 //! - [`AuthZResolverError`] - Error types
 //! - [`AuthZResolverPluginSpecV1`] - GTS schema for plugin discovery
-//! - [`pep`] - PEP helpers ([`PolicyEnforcer`], [`AccessRequest`], compiler)
+//! - [`pep`] - PEP helpers ([`PolicyEnforcer`], [`ResourceType`], compiler)
 //!
 //! ## Usage
 //!
 //! ```ignore
-//! use authz_resolver_sdk::{AuthZResolverGatewayClient, pep::{AccessRequest, PolicyEnforcer}};
+//! use authz_resolver_sdk::{
+//!     AuthZResolverGatewayClient,
+//!     pep::{AccessRequest, PolicyEnforcer, ResourceType},
+//! };
+//!
+//! const USER: ResourceType = ResourceType {
+//!     name: "users_info.user",
+//!     supported_properties: &["owner_tenant_id", "id"],
+//! };
 //!
 //! // Get the client from ClientHub
 //! let authz = hub.get::<dyn AuthZResolverGatewayClient>()?;
 //!
-//! // Create a per-resource-type enforcer (once, during init)
-//! let enforcer = PolicyEnforcer::new("users_info.user", authz);
+//! // Create an enforcer (once, during init — serves all resource types)
+//! let enforcer = PolicyEnforcer::new(authz);
 //!
-//! // Simple case — full PEP flow in one call
-//! let scope = enforcer.access_scope(&ctx, "get", Some(id), true).await?;
+//! // Constrained — returns AccessScope (GET/LIST/UPDATE/DELETE)
+//! let scope = enforcer.access_scope(&ctx, &USER, "get", Some(id)).await?;
 //!
-//! // Advanced case — with per-request overrides
-//! let scope = enforcer.access_scope_with(
-//!     &ctx, "create", None, false,
+//! // Unconstrained — checks decision only (CREATE)
+//! enforcer.check_access_with(
+//!     &ctx, &USER, "create", None,
 //!     &AccessRequest::new()
 //!         .context_tenant_id(target_tenant_id)
 //!         .resource_property("owner_tenant_id", json!(target_tenant_id.to_string())),
@@ -50,5 +58,5 @@ pub use models::{
     Action, BarrierMode, Capability, Context, DenyReason, EvaluationRequest, EvaluationResponse,
     Resource, Subject, TenantContext, TenantMode,
 };
-pub use pep::{AccessRequest, EnforcerError, PolicyEnforcer};
+pub use pep::{AccessRequest, EnforcerError, PolicyEnforcer, ResourceType};
 pub use plugin_api::AuthZResolverPluginClient;

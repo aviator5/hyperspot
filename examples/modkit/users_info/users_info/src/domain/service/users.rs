@@ -10,6 +10,8 @@ use crate::domain::service::{AddressesService, CitiesService, ServiceConfig};
 use authz_resolver_sdk::PolicyEnforcer;
 use authz_resolver_sdk::models::TenantMode;
 use authz_resolver_sdk::pep::AccessRequest;
+
+use super::{actions, resources};
 use modkit_odata::{ODataQuery, Page};
 use modkit_security::{AccessScope, SecurityContext, properties};
 use time::OffsetDateTime;
@@ -96,7 +98,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
         // TODO: consider prefetch pattern (AUTHZ_USAGE_SCENARIOS.md, S07).
         let scope = self
             .enforcer
-            .access_scope(ctx, "get", Some(id), true)
+            .access_scope(ctx, &resources::USER, actions::GET, Some(id))
             .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
@@ -119,7 +121,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
         let conn = self.db.conn().map_err(DomainError::from)?;
 
         // Subtree without closure — PDP expands tenant hierarchy (see module doc).
-        let scope = self.enforcer.access_scope(ctx, "list", None, true).await?;
+        let scope = self.enforcer.access_scope(ctx, &resources::USER, actions::LIST, None).await?;
 
         let page = self.repo.list_page(&conn, &scope, query).await?;
 
@@ -156,13 +158,12 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
         // Pass target tenant to PDP so it can make a tenant-specific
         // access decision. No constraints needed — scope is built from
         // the validated target tenant directly.
-        let _decision = self
-            .enforcer
-            .access_scope_with(
+        self.enforcer
+            .check_access_with(
                 ctx,
-                "create",
+                &resources::USER,
+                actions::CREATE,
                 None,
-                false,
                 &AccessRequest::new()
                     .context_tenant_id(tenant_id)
                     .tenant_mode(TenantMode::RootOnly)
@@ -233,7 +234,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "update", Some(id), true)
+            .access_scope(ctx, &resources::USER, actions::UPDATE, Some(id))
             .await?;
 
         let found = self.repo.get(&conn, &scope, id).await?;
@@ -281,7 +282,7 @@ impl<R: UsersRepository + 'static, CR: CitiesRepository, AR: AddressesRepository
         // TOCTOU (AUTHZ_USAGE_SCENARIOS.md, S08).
         let scope = self
             .enforcer
-            .access_scope(ctx, "delete", Some(id), true)
+            .access_scope(ctx, &resources::USER, actions::DELETE, Some(id))
             .await?;
 
         let deleted = self.repo.delete(&conn, &scope, id).await?;

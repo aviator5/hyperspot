@@ -26,8 +26,8 @@
 //!
 //! All operations use the `AuthZ` Resolver PEP (Policy Enforcement Point) pattern
 //! via [`PolicyEnforcer`](authz_resolver_sdk::PolicyEnforcer):
-//! 1. Construct a `PolicyEnforcer` per resource type (once, during init)
-//! 2. Call `enforcer.access_scope(&ctx, action, resource_id, require_constraints)`
+//! 1. Construct a `PolicyEnforcer` (once, during init — serves all resource types)
+//! 2. Call `enforcer.access_scope(&ctx, &resource, action, resource_id)`
 //! 3. The enforcer builds the request, evaluates via PDP, and compiles to `AccessScope`
 //! 4. Pass scope to repository methods for tenant-isolated queries
 //!
@@ -65,12 +65,41 @@ use crate::domain::ports::{AuditPort, EventPublisher};
 use crate::domain::repos::{AddressesRepository, CitiesRepository, UsersRepository};
 use authz_resolver_sdk::AuthZResolverGatewayClient;
 use authz_resolver_sdk::PolicyEnforcer;
+use authz_resolver_sdk::pep::ResourceType;
 use modkit_db::DBProvider;
 use modkit_db::odata::LimitCfg;
 
 mod addresses;
 mod cities;
 mod users;
+
+pub(crate) mod resources {
+    use super::ResourceType;
+    use modkit_security::properties;
+
+    pub const USER: ResourceType = ResourceType {
+        name: "users_info.user",
+        supported_properties: &[properties::OWNER_TENANT_ID, properties::RESOURCE_ID],
+    };
+
+    pub const CITY: ResourceType = ResourceType {
+        name: "users_info.city",
+        supported_properties: &[properties::OWNER_TENANT_ID, properties::RESOURCE_ID],
+    };
+
+    pub const ADDRESS: ResourceType = ResourceType {
+        name: "users_info.address",
+        supported_properties: &[properties::OWNER_TENANT_ID, properties::RESOURCE_ID],
+    };
+}
+
+pub(crate) mod actions {
+    pub const GET: &str = "get";
+    pub const LIST: &str = "list";
+    pub const CREATE: &str = "create";
+    pub const UPDATE: &str = "update";
+    pub const DELETE: &str = "delete";
+}
 
 pub(crate) use addresses::AddressesService;
 pub(crate) use cities::CitiesService;
@@ -157,23 +186,18 @@ where
         let cities_repo = Arc::new(cities_repo);
         let addresses_repo = Arc::new(addresses_repo);
 
-        let default_props = vec![
-            modkit_security::properties::OWNER_TENANT_ID.to_owned(),
-            modkit_security::properties::RESOURCE_ID.to_owned(),
-        ];
+        let enforcer = PolicyEnforcer::new(authz);
 
         let cities = Arc::new(CitiesService::new(
             Arc::clone(&db),
             Arc::clone(&cities_repo),
-            PolicyEnforcer::new("users_info.city", authz.clone())
-                .with_supported_properties(default_props.clone()),
+            enforcer.clone(),
         ));
         let addresses = Arc::new(AddressesService::new(
             Arc::clone(&db),
             Arc::clone(&addresses_repo),
             Arc::clone(&users_repo),
-            PolicyEnforcer::new("users_info.address", authz.clone())
-                .with_supported_properties(default_props.clone()),
+            enforcer.clone(),
         ));
 
         Self {
@@ -182,8 +206,7 @@ where
                 Arc::clone(&users_repo),
                 events,
                 audit,
-                PolicyEnforcer::new("users_info.user", authz)
-                    .with_supported_properties(default_props),
+                enforcer,
                 config,
                 cities.clone(),
                 addresses.clone(),
