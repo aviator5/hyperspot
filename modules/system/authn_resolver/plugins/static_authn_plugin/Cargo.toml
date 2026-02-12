@@ -45,4 +45,5 @@ tracing = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]
+secrecy = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

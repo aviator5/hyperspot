@@ -1282,6 +1282,7 @@ version = "0.2.2"
 dependencies = [
  "anyhow",
  "postcard",
+ "secrecy",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1428,6 +1429,7 @@ dependencies = [
  "cf-modkit-security",
  "cf-types-registry-sdk",
  "inventory",
+ "secrecy",
  "serde",
  "serde_json",
  "tokio",

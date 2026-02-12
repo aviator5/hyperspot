@@ -23,7 +23,7 @@ fn round_trips_security_ctx_binary_payload() {
     assert_eq!(decoded.subject_tenant_id(), ctx.subject_tenant_id());
     assert_eq!(decoded.token_scopes(), ctx.token_scopes());
     // bearer_token is #[serde(skip)] so not included in binary encoding
-    assert_eq!(decoded.bearer_token(), None);
+    assert!(decoded.bearer_token().is_none());
 }
 
 #[test]

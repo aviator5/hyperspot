@@ -2,6 +2,8 @@
 
 Authorization evaluation for CyberFabric — determines access decisions with row-level constraints.
 
+> **Architecture Reference:** This module implements the authorization patterns and PEP/PDP architecture described in [docs/arch/authorization/DESIGN.md](../../../docs/arch/authorization/DESIGN.md).
+
 ## Overview
 
 The **authz_resolver** module provides policy-based access control:

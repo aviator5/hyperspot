@@ -70,6 +70,8 @@ fn build_result(identity: &IdentityConfig, bearer_token: &str) -> Authentication
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use secrecy::ExposeSecret;
+
     use super::*;
     use crate::config::TokenMapping;
     use uuid::Uuid;
@@ -96,7 +98,10 @@ mod tests {
             Some(modkit_security::constants::DEFAULT_TENANT_ID)
         );
         assert_eq!(ctx.token_scopes(), &["*"]);
-        assert_eq!(ctx.bearer_token(), Some("any-token-value"));
+        assert_eq!(
+            ctx.bearer_token().map(ExposeSecret::expose_secret),
+            Some("any-token-value"),
+        );
     }
 
     #[test]
@@ -135,7 +140,10 @@ mod tests {
         assert_eq!(ctx.subject_id(), user_a_id);
         assert_eq!(ctx.subject_tenant_id(), Some(tenant_a));
         assert_eq!(ctx.token_scopes(), &["read:data"]);
-        assert_eq!(ctx.bearer_token(), Some("token-user-a"));
+        assert_eq!(
+            ctx.bearer_token().map(ExposeSecret::expose_secret),
+            Some("token-user-a"),
+        );
     }
 
     #[test]

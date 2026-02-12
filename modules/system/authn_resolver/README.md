@@ -2,6 +2,8 @@
 
 Authentication resolution for CyberFabric — validates bearer tokens and produces `SecurityContext`.
 
+> **Architecture Reference:** This module implements the authentication patterns described in [docs/arch/authorization/DESIGN.md](../../../docs/arch/authorization/DESIGN.md).
+
 ## Overview
 
 The **authn_resolver** module provides token-to-identity resolution:

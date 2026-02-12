@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use modkit_security::{AccessScope, SecurityContext};
-use secrecy::SecretString;
 use uuid::Uuid;
 
 use crate::api::AuthZResolverGatewayClient;
@@ -249,7 +248,7 @@ impl PolicyEnforcer {
             );
         }
 
-        let bearer_token = ctx.bearer_token().map(|t| SecretString::from(t.to_owned()));
+        let bearer_token = ctx.bearer_token().cloned();
 
         EvaluationRequest {
             subject: Subject {

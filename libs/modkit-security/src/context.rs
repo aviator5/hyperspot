@@ -1,3 +1,4 @@
+use secrecy::SecretString;
 use uuid::Uuid;
 
 /// `SecurityContext` encapsulates the security-related information for a request or operation.
@@ -17,8 +18,9 @@ pub struct SecurityContext {
     #[serde(default)]
     token_scopes: Vec<String>,
     /// Original bearer token for PDP forwarding. Never serialized/persisted.
+    /// Wrapped in `SecretString` so `Debug` redacts the value automatically.
     #[serde(skip)]
-    bearer_token: Option<String>,
+    bearer_token: Option<SecretString>,
 }
 
 impl SecurityContext {
@@ -60,8 +62,8 @@ impl SecurityContext {
 
     /// Get the original bearer token (for PDP forwarding).
     #[must_use]
-    pub fn bearer_token(&self) -> Option<&str> {
-        self.bearer_token.as_deref()
+    pub fn bearer_token(&self) -> Option<&SecretString> {
+        self.bearer_token.as_ref()
     }
 }
 
@@ -71,7 +73,7 @@ pub struct SecurityContextBuilder {
     subject_type: Option<String>,
     subject_tenant_id: Option<Uuid>,
     token_scopes: Vec<String>,
-    bearer_token: Option<String>,
+    bearer_token: Option<SecretString>,
 }
 
 impl SecurityContextBuilder {
@@ -100,8 +102,8 @@ impl SecurityContextBuilder {
     }
 
     #[must_use]
-    pub fn bearer_token(mut self, token: String) -> Self {
-        self.bearer_token = Some(token);
+    pub fn bearer_token(mut self, token: impl Into<SecretString>) -> Self {
+        self.bearer_token = Some(token.into());
         self
     }
 
@@ -120,6 +122,8 @@ impl SecurityContextBuilder {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use secrecy::ExposeSecret;
+
     use super::*;
 
     #[test]
@@ -138,7 +142,10 @@ mod tests {
         assert_eq!(ctx.subject_id(), subject_id);
         assert_eq!(ctx.subject_tenant_id(), Some(subject_tenant_id));
         assert_eq!(ctx.token_scopes(), &["read:events", "write:events"]);
-        assert_eq!(ctx.bearer_token(), Some("test-token-123"));
+        assert_eq!(
+            ctx.bearer_token().map(ExposeSecret::expose_secret),
+            Some("test-token-123"),
+        );
     }
 
     #[test]
@@ -148,7 +155,7 @@ mod tests {
         assert_eq!(ctx.subject_id(), Uuid::default());
         assert_eq!(ctx.subject_tenant_id(), None);
         assert!(ctx.token_scopes().is_empty());
-        assert_eq!(ctx.bearer_token(), None);
+        assert!(ctx.bearer_token().is_none());
     }
 
     #[test]
@@ -165,7 +172,7 @@ mod tests {
         assert_eq!(ctx.subject_id(), Uuid::default());
         assert_eq!(ctx.subject_tenant_id(), None);
         assert!(ctx.token_scopes().is_empty());
-        assert_eq!(ctx.bearer_token(), None);
+        assert!(ctx.bearer_token().is_none());
     }
 
     #[test]
@@ -206,7 +213,10 @@ mod tests {
         assert_eq!(ctx2.subject_id(), ctx1.subject_id());
         assert_eq!(ctx2.subject_tenant_id(), ctx1.subject_tenant_id());
         assert_eq!(ctx2.token_scopes(), ctx1.token_scopes());
-        assert_eq!(ctx2.bearer_token(), ctx1.bearer_token());
+        assert_eq!(
+            ctx2.bearer_token().map(ExposeSecret::expose_secret),
+            ctx1.bearer_token().map(ExposeSecret::expose_secret),
+        );
     }
 
     #[test]
@@ -232,7 +242,7 @@ mod tests {
         );
         assert_eq!(deserialized.token_scopes(), original.token_scopes());
         // bearer_token is skipped during serialization
-        assert_eq!(deserialized.bearer_token(), None);
+        assert!(deserialized.bearer_token().is_none());
     }
 
     #[test]
