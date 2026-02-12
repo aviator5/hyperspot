@@ -87,6 +87,13 @@ impl modkit_db::secure::ScopableEntity for ent::Entity {
     fn type_col() -> Option<<Self as sea_orm::EntityTrait>::Column> {
         None
     }
+    fn resolve_property(property: &str) -> Option<<Self as sea_orm::EntityTrait>::Column> {
+        match property {
+            "owner_tenant_id" => Self::tenant_col(),
+            "id" => Self::resource_col(),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(feature = "sqlite")]

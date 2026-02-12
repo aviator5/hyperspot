@@ -49,6 +49,13 @@ impl ScopableEntity for tenant_ent::Entity {
     fn type_col() -> Option<<Self as EntityTrait>::Column> {
         None
     }
+    fn resolve_property(property: &str) -> Option<<Self as EntityTrait>::Column> {
+        match property {
+            "owner_tenant_id" => Self::tenant_col(),
+            "id" => Self::resource_col(),
+            _ => None,
+        }
+    }
 }
 
 struct CreateSecureUpdateTenantSafetyTables;

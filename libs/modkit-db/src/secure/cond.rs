@@ -124,4 +124,97 @@ mod tests {
         ]);
         assert_eq!(scope.constraints().len(), 2);
     }
+
+    // --- Custom PEP property tests ---
+
+    /// Test entity with a custom `department_id` property, mimicking what the
+    /// derive macro generates for an entity with `pep_prop(department_id = "department_id")`.
+    mod custom_prop_entity {
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+        #[sea_orm(table_name = "custom_prop_test")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: Uuid,
+            pub tenant_id: Uuid,
+            pub department_id: Uuid,
+        }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {}
+
+        impl ActiveModelBehavior for ActiveModel {}
+
+        impl crate::secure::ScopableEntity for Entity {
+            fn tenant_col() -> Option<Column> {
+                Some(Column::TenantId)
+            }
+            fn resource_col() -> Option<Column> {
+                Some(Column::Id)
+            }
+            fn owner_col() -> Option<Column> {
+                None
+            }
+            fn type_col() -> Option<Column> {
+                None
+            }
+            fn resolve_property(property: &str) -> Option<Column> {
+                match property {
+                    "owner_tenant_id" => Some(Column::TenantId),
+                    "id" => Some(Column::Id),
+                    "department_id" => Some(Column::DepartmentId),
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_custom_property_resolves() {
+        let dept = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::new("department_id", FilterOp::In, vec![dept]),
+        ])]);
+        // Should produce a real condition (not deny-all) since the entity resolves "department_id".
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        // A deny-all condition contains `Expr::value(false)` — verify this is NOT that.
+        let cond_str = format!("{cond:?}");
+        assert!(
+            !cond_str.contains("Value(Bool(Some(false)))"),
+            "Expected a real condition, got deny-all: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_unknown_property_deny_all() {
+        let val = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::new("nonexistent", FilterOp::In, vec![val]),
+        ])]);
+        // Unknown property should cause the constraint to fail → deny-all.
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains("Value(Bool(Some(false)))"),
+            "Expected deny-all, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_standard_plus_custom_scope() {
+        let tid = uuid::Uuid::new_v4();
+        let dept = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::new(properties::OWNER_TENANT_ID, FilterOp::In, vec![tid]),
+            ScopeFilter::new("department_id", FilterOp::In, vec![dept]),
+        ])]);
+        // Both standard and custom properties should resolve successfully.
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            !cond_str.contains("Value(Bool(Some(false)))"),
+            "Expected a real condition, got deny-all: {cond_str}"
+        );
+    }
 }

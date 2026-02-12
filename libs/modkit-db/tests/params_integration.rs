@@ -100,6 +100,13 @@ impl ScopableEntity for ent::Entity {
     fn type_col() -> Option<<Self as EntityTrait>::Column> {
         None
     }
+    fn resolve_property(property: &str) -> Option<<Self as EntityTrait>::Column> {
+        match property {
+            "owner_tenant_id" => Self::tenant_col(),
+            "id" => Self::resource_col(),
+            _ => None,
+        }
+    }
 }
 
 async fn smoke_secure_tx(db: modkit_db::Db) -> Result<()> {

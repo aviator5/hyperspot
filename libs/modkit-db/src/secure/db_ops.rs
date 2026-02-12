@@ -852,6 +852,13 @@ mod tests {
             fn type_col() -> Option<Column> {
                 None
             }
+            fn resolve_property(property: &str) -> Option<Column> {
+                match property {
+                    "owner_tenant_id" => Self::tenant_col(),
+                    "id" => Self::resource_col(),
+                    _ => None,
+                }
+            }
         }
     }
 
@@ -885,6 +892,12 @@ mod tests {
             }
             fn type_col() -> Option<Column> {
                 None
+            }
+            fn resolve_property(property: &str) -> Option<Column> {
+                match property {
+                    "id" => Self::resource_col(),
+                    _ => None,
+                }
             }
         }
     }

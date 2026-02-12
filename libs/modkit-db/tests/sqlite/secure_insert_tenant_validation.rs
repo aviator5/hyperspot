@@ -46,6 +46,12 @@ impl ScopableEntity for tenant_ent::Entity {
     fn type_col() -> Option<<Self as EntityTrait>::Column> {
         None
     }
+    fn resolve_property(property: &str) -> Option<<Self as EntityTrait>::Column> {
+        match property {
+            "owner_tenant_id" => Self::tenant_col(),
+            _ => None,
+        }
+    }
 }
 
 mod unrestricted_ent {
@@ -76,6 +82,9 @@ impl ScopableEntity for unrestricted_ent::Entity {
         None
     }
     fn type_col() -> Option<<Self as EntityTrait>::Column> {
+        None
+    }
+    fn resolve_property(_property: &str) -> Option<<Self as EntityTrait>::Column> {
         None
     }
 }

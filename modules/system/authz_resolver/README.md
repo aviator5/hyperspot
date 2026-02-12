@@ -182,6 +182,20 @@ Instead of simple allow/deny, the PDP returns constraints that translate to row-
 - **Resource-level access** — Fine-grained access to specific resource IDs
 - **Composable scopes** — Multiple constraints are ORed for flexible access patterns
 
+### Property Resolution
+
+The `supported_properties` in `ResourceType` declares which properties a resource
+supports for authorization. The SecureORM maps these property names to actual DB
+columns via `ScopableEntity::resolve_property()`.
+
+For `#[derive(Scopable)]` entities, the mapping is auto-generated:
+- `tenant_col` → `"owner_tenant_id"`
+- `resource_col` → `"id"`
+- `owner_col` → `"owner_id"`
+- `pep_prop(custom = "column")` → `"custom"` (custom properties)
+
+See `libs/modkit-db-macros` for the Scopable derive macro documentation.
+
 ### Fail-Closed Design
 
 The compiler uses a fail-closed approach:
