@@ -173,9 +173,12 @@ mod tests {
     #[test]
     fn test_custom_property_resolves() {
         let dept = uuid::Uuid::new_v4();
-        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
-            ScopeFilter::new("department_id", FilterOp::In, vec![dept]),
-        ])]);
+        let scope =
+            AccessScope::from_constraints(vec![ScopeConstraint::new(vec![ScopeFilter::new(
+                "department_id",
+                FilterOp::In,
+                vec![dept],
+            )])]);
         // Should produce a real condition (not deny-all) since the entity resolves "department_id".
         let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
         // A deny-all condition contains `Expr::value(false)` — verify this is NOT that.
@@ -189,9 +192,12 @@ mod tests {
     #[test]
     fn test_unknown_property_deny_all() {
         let val = uuid::Uuid::new_v4();
-        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
-            ScopeFilter::new("nonexistent", FilterOp::In, vec![val]),
-        ])]);
+        let scope =
+            AccessScope::from_constraints(vec![ScopeConstraint::new(vec![ScopeFilter::new(
+                "nonexistent",
+                FilterOp::In,
+                vec![val],
+            )])]);
         // Unknown property should cause the constraint to fail → deny-all.
         let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
         let cond_str = format!("{cond:?}");

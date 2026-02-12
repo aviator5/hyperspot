@@ -51,9 +51,9 @@ pub enum EnforcerError {
 /// ```ignore
 /// use authz_resolver_sdk::pep::{AccessRequest, PolicyEnforcer, ResourceType};
 ///
-/// // CREATE with target tenant + resource properties (unconstrained check)
-/// enforcer.check_access_with(
-///     &ctx, &RESOURCE, "create",
+/// // CREATE with target tenant + resource properties (constrained scope)
+/// let scope = enforcer.access_scope_with(
+///     &ctx, &RESOURCE, "create", None,
 ///     &AccessRequest::new()
 ///         .context_tenant_id(target_tenant_id)
 ///         .tenant_mode(TenantMode::RootOnly)
@@ -164,11 +164,9 @@ pub struct ResourceType {
 ///
 /// let enforcer = PolicyEnforcer::new(authz.clone());
 ///
-/// // Constrained — GET/LIST/UPDATE/DELETE (returns AccessScope)
+/// // All CRUD operations return AccessScope (PDP always returns constraints)
 /// let scope = enforcer.access_scope(&ctx, &USER, "get", Some(id)).await?;
-///
-/// // Unconstrained — CREATE (just checks decision, returns ())
-/// enforcer.check_access(&ctx, &USER, "create", None).await?;
+/// let scope = enforcer.access_scope(&ctx, &USER, "create", None).await?;
 /// ```
 #[derive(Clone)]
 pub struct PolicyEnforcer {
@@ -283,13 +281,13 @@ impl PolicyEnforcer {
         }
     }
 
-    // ── High-level: constrained PEP flow (GET/LIST/UPDATE/DELETE) ───
+    // ── High-level: full PEP flow (all CRUD operations) ─────────────
 
     /// Execute the full PEP flow with constraints: build request → evaluate
     /// → compile constraints to `AccessScope`.
     ///
-    /// Always sets `require_constraints=true`. Use for operations that need
-    /// row-level filtering (GET, LIST, UPDATE, DELETE).
+    /// Always sets `require_constraints=true`. PDP returns constraints for
+    /// all CRUD operations (GET, LIST, UPDATE, DELETE, CREATE).
     ///
     /// # Errors
     ///
@@ -302,8 +300,14 @@ impl PolicyEnforcer {
         action: &str,
         resource_id: Option<Uuid>,
     ) -> Result<AccessScope, EnforcerError> {
-        self.access_scope_with(ctx, resource, action, resource_id, &AccessRequest::default())
-            .await
+        self.access_scope_with(
+            ctx,
+            resource,
+            action,
+            resource_id,
+            &AccessRequest::default(),
+        )
+        .await
     }
 
     /// Execute the full PEP flow with constraints and per-request overrides.
@@ -330,51 +334,6 @@ impl PolicyEnforcer {
             true,
             resource.supported_properties,
         )?)
-    }
-
-    // ── High-level: unconstrained access check (CREATE) ──────────────
-
-    /// Check access without requesting constraints.
-    ///
-    /// Always sets `require_constraints=false`. Use for CREATE operations
-    /// where the caller builds the scope from the validated target tenant.
-    ///
-    /// # Errors
-    ///
-    /// - [`EnforcerError::EvaluationFailed`] if the PDP call fails
-    /// - [`EnforcerError::CompileFailed`] if the PDP denies access
-    pub async fn check_access(
-        &self,
-        ctx: &SecurityContext,
-        resource: &ResourceType,
-        action: &str,
-        resource_id: Option<Uuid>,
-    ) -> Result<(), EnforcerError> {
-        self.check_access_with(ctx, resource, action, resource_id, &AccessRequest::default())
-            .await
-    }
-
-    /// Check access without constraints, with per-request overrides.
-    ///
-    /// Always sets `require_constraints=false`.
-    ///
-    /// # Errors
-    ///
-    /// - [`EnforcerError::EvaluationFailed`] if the PDP call fails
-    /// - [`EnforcerError::CompileFailed`] if the PDP denies access
-    pub async fn check_access_with(
-        &self,
-        ctx: &SecurityContext,
-        resource: &ResourceType,
-        action: &str,
-        resource_id: Option<Uuid>,
-        request: &AccessRequest,
-    ) -> Result<(), EnforcerError> {
-        let eval_request =
-            self.build_request_with(ctx, resource, action, resource_id, false, request);
-        let response = self.authz.evaluate(eval_request).await?;
-        compile_to_access_scope(&response, false, resource.supported_properties)?;
-        Ok(())
     }
 }
 
@@ -405,7 +364,8 @@ mod tests {
     const RESOURCE: &str = "33333333-3333-3333-3333-333333333333";
 
     /// Mock that returns `decision=true` with a tenant constraint from
-    /// the request's `TenantContext.root_id`.
+    /// the request's `TenantContext.root_id` (always returns constraints,
+    /// regardless of `require_constraints`).
     struct AllowAllMock;
 
     #[async_trait]
@@ -414,18 +374,14 @@ mod tests {
             &self,
             req: EvaluationRequest,
         ) -> Result<EvaluationResponse, AuthZResolverError> {
-            let constraints = if req.context.require_constraints {
-                if let Some(ref tc) = req.context.tenant_context {
-                    if let Some(root_id) = tc.root_id {
-                        vec![Constraint {
-                            predicates: vec![Predicate::In(InPredicate {
-                                property: "owner_tenant_id".to_owned(),
-                                values: vec![root_id],
-                            })],
-                        }]
-                    } else {
-                        vec![]
-                    }
+            let constraints = if let Some(ref tc) = req.context.tenant_context {
+                if let Some(root_id) = tc.root_id {
+                    vec![Constraint {
+                        predicates: vec![Predicate::In(InPredicate {
+                            property: "owner_tenant_id".to_owned(),
+                            values: vec![root_id],
+                        })],
+                    }]
                 } else {
                     vec![]
                 }
@@ -525,16 +481,33 @@ mod tests {
             .await;
 
         let scope = scope.expect("should succeed");
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(TENANT)]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(TENANT)]
+        );
     }
 
     #[tokio::test]
-    async fn check_access_succeeds_for_create() {
+    async fn access_scope_with_for_create() {
         let e = enforcer(AllowAllMock);
         let ctx = test_ctx();
-        e.check_access(&ctx, &TEST_RESOURCE, "create", None)
+        let scope = e
+            .access_scope_with(
+                &ctx,
+                &TEST_RESOURCE,
+                "create",
+                None,
+                &AccessRequest::new()
+                    .context_tenant_id(uuid(TENANT))
+                    .tenant_mode(TenantMode::RootOnly),
+            )
             .await
             .expect("should succeed");
+
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(TENANT)]
+        );
     }
 
     #[tokio::test]
@@ -542,15 +515,6 @@ mod tests {
         let e = enforcer(FailMock);
         let ctx = test_ctx();
         let result = e.access_scope(&ctx, &TEST_RESOURCE, "get", None).await;
-
-        assert!(matches!(result, Err(EnforcerError::EvaluationFailed(_))));
-    }
-
-    #[tokio::test]
-    async fn check_access_evaluation_failure() {
-        let e = enforcer(FailMock);
-        let ctx = test_ctx();
-        let result = e.check_access(&ctx, &TEST_RESOURCE, "create", None).await;
 
         assert!(matches!(result, Err(EnforcerError::EvaluationFailed(_))));
     }
@@ -569,8 +533,7 @@ mod tests {
 
     #[test]
     fn with_capabilities() {
-        let e = enforcer(AllowAllMock)
-            .with_capabilities(vec![Capability::TenantHierarchy]);
+        let e = enforcer(AllowAllMock).with_capabilities(vec![Capability::TenantHierarchy]);
 
         assert_eq!(e.capabilities, vec![Capability::TenantHierarchy]);
     }
@@ -687,7 +650,14 @@ mod tests {
     fn build_request_with_default_delegates_to_subject_tenant() {
         let e = enforcer(AllowAllMock);
         let ctx = test_ctx();
-        let req = e.build_request_with(&ctx, &TEST_RESOURCE, "get", None, true, &AccessRequest::default());
+        let req = e.build_request_with(
+            &ctx,
+            &TEST_RESOURCE,
+            "get",
+            None,
+            true,
+            &AccessRequest::default(),
+        );
 
         assert_eq!(
             req.context
@@ -716,7 +686,10 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[custom_tenant]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[custom_tenant]
+        );
     }
 
     #[tokio::test]
@@ -739,7 +712,10 @@ mod tests {
             .await
             .expect("should succeed");
 
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(TENANT)]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(TENANT)]
+        );
     }
 
     // ── request builder internals ────────────────────────────────────
@@ -772,7 +748,14 @@ mod tests {
             ..Default::default()
         });
 
-        let request = e.build_request_with(&ctx, &USERS_RESOURCE, "get", Some(resource_id), true, &access_req);
+        let request = e.build_request_with(
+            &ctx,
+            &USERS_RESOURCE,
+            "get",
+            Some(resource_id),
+            true,
+            &access_req,
+        );
 
         assert_eq!(request.subject.id, subject_id);
         assert_eq!(
@@ -808,7 +791,14 @@ mod tests {
 
         let e = enforcer(AllowAllMock);
 
-        let request = e.build_request_with(&ctx, &TEST_RESOURCE, "create", None, false, &AccessRequest::default());
+        let request = e.build_request_with(
+            &ctx,
+            &TEST_RESOURCE,
+            "create",
+            None,
+            false,
+            &AccessRequest::default(),
+        );
 
         assert!(request.context.tenant_context.is_none());
         assert!(!request.context.require_constraints);
@@ -833,7 +823,8 @@ mod tests {
             )
             .context_tenant_id(tenant_id);
 
-        let request = e.build_request_with(&ctx, &TEST_RESOURCE, "create", None, false, &access_req);
+        let request =
+            e.build_request_with(&ctx, &TEST_RESOURCE, "create", None, false, &access_req);
 
         assert_eq!(
             request.resource.properties.get("owner_tenant_id"),
@@ -876,7 +867,14 @@ mod tests {
         let e = enforcer(AllowAllMock);
 
         // No tenant_context provided — should fall back to subject_tenant_id
-        let request = e.build_request_with(&ctx, &TEST_RESOURCE, "list", None, true, &AccessRequest::default());
+        let request = e.build_request_with(
+            &ctx,
+            &TEST_RESOURCE,
+            "list",
+            None,
+            true,
+            &AccessRequest::default(),
+        );
 
         let tc = request.context.tenant_context.as_ref().unwrap();
         assert_eq!(tc.root_id, Some(subject_tenant));

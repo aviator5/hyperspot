@@ -10,7 +10,7 @@ pub struct SecurityContext {
     subject_id: Uuid,
     /// Subject type classification (e.g., "user", "service").
     subject_type: Option<String>,
-    /// Subject's home tenant (from `AuthN`). May differ from `tenant_id` in cross-tenant scenarios.
+    /// Subject's home tenant (from `AuthN`).
     subject_tenant_id: Option<Uuid>,
     /// Token capability restrictions. `["*"]` means first-party / unrestricted.
     /// Empty means no scopes were asserted (treat as unrestricted for backward compatibility).

@@ -18,7 +18,10 @@ fn tenant_scope_is_not_empty() {
     let scope = AccessScope::for_tenant(DEFAULT_TENANT_ID);
 
     assert!(!scope.is_deny_all());
-    assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[DEFAULT_TENANT_ID]);
+    assert_eq!(
+        scope.all_values_for(properties::OWNER_TENANT_ID),
+        &[DEFAULT_TENANT_ID]
+    );
 }
 
 #[test]

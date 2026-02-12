@@ -111,8 +111,7 @@ pub fn expand_derive_scopable(input: DeriveInput) -> TokenStream {
     let type_col_impl = generate_col_impl("type_col", config.type_col.as_ref(), input.ident.span());
 
     // Generate resolve_property implementation
-    let resolve_property_impl =
-        generate_resolve_property(&config, input.ident.span());
+    let resolve_property_impl = generate_resolve_property(&config, input.ident.span());
 
     // Generate the implementation
     quote! {
@@ -286,11 +285,7 @@ fn validate_pep_props(config: &SecureConfig) {
 
         // Check for duplicate property names
         if !seen.insert(property.clone()) {
-            abort!(
-                *span,
-                "pep_prop: duplicate property name '{}'",
-                property
-            );
+            abort!(*span, "pep_prop: duplicate property name '{}'", property);
         }
     }
 }
@@ -345,10 +340,7 @@ fn parse_secure_attrs(input: &DeriveInput) -> SecureConfig {
 
             if meta.path.is_ident("no_tenant") {
                 if config.unrestricted.is_some() {
-                    abort!(
-                        span,
-                        "Cannot use 'no_tenant' with 'unrestricted'"
-                    );
+                    abort!(span, "Cannot use 'no_tenant' with 'unrestricted'");
                 }
                 if config.no_tenant.is_some() {
                     abort!(span, "duplicate attribute 'no_tenant'");
@@ -365,10 +357,7 @@ fn parse_secure_attrs(input: &DeriveInput) -> SecureConfig {
 
             if meta.path.is_ident("no_resource") {
                 if config.unrestricted.is_some() {
-                    abort!(
-                        span,
-                        "Cannot use 'no_resource' with 'unrestricted'"
-                    );
+                    abort!(span, "Cannot use 'no_resource' with 'unrestricted'");
                 }
                 if config.no_resource.is_some() {
                     abort!(span, "duplicate attribute 'no_resource'");
@@ -385,10 +374,7 @@ fn parse_secure_attrs(input: &DeriveInput) -> SecureConfig {
 
             if meta.path.is_ident("no_owner") {
                 if config.unrestricted.is_some() {
-                    abort!(
-                        span,
-                        "Cannot use 'no_owner' with 'unrestricted'"
-                    );
+                    abort!(span, "Cannot use 'no_owner' with 'unrestricted'");
                 }
                 if config.no_owner.is_some() {
                     abort!(span, "duplicate attribute 'no_owner'");
@@ -405,10 +391,7 @@ fn parse_secure_attrs(input: &DeriveInput) -> SecureConfig {
 
             if meta.path.is_ident("no_type") {
                 if config.unrestricted.is_some() {
-                    abort!(
-                        span,
-                        "Cannot use 'no_type' with 'unrestricted'"
-                    );
+                    abort!(span, "Cannot use 'no_type' with 'unrestricted'");
                 }
                 if config.no_type.is_some() {
                     abort!(span, "duplicate attribute 'no_type'");
@@ -486,7 +469,10 @@ fn parse_key_value_attr(config: &mut SecureConfig, meta: syn::meta::ParseNestedM
                 abort!(span, "duplicate attribute 'tenant_col'");
             }
             if config.no_tenant.is_some() {
-                abort!(span, "secure: specify either `tenant_col` or `no_tenant`, not both");
+                abort!(
+                    span,
+                    "secure: specify either `tenant_col` or `no_tenant`, not both"
+                );
             }
             config.tenant_col = Some((value, span));
         }
@@ -498,7 +484,10 @@ fn parse_key_value_attr(config: &mut SecureConfig, meta: syn::meta::ParseNestedM
                 abort!(span, "duplicate attribute 'resource_col'");
             }
             if config.no_resource.is_some() {
-                abort!(span, "secure: specify either `resource_col` or `no_resource`, not both");
+                abort!(
+                    span,
+                    "secure: specify either `resource_col` or `no_resource`, not both"
+                );
             }
             config.resource_col = Some((value, span));
         }
@@ -510,7 +499,10 @@ fn parse_key_value_attr(config: &mut SecureConfig, meta: syn::meta::ParseNestedM
                 abort!(span, "duplicate attribute 'owner_col'");
             }
             if config.no_owner.is_some() {
-                abort!(span, "secure: specify either `owner_col` or `no_owner`, not both");
+                abort!(
+                    span,
+                    "secure: specify either `owner_col` or `no_owner`, not both"
+                );
             }
             config.owner_col = Some((value, span));
         }
@@ -522,7 +514,10 @@ fn parse_key_value_attr(config: &mut SecureConfig, meta: syn::meta::ParseNestedM
                 abort!(span, "duplicate attribute 'type_col'");
             }
             if config.no_type.is_some() {
-                abort!(span, "secure: specify either `type_col` or `no_type`, not both");
+                abort!(
+                    span,
+                    "secure: specify either `type_col` or `no_type`, not both"
+                );
             }
             config.type_col = Some((value, span));
         }

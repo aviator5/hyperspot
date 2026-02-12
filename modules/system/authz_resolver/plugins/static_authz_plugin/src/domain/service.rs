@@ -9,9 +9,8 @@ use uuid::Uuid;
 ///
 /// In `allow_all` mode:
 /// - Always returns `decision: true`
-/// - When `require_constraints=true`, returns `in` predicate on `owner_tenant_id`
-///   scoped to the context tenant from the request.
-/// - When `require_constraints=false`, returns no constraints (for CREATE).
+/// - Returns `in` predicate on `owner_tenant_id` scoped to the context tenant
+///   from the request (for all operations including CREATE).
 #[derive(Default)]
 pub struct Service;
 
@@ -25,16 +24,7 @@ impl Service {
     #[must_use]
     #[allow(clippy::unused_self)] // &self reserved for future config/state
     pub fn evaluate(&self, request: &EvaluationRequest) -> EvaluationResponse {
-        if !request.context.require_constraints {
-            // CREATE operations: just grant access, no row-level constraints
-            return EvaluationResponse {
-                decision: true,
-                constraints: vec![],
-                deny_reason: None,
-            };
-        }
-
-        // For constrained operations: scope to context tenant
+        // Always scope to context tenant (all CRUD operations get constraints)
         let tenant_id = request
             .context
             .tenant_context
@@ -115,15 +105,6 @@ mod tests {
                 properties: HashMap::new(),
             },
         }
-    }
-
-    #[test]
-    fn create_operation_no_constraints() {
-        let service = Service::new();
-        let response = service.evaluate(&make_request(false, None));
-
-        assert!(response.decision);
-        assert!(response.constraints.is_empty());
     }
 
     #[test]

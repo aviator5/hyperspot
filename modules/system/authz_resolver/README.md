@@ -64,20 +64,18 @@ const USER: ResourceType = ResourceType {
 // Create once during init (serves all resource types)
 let enforcer = PolicyEnforcer::new(authz);
 
-// Constrained — returns AccessScope (GET/LIST/UPDATE/DELETE)
+// All CRUD operations return AccessScope (PDP always returns constraints)
 let scope = enforcer.access_scope(&ctx, &USER, "get", Some(id)).await?;
-
-// Unconstrained — checks decision only (CREATE)
-enforcer.check_access(&ctx, &USER, "create", None).await?;
+let scope = enforcer.access_scope(&ctx, &USER, "create", None).await?;
 ```
 
-For advanced scenarios (ABAC resource properties, custom tenant mode, barrier bypass), use `access_scope_with` or `check_access_with` with an `AccessRequest`:
+For advanced scenarios (ABAC resource properties, custom tenant mode, barrier bypass), use `access_scope_with` with an `AccessRequest`:
 
 ```rust
 use authz_resolver_sdk::pep::AccessRequest;
 
 // CREATE with target tenant + resource properties
-enforcer.check_access_with(
+let scope = enforcer.access_scope_with(
     &ctx, &USER, "create", None,
     &AccessRequest::new()
         .context_tenant_id(target_tenant_id)
@@ -94,15 +92,12 @@ let scope = enforcer.access_scope_with(
 
 **Decision Matrix** (fail-closed):
 
-| Method | `require_constraints` | Use case |
-|--------|----------------------|----------|
-| `access_scope` / `access_scope_with` | `true` | GET, LIST, UPDATE, DELETE — returns `AccessScope` |
-| `check_access` / `check_access_with` | `false` | CREATE — returns `()`, scope built from validated tenant |
+All resource operations use `access_scope` / `access_scope_with` which sets `require_constraints=true`.
 
 | decision | require_constraints | constraints | Result |
 |----------|-------------------|-------------|--------|
 | false    | *                 | *           | Denied |
-| true     | false             | *           | `allow_all()` |
+| true     | false             | *           | `allow_all()` (advanced use via `build_request` only) |
 | true     | true              | empty       | `ConstraintsRequiredButAbsent` |
 | true     | true              | present     | Compile to `AccessScope` |
 
@@ -131,9 +126,8 @@ modules:
 
 ### Static Plugin
 
-The static plugin requires no configuration. It always returns `decision: true` with:
-- **CREATE** (`require_constraints=false`): No constraints (allow all)
-- **LIST/GET/UPDATE/DELETE** (`require_constraints=true`): Returns `owner_tenant_id IN [context_tenant_id]` constraint
+The static plugin requires no configuration. It always returns `decision: true` with
+`owner_tenant_id IN [context_tenant_id]` constraint for all operations (including CREATE).
 
 This is suitable for development and single-tenant deployments.
 

@@ -23,7 +23,8 @@ mod integration_tests {
         assert!(!scope.is_deny_all());
 
         // Scope with both is not deny-all
-        let scope = AccessScope::for_tenants_and_resources(vec![Uuid::new_v4()], vec![Uuid::new_v4()]);
+        let scope =
+            AccessScope::for_tenants_and_resources(vec![Uuid::new_v4()], vec![Uuid::new_v4()]);
         assert!(!scope.is_deny_all());
     }
 
@@ -32,8 +33,16 @@ mod integration_tests {
         let empty_scope = AccessScope::default();
 
         assert!(empty_scope.is_deny_all());
-        assert!(empty_scope.all_values_for(properties::OWNER_TENANT_ID).is_empty());
-        assert!(empty_scope.all_values_for(properties::RESOURCE_ID).is_empty());
+        assert!(
+            empty_scope
+                .all_values_for(properties::OWNER_TENANT_ID)
+                .is_empty()
+        );
+        assert!(
+            empty_scope
+                .all_values_for(properties::RESOURCE_ID)
+                .is_empty()
+        );
     }
 
     #[test]

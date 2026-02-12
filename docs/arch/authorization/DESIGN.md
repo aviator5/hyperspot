@@ -631,7 +631,7 @@ The PEP MUST:
 1. **Validate decision** - `decision: false` or missing -> deny all (403 Forbidden)
 2. **Enforce require_constraints** - If `require_constraints: true` and `decision: true` but no `constraints` -> deny all (403 Forbidden)
 3. **Apply constraints when present** - If `constraints` array is present, apply to SQL; if all constraints evaluate to false -> deny all
-4. **Trust decision when constraints not required** - `decision: true` without `constraints` AND `require_constraints: false` -> allow (e.g., CREATE operations)
+4. **Trust decision when constraints not required** - `decision: true` without `constraints` AND `require_constraints: false` -> allow (non-resource decisions only; all standard CRUD operations use `require_constraints: true`)
 5. **Handle unreachable PDP** - Network failure, timeout -> deny all
 6. **Handle unknown predicate types** - Treat containing constraint as false; if all constraints false -> deny all
 7. **Handle empty or missing predicates** - If a constraint has empty `predicates: []` or missing `predicates` field -> treat constraint as malformed -> deny all. Constraints MUST have at least one predicate.
@@ -841,11 +841,11 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
 | `true` | absent | `true` | **403 Forbidden** (constraints required but missing) |
 | `true` | present | (any) | Apply constraints to SQL |
 
-**Key insight:** PEP declares via `require_constraints` capability whether it needs constraints for the operation. For LIST operations, this should typically be `true`; for CREATE, it can be `false`.
+**Key insight:** All resource operations (CRUD) use `require_constraints: true`. The `false` path exists only for non-resource decisions (e.g., feature flags, capability checks).
 
 #### Operation-Specific Behavior
 
-**CREATE** (no constraints needed):
+**CREATE** (PDP returns constraints, same as other operations):
 ```jsonc
 // PEP -> PDP
 {
@@ -853,14 +853,23 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
   "resource": {
     "type": "gts.x.core.events.event.v1~",
     "properties": { "owner_tenant_id": "tenant-B", "topic_id": "..." }
-  }
-  // ... subject, context
+  },
+  "context": { "require_constraints": true }
+  // ... subject, tenant_context
 }
 
 // PDP -> PEP
-{ "decision": true }  // no constraints - PEP trusts decision
+{
+  "decision": true,
+  "context": {
+    "constraints": [
+      { "predicates": [{ "type": "eq", "resource_property": "owner_tenant_id", "value": "tenant-B" }] }
+    ]
+  }
+}
 
-// PEP: INSERT INTO events ...
+// PEP: compiles constraints, validates INSERT against them
+// INSERT INTO events ...
 ```
 
 **LIST** (constraints required):
@@ -1180,9 +1189,8 @@ The `require_constraints` field (separate from capabilities array) controls PEP 
 | `false` | **allow** (trust PDP decision) |
 
 **Usage:**
-- For LIST operations: typically `true` (constraints needed for SQL WHERE)
-- For CREATE operations: typically `false` (no query, just permission check)
-- For GET/UPDATE/DELETE: depends on whether PEP wants SQL-level enforcement or trusts PDP decision
+- For all resource operations (LIST, GET, UPDATE, DELETE, CREATE): `true` — PDP always returns constraints
+- The `false` value is reserved for non-resource decisions (e.g., feature flags, capability checks)
 
 #### Capabilities Array
 

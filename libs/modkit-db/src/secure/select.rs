@@ -321,8 +321,8 @@ where
         if !tenant_ids.is_empty()
             && let Some(tcol) = J::tenant_col()
         {
-            let condition = sea_orm::Condition::all()
-                .add(Expr::col((J::default(), tcol)).is_in(tenant_ids));
+            let condition =
+                sea_orm::Condition::all().add(Expr::col((J::default(), tcol)).is_in(tenant_ids));
             self.inner = QueryFilter::filter(self.inner, condition);
         }
         self
@@ -395,10 +395,7 @@ where
     if !tenant_ids.is_empty()
         && let Some(tcol) = R::tenant_col()
     {
-        Some(
-            sea_orm::Condition::all()
-                .add(Expr::col((R::default(), tcol)).is_in(tenant_ids)),
-        )
+        Some(sea_orm::Condition::all().add(Expr::col((R::default(), tcol)).is_in(tenant_ids)))
     } else {
         None
     }
@@ -774,7 +771,11 @@ mod tests {
         let scoped = Scoped {
             scope: Arc::new(scope),
         };
-        assert!(!scoped.scope.has_property(modkit_security::properties::OWNER_TENANT_ID)); // default scope has no tenants
+        assert!(
+            !scoped
+                .scope
+                .has_property(modkit_security::properties::OWNER_TENANT_ID)
+        ); // default scope has no tenants
     }
 
     #[test]
@@ -786,9 +787,24 @@ mod tests {
         };
 
         // Verify the scope is accessible
-        assert!(scoped.scope.has_property(modkit_security::properties::OWNER_TENANT_ID));
-        assert_eq!(scoped.scope.all_values_for(modkit_security::properties::OWNER_TENANT_ID).len(), 1);
-        assert!(scoped.scope.all_values_for(modkit_security::properties::OWNER_TENANT_ID).contains(&tenant_id));
+        assert!(
+            scoped
+                .scope
+                .has_property(modkit_security::properties::OWNER_TENANT_ID)
+        );
+        assert_eq!(
+            scoped
+                .scope
+                .all_values_for(modkit_security::properties::OWNER_TENANT_ID)
+                .len(),
+            1
+        );
+        assert!(
+            scoped
+                .scope
+                .all_values_for(modkit_security::properties::OWNER_TENANT_ID)
+                .contains(&tenant_id)
+        );
     }
 
     #[test]

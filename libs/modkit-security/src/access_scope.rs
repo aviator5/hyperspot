@@ -288,5 +288,4 @@ impl AccessScope {
             .iter()
             .any(|c| c.filters().iter().any(|f| f.property() == property))
     }
-
 }

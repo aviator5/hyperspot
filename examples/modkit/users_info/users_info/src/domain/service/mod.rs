@@ -44,9 +44,6 @@
 //! protection for mutations.
 //!
 //! Reference: `docs/arch/authorization/AUTHZ_USAGE_SCENARIOS.md`
-//! - **S06** — LIST without closure (current approach for list operations)
-//! - **S07** — GET with prefetch (optimal for point reads)
-//! - **S08** — UPDATE/DELETE with prefetch + TOCTOU protection
 //!
 //! ## Connection Management
 //!

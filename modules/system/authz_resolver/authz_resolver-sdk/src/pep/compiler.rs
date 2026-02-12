@@ -12,6 +12,11 @@
 //! | true     | true              | present     | Compile constraints → `AccessScope` |
 //!
 //! Unknown/unsupported properties fail that constraint (fail-closed).
+//!
+//! **Note:** All resource operations (CRUD) use `require_constraints=true` via
+//! [`PolicyEnforcer::access_scope()`] / [`access_scope_with()`]. The
+//! `require_constraints=false` → `allow_all()` path is retained for advanced
+//! use cases via [`PolicyEnforcer::build_request()`] directly.
 
 use modkit_security::{AccessScope, FilterOp, ScopeConstraint, ScopeFilter};
 
@@ -234,7 +239,10 @@ mod tests {
         };
 
         let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1)]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(T1)]
+        );
         assert!(scope.all_values_for(properties::RESOURCE_ID).is_empty());
     }
 
@@ -252,7 +260,10 @@ mod tests {
         };
 
         let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1), uuid(T2)]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(T1), uuid(T2)]
+        );
     }
 
     #[test]
@@ -347,7 +358,10 @@ mod tests {
 
         // Should succeed — the second constraint compiled
         let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T2)]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(T2)]
+        );
     }
 
     #[test]
@@ -372,7 +386,10 @@ mod tests {
         let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
         // Single constraint with both properties (AND)
         assert_eq!(scope.constraints().len(), 1);
-        assert_eq!(scope.all_values_for(properties::OWNER_TENANT_ID), &[uuid(T1)]);
+        assert_eq!(
+            scope.all_values_for(properties::OWNER_TENANT_ID),
+            &[uuid(T1)]
+        );
         assert_eq!(scope.all_values_for(properties::RESOURCE_ID), &[uuid(R1)]);
     }
 

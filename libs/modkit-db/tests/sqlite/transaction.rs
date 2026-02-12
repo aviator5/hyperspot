@@ -251,7 +251,10 @@ async fn sqlite_with_tx_returns_value() {
     let conn = db.conn().expect("conn");
     let found = ent::Entity::find()
         .secure()
-        .scope_with(&AccessScope::for_tenants_and_resources(vec![tenant_id], vec![resource_id]))
+        .scope_with(&AccessScope::for_tenants_and_resources(
+            vec![tenant_id],
+            vec![resource_id],
+        ))
         .one(&conn)
         .await
         .expect("select")

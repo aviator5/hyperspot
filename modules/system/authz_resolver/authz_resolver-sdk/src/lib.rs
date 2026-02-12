@@ -29,11 +29,11 @@
 //! // Create an enforcer (once, during init — serves all resource types)
 //! let enforcer = PolicyEnforcer::new(authz);
 //!
-//! // Constrained — returns AccessScope (GET/LIST/UPDATE/DELETE)
+//! // All CRUD operations return AccessScope (PDP always returns constraints)
 //! let scope = enforcer.access_scope(&ctx, &USER, "get", Some(id)).await?;
 //!
-//! // Unconstrained — checks decision only (CREATE)
-//! enforcer.check_access_with(
+//! // CREATE — also returns AccessScope with constraints from PDP
+//! let scope = enforcer.access_scope_with(
 //!     &ctx, &USER, "create", None,
 //!     &AccessRequest::new()
 //!         .context_tenant_id(target_tenant_id)
