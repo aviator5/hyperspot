@@ -200,7 +200,7 @@ External systems, databases, and third-party services this module interacts with
 - **Contract**: `cpt-{system}-contract-{slug}`
 
 | Dependency Module | Interface Used | Purpose |
-|-------------------|---------------|---------|----------|
+|-------------------|---------------|---------|
 | {module_name} | {contract / SDK client / plugin} | {Why this module is needed} |
 
 **Dependency Rules** (per project conventions):
