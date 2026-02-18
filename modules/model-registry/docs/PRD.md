@@ -616,7 +616,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-001: Get Tenant Model
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-get-tenant-model`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-get-tenant-model`
 
 **Actor**: `cpt-cf-model-registry-actor-llm-gateway`
 
@@ -637,7 +637,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-002: List Tenant Models
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-list-tenant-models`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-list-tenant-models`
 
 **Actor**: `cpt-cf-model-registry-actor-llm-gateway`
 
@@ -659,7 +659,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-003: Model Discovery
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-model-discovery`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-model-discovery`
 
 **Actor**: `cpt-cf-model-registry-actor-platform-admin` (manual) or External Scheduler (automated)
 
@@ -688,7 +688,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-004: Model Approval
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-model-approval`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-model-approval`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`
 
@@ -710,7 +710,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-005: Model Revocation
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-model-revocation`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-model-revocation`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`
 
@@ -732,7 +732,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-006: Register Provider
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-register-provider`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-register-provider`
 
 **Actor**: `cpt-cf-model-registry-actor-platform-admin`
 
@@ -754,7 +754,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-007: Disable Provider
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-disable-provider`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-disable-provider`
 
 **Actor**: `cpt-cf-model-registry-actor-platform-admin`
 
@@ -773,7 +773,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-008: Re-enable Provider
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-reenable-provider`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-reenable-provider`
 
 **Actor**: `cpt-cf-model-registry-actor-platform-admin`
 
@@ -788,7 +788,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-009: Get Model Provider Cost
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-get-pricing`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-get-pricing`
 
 **Actor**: `cpt-cf-model-registry-actor-llm-gateway`
 
@@ -808,7 +808,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-010: Configure Auto-Approval Rule
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-auto-approval-rule`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-auto-approval-rule`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`, `cpt-cf-model-registry-actor-platform-admin`
 
@@ -830,7 +830,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-011: Get Provider Discovery Health
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-provider-health`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-provider-health`
 
 **Actor**: `cpt-cf-model-registry-actor-llm-gateway`
 
@@ -853,7 +853,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-012: Create Alias
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-create-alias`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-create-alias`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`, `cpt-cf-model-registry-actor-platform-admin`
 
@@ -874,7 +874,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-013: Resolve Alias
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-resolve-alias`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-resolve-alias`
 
 **Actor**: `cpt-cf-model-registry-actor-llm-gateway`
 
@@ -893,7 +893,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-014: Handle Degraded Mode
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-degraded-mode`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-degraded-mode`
 
 **Actor**: `cpt-cf-model-registry-actor-llm-gateway`
 
@@ -914,7 +914,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-015: Handle Tenant Re-parenting
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-tenant-reparenting`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-tenant-reparenting`
 
 **Actor**: Internal (event handler)
 
@@ -933,7 +933,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-016: Bulk Approve Models
 
-- [ ] `p2` - **ID**: `cpt-cf-model-registry-uc-bulk-approve`
+- [ ] `p2` - **ID**: `cpt-cf-model-registry-usecase-bulk-approve`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`
 
@@ -953,7 +953,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-017: Trigger Discovery
 
-- [ ] `p1` - **ID**: `cpt-cf-model-registry-uc-manual-discovery`
+- [ ] `p1` - **ID**: `cpt-cf-model-registry-usecase-manual-discovery`
 
 **Actor**: `cpt-cf-model-registry-actor-platform-admin`, `cpt-cf-model-registry-actor-tenant-admin`
 
@@ -973,7 +973,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-018: Approve Model for User Group
 
-- [ ] `p3` - **ID**: `cpt-cf-model-registry-uc-user-group-approval`
+- [ ] `p3` - **ID**: `cpt-cf-model-registry-usecase-user-group-approval`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`
 
@@ -992,7 +992,7 @@ The system must support individual user restrictions/allowances for model access
 
 ### UC-019: Override User Access
 
-- [ ] `p3` - **ID**: `cpt-cf-model-registry-uc-user-override`
+- [ ] `p3` - **ID**: `cpt-cf-model-registry-usecase-user-override`
 
 **Actor**: `cpt-cf-model-registry-actor-tenant-admin`
 
