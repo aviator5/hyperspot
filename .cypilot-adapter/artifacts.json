@@ -35,6 +35,14 @@
       "patterns": ["modules/system"]
     },
     {
+      "reason": "Ignore 'modules/system/authn-resolver' (not SDLC-documented yet: missing required PRD/DESIGN).",
+      "patterns": ["modules/system/authn-resolver/*"]
+    },
+    {
+      "reason": "Ignore 'modules/system/authz-resolver' (not SDLC-documented yet: missing required PRD/DESIGN).",
+      "patterns": ["modules/system/authz-resolver/*"]
+    },
+    {
       "reason": "Ignore module 'api-gateway' (not SDLC-documented yet: missing required PRD/DESIGN).",
       "patterns": ["modules/system/api-gateway/*"]
     },
