@@ -227,6 +227,8 @@ deny:
 	$(call check_tool,cargo-deny)
 	cargo deny check
 
+security: deny
+
 # -------- API and docs --------
 
 .PHONY: openapi

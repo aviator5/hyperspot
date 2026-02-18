@@ -1,6 +1,6 @@
-# Contributing to HyperSpot Server
+# Contributing to Cyber Fabric
 
-Thank you for your interest in contributing to HyperSpot Server! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Cyber Fabric! This document provides guidelines and information for contributors.
 
 We welcome contributions in:
 
@@ -16,7 +16,8 @@ We welcome contributions in:
 
 ### 1.1 Prerequisites
 
-- **Rust stable** with Cargo (Edition 2024)
+- **Rust stable** with Cargo (Edition 2024, Rust MSRV 1.92.0)
+- **Protocol Buffers compiler** (`protoc`) (see `README.md`)
 - **Git** for version control
 - **Your favorite editor** (VS Code with rust-analyzer recommended)
 
@@ -24,10 +25,10 @@ We welcome contributions in:
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd hyperspot
+git clone --recurse-submodules <repository-url>
+cd cyberfabric-core
 
-# Initialize submodules (includes Cypilot for PR reviews)
+# If you didn't clone with --recurse-submodules (includes Cypilot for PR reviews)
 git submodule update --init --recursive
 
 # Install Rust (if not already installed)
@@ -46,7 +47,7 @@ make test
 make quickstart
 
 # Start the development server with the example users_info module
-cargo run --bin hyperspot-server --features=users-info-example -- --config config/quickstart.yaml
+cargo run --bin hyperspot-server --features users-info-example -- --config config/quickstart.yaml run
 ```
 
 ## 2. Development Workflow
@@ -73,7 +74,10 @@ Follow the coding standards and guidelines:
 1. See common [RUST.md](./guidelines/DNA/languages/RUST.md) guideline
 2. When develop new REST API use [API.md](./guidelines/DNA/REST/API.md), [STATUS_CODES](./guidelines/DNA/REST/STATUS_CODES.md)
 3. When develop new Module use [NEW_MODULE.md](./guidelines/NEW_MODULE.md)
-4. Security [SECURITY.md](./guidelines/SECURITY.md)
+4. Security policy [SECURITY.md](./SECURITY.md) and secure coding [guidelines/SECURITY.md](./guidelines/SECURITY.md)
+5. ModKit architecture and invariants [docs/modkit_unified_system/README.md](./docs/modkit_unified_system/README.md)
+
+Module directories under `modules/` must use kebab-case (validated by `scripts/validate_module_names.py` and enforced in CI).
 
 Always include unit tests when introducing new code.
 
@@ -84,9 +88,15 @@ Build and run all the quality checks:
 
 ```bash
 # Run the complete quality check suite: formatting, linting, tests, and security
+make check # Linux/Mac
+python scripts/ci.py check # Windows
+
+# Run the full pipeline (includes build + e2e-local)
 make all # Linux/Mac
 python scripts/ci.py all # Windows
 ```
+
+Note: CI workflows may not run for PRs that only touch `*.md` files or `docs/**` due to path filters.
 
 Aim for high test coverage:
 - **Unit tests**: Test individual functions and methods
@@ -97,7 +107,7 @@ Aim for high test coverage:
 # Run tests with coverage (automatically detects your OS)
 make coverage # Run both unit and e2e tests with code coverage
 make coverage-unit # Run only unit tests with code coverage
-make coverage-e2e # Run only e2e tests with code coverage
+make coverage-e2e-local # Run only e2e tests with code coverage
 ```
 
 ### 2.4. Run Fuzzing Tests (Recommended)
@@ -295,6 +305,158 @@ See the results in `.prs/{ID}/` folder.
 See [docs/pr-review/README.md](./docs/pr-review/README.md) for full setup (GitHub CLI authentication, configuration, available review prompts) and usage details.
 
 
+## 3. Versioning
+
+This topic defines how Cyber Fabric versions crates and handles breaking changes.
+
+## Scope
+
+Applies to:
+- All Rust crates in this repository (libraries, modules, SDKs, macros).
+- Public APIs and contracts exposed to downstream users (Rust API, REST, gRPC/proto, CLI).
+
+Non-goals:
+- Internal-only refactors that do not change any public contract (still must be tested, but do not force version bumps).
+
+## SemVer Rules (Crates)
+
+We use Semantic Versioning: `MAJOR.MINOR.PATCH`.
+
+### PATCH (x.y.Z)
+Allowed:
+- Bugfixes
+- Performance improvements
+- Internal refactors
+- Doc and test updates
+  Not allowed:
+- Any public API or behavior change that can break downstream compilation
+
+### MINOR (x.Y.z)
+Allowed:
+- Backward compatible new features
+- New APIs that do not break existing code
+  Not allowed:
+- Breaking changes
+
+### MAJOR (X.y.z)
+Required for:
+- Any breaking change (see the definition below)
+
+## Pre-1.0 Policy (0.x)
+
+For crates with version `0.x.y`:
+- `0.(x+1).0` is treated as a breaking release.
+- `0.x.(y+1)` is treated as non-breaking.
+
+Rule of thumb: before 1.0, MINOR behaves like MAJOR.
+
+## What Counts as a Breaking Change (Rust)
+
+Breaking means: existing downstream code may fail to compile or a stable contract is violated.
+
+Examples:
+- Removing or renaming any `pub` item
+- Changing function signatures (params, generics, bounds, return type)
+- Changing public struct/enum layout in a way that breaks construction or pattern matching
+- Removing a `pub` field
+- Removing trait impls that downstream relies on
+- Adding a method to a public trait without a default implementation
+- Tightening trait bounds or visibility in a way that reduces what compiles
+
+If in doubt: treat it as breaking.
+
+## What Is Not Breaking (But Must Be Noted)
+
+Not breaking (SemVer-wise), but must be documented in changelog/release notes:
+- Performance changes
+- Changes in logging text, error strings, metrics naming
+- More strict validation returning errors in previously accepted edge cases (allowed only if it does not violate an explicit documented contract)
+
+## Public Contract Types and Their Versioning
+
+### Rust crate API
+- Governed by SemVer rules above.
+
+### REST API
+- Versioned in the URL (`/v1/...`, `/v2/...`).
+- Breaking REST changes require a new API version (for example `/v2`) and a deprecation period for old versions.
+
+### gRPC / Protobuf
+- Treat `.proto` as a public contract.
+- Follow protobuf compatibility rules:
+    - Do not reuse field numbers.
+    - Do not change field types in incompatible ways.
+    - Prefer adding optional fields over changing existing ones.
+- Breaking proto changes require a MAJOR bump for affected crates and, if exposed externally, a new API/proto version strategy.
+
+### CLI
+- User-facing CLI flags, commands, and output formats are public.
+- Breaking CLI changes require MAJOR.
+
+## Deprecation Policy
+
+When feasible, prefer deprecation over immediate removal:
+- Mark APIs as deprecated for at least one MINOR release before removal.
+- Include migration notes (what to use instead).
+
+Removal of deprecated APIs is breaking and requires MAJOR.
+
+## Workspace Policy (Monorepo)
+
+We use per-crate versioning, controlled via Cargo manifests and release automation. :contentReference[oaicite:1]{index=1}
+
+### Publishable vs internal crates
+- `publish = false` means the crate is internal and must not be published.
+- Internal crates can still follow SemVer for sanity, but do not promise external stability.
+
+### Version sources
+- Modules and SDKs keep explicit `version = "..."` in their `Cargo.toml`.
+- ModKit libs may use `version.workspace = true` (unified framework versioning).
+
+## ModKit Unified Release Rule
+
+ModKit is released as a unified framework:
+- Only `cf-modkit` produces changelog entries and GitHub releases.
+- Other `cf-modkit-*` crates are published to crates.io but do not create separate changelog entries/releases. :contentReference[oaicite:2]{index=2}
+
+## Release Process (Automation)
+
+We use release-plz:
+- Release PRs are labeled `release-plz`.
+- Repository-level `CHANGELOG.md` is the single changelog source. :contentReference[oaicite:3]{index=3}
+- GitHub releases are enabled where configured.
+
+SemVer checks:
+- We aim to run semver checks for published crates.
+- If temporarily disabled (bootstrap or tooling noise), do not use that as an excuse to sneak breaking changes into MINOR/PATCH. :contentReference[oaicite:4]{index=4}
+
+## How to Decide the Version Bump
+
+Use this table:
+
+| Change | Bump |
+|------|------|
+| Bugfix only | PATCH |
+| Backward compatible new API/feature | MINOR |
+| Any breaking change | MAJOR |
+| Pre-1.0: breaking change | bump 0.(x+1).0 |
+
+## Required Release Notes
+
+Every release must document:
+- Added
+- Changed
+- Fixed
+- Breaking (if any) with migration steps
+
+No "minor fixes" wording for releases that break users.
+
+## Enforcement
+
+Before merging changes that affect public crates/contracts:
+- Tests must pass.
+- If you touched a public surface, you must justify the version bump category in the PR description.
+
 ## Getting Help
 
 - **GitHub Issues**: For bug reports and feature requests
@@ -304,4 +466,4 @@ See [docs/pr-review/README.md](./docs/pr-review/README.md) for full setup (GitHu
 
 ---
 
-Thank you for contributing to HyperSpot Server!
+Thank you for contributing to Cyber Fabric!
