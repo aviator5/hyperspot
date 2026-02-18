@@ -7,8 +7,8 @@
 
 use super::*;
 use crate::bootstrap::config::{
-    AppConfig, GlobalDatabaseConfig, LoggingConfig, RenderedDbConfig, RenderedModuleConfig,
-    Section, ServerConfig,
+    AppConfig, ConsoleFormat, GlobalDatabaseConfig, LoggingConfig, RenderedDbConfig,
+    RenderedModuleConfig, Section, ServerConfig,
 };
 use modkit_db::{DbConnConfig, PoolCfg};
 use std::collections::HashMap;
@@ -33,6 +33,7 @@ fn minimal_app_config() -> AppConfig {
 fn logging_section(console_level: Option<Level>, file: &str) -> Section {
     Section {
         console_level,
+        console_format: ConsoleFormat::default(),
         file: file.to_owned(),
         file_level: Some(Level::DEBUG),
         max_age_days: Some(7),

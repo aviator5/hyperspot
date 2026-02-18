@@ -1,4 +1,4 @@
-use super::super::config::{LoggingConfig, Section};
+use super::super::config::{ConsoleFormat, LoggingConfig, Section};
 use anyhow::Context;
 use std::collections::HashMap;
 use std::io;
@@ -216,7 +216,18 @@ pub fn init_logging_unified(cfg: &LoggingConfig, base_dir: &Path, otel_layer: Op
         },
     );
 
-    install_subscriber(&console_targets, &file_targets, file_router, otel_layer);
+    let console_format = data
+        .default_section
+        .map(|s| s.console_format)
+        .unwrap_or_default();
+
+    install_subscriber(
+        &console_targets,
+        &file_targets,
+        file_router,
+        console_format,
+        otel_layer,
+    );
 }
 
 // ================= generic targets builder =================
@@ -398,6 +409,7 @@ fn install_subscriber(
     console_targets: &tracing_subscriber::filter::Targets,
     file_targets: &tracing_subscriber::filter::Targets,
     file_router: MultiFileRouter,
+    console_format: ConsoleFormat,
     #[cfg_attr(not(feature = "otel"), allow(unused_variables))] otel_layer: Option<OtelLayer>,
 ) {
     use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt};
@@ -410,14 +422,35 @@ fn install_subscriber(
     let (nb_stderr, guard) = tracing_appender::non_blocking(std::io::stderr());
     _ = CONSOLE_GUARD.set(guard);
 
-    // Console fmt layer (human-friendly)
-    let console_layer = fmt::layer()
-        .with_writer(nb_stderr)
-        .with_ansi(stderr_supports_ansi())
-        .with_target(true)
-        .with_level(true)
-        .with_timer(fmt::time::UtcTime::rfc_3339())
-        .with_filter(console_targets.clone());
+    // Console fmt layers: text (human-friendly) or JSON (structured).
+    // Only one is active at a time; the other is None.
+    let (console_text, console_json) = match console_format {
+        ConsoleFormat::Text => (
+            Some(
+                fmt::layer()
+                    .with_writer(nb_stderr)
+                    .with_ansi(stderr_supports_ansi())
+                    .with_target(true)
+                    .with_level(true)
+                    .with_timer(fmt::time::UtcTime::rfc_3339())
+                    .with_filter(console_targets.clone()),
+            ),
+            None,
+        ),
+        ConsoleFormat::Json => (
+            None,
+            Some(
+                fmt::layer()
+                    .json()
+                    .with_writer(nb_stderr)
+                    .with_ansi(false)
+                    .with_target(true)
+                    .with_level(true)
+                    .with_timer(fmt::time::UtcTime::rfc_3339())
+                    .with_filter(console_targets.clone()),
+            ),
+        ),
+    };
 
     // File fmt layer (JSON) if router is not empty
     let file_layer_opt = if file_router.is_empty() {
@@ -439,7 +472,7 @@ fn install_subscriber(
     // 1) OTEL first (because your OtelLayer is bound to `Registry`);
     //    also filter OTEL by the SAME console targets from YAML.
     // 2) Then EnvFilter (caps console/file if RUST_LOG is set).
-    // 3) Then console + file fmt layers.
+    // 3) Then console (text or json) + file fmt layers.
     let subscriber = {
         let base = Registry::default();
 
@@ -452,7 +485,9 @@ fn install_subscriber(
         let base = base;
 
         let base = base.with(env);
-        base.with(console_layer).with(file_layer_opt)
+        base.with(console_text)
+            .with(console_json)
+            .with(file_layer_opt)
     };
 
     _ = subscriber.try_init();

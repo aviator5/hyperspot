@@ -129,6 +129,17 @@ impl ServerConfig {
     }
 }
 
+/// Console output format for the logging layer.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConsoleFormat {
+    /// Human-readable text output (default).
+    #[default]
+    Text,
+    /// Structured JSON output (useful for container log collectors).
+    Json,
+}
+
 /// Logging configuration - maps subsystem names to their logging settings.
 /// Key "default" is the catch-all for logs that don't match explicit subsystems.
 pub type LoggingConfig = HashMap<String, Section>;
@@ -178,6 +189,8 @@ pub struct Section {
         with = "optional_level_serde"
     )]
     pub console_level: Option<Level>,
+    #[serde(default)]
+    pub console_format: ConsoleFormat,
     pub file: String, // "logs/api.log"
     #[serde(
         default = "optional_level_serde::default",
@@ -199,6 +212,7 @@ pub fn default_logging_config() -> LoggingConfig {
         "default".to_owned(),
         Section {
             console_level: Some(Level::INFO),
+            console_format: ConsoleFormat::default(),
             file: "logs/hyperspot.log".to_owned(),
             file_level: Some(Level::DEBUG),
             max_age_days: Some(7),
