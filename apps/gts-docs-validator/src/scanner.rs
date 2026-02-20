@@ -20,8 +20,9 @@ const SKIP_FILES: &[&str] = &["docs/api/api.json"];
 
 /// Patterns that look like GTS but aren't (false positives)
 const FALSE_POSITIVE_PATTERNS: &[&str] = &[
-    r"^gts\.rs$",     // Rust file named gts.rs
-    r"^gts\.[a-z]+$", // Single component like gts.rs, gts.py
+    r"^gts\.rs$",      // Rust file named gts.rs
+    r"^gts\.[a-z]+$",  // Single component like gts.rs, gts.py
+    r"^gts\.v[0-9]\.", // Filename like gts.v1.schema.json
 ];
 
 /// Pattern to find GTS-looking strings
@@ -151,6 +152,14 @@ pub fn find_files(paths: &[PathBuf], exclude: &[String], verbose: bool) -> Vec<P
 
 /// Check if a matched string is a false positive
 fn is_false_positive(gts_id: &str) -> bool {
+    // Skip template strings like gts.x.core.oagw.{type}_plugin.v1~{uuid}
+    if gts_id.contains('{') {
+        return true;
+    }
+    // Skip incomplete IDs ending with a dot (template placeholders like gts.x.core.oagw.)
+    if gts_id.ends_with('.') {
+        return true;
+    }
     for pattern in FALSE_POSITIVE_PATTERNS {
         if let Ok(re) = Regex::new(pattern)
             && re.is_match(gts_id)
@@ -190,11 +199,26 @@ pub fn scan_file(path: &Path, expected_vendor: Option<&str>, verbose: bool) -> V
         let line_num = line_idx + 1;
 
         for mat in gts_re.find_iter(line) {
-            let gts_id = mat.as_str();
+            // Strip trailing ellipsis used in doc examples (e.g., gts.x.core.oagw.upstream.v1~7c9e6679...)
+            let raw = mat.as_str();
+            let (gts_id, was_truncated) =
+                raw.strip_suffix("...").map_or((raw, false), |s| (s, true));
             let col = mat.start() + 1;
 
-            // Skip false positives
-            if is_false_positive(gts_id) {
+            // After stripping ellipsis, skip IDs that are too short to be a valid GTS ID
+            // (a valid GTS ID needs at least gts.vendor.org.pkg.type.ver = 5 dots)
+            if was_truncated && gts_id.matches('.').count() < 5 {
+                continue;
+            }
+
+            // Skip false positives (check raw before stripping so ends_with('.') fires)
+            if is_false_positive(raw) {
+                continue;
+            }
+
+            // Skip if the match is immediately followed by '{' — template string
+            // e.g. gts.x.core.oagw.{type}_plugin.v1 where regex stops before '{'
+            if line[mat.end()..].starts_with('{') {
                 continue;
             }
 

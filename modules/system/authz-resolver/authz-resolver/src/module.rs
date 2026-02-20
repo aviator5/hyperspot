@@ -49,7 +49,17 @@ impl Module for AuthZResolver {
         // Register plugin schema in types-registry
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
         let schema_str = AuthZResolverPluginSpecV1::gts_schema_with_refs_as_string();
-        let schema_json: serde_json::Value = serde_json::from_str(&schema_str)?;
+        let mut schema_json: serde_json::Value = serde_json::from_str(&schema_str)?;
+        // Workaround for a bug in gts-macros: derived (child) schemas generated via
+        // gts_schema_with_refs_allof() omit "additionalProperties": false at the top level,
+        // even when the base schema declares it. The types-registry rejects this as loosening
+        // the base constraint. Patch it here until gts-macros is fixed upstream.
+        if let Some(obj) = schema_json.as_object_mut() {
+            obj.insert(
+                "additionalProperties".to_owned(),
+                serde_json::Value::Bool(false),
+            );
+        }
         let results = registry.register(vec![schema_json]).await?;
         RegisterResult::ensure_all_ok(&results)?;
         info!(

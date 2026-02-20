@@ -197,12 +197,25 @@ modules:
       default_page_size: 5
       max_page_size: 100
 
+  authz-resolver:
+    config:
+      vendor: "hyperspot"
+
+  static-authz-plugin:
+    config:
+      vendor: "hyperspot"
+      priority: 100
+
   simple-user-settings:
     # Module-specific database configuration
     database:
       server: "sqlite_users"
       file: "settings.db"
     config: {}
+
+  file-parser:
+    config:
+      allowed_local_base_dir: data
 
   oagw:
     config:

@@ -160,8 +160,6 @@ gts-docs:
 	cargo run -p gts-docs-validator -- \
 		--exclude "target/*" \
 		--exclude "docs/api/*" \
-		--exclude "*.md" \
-		--exclude "*.json" \
 		docs modules libs examples
 
 ## Validate GTS docs with vendor check (ensures all IDs use vendor "x")
@@ -437,9 +435,11 @@ ci_docs: lychee
 # Run CI pipeline locally, requires docker
 ci: fmt clippy test-no-macros test-macros test-db deny test-users-info-pg lychee dylint dylint-test
 
-# Make a release build using stable toolchain
+# Build the hyperspot-server release binary using the stable toolchain.
+# Features are required for E2E tests: users-info-example (example module),
+# static-tenants and static-authz (static plugin implementations).
 build:
-	cargo +stable build --release
+	cargo +stable build --release --bin hyperspot-server --features users-info-example,static-tenants,static-authz
 
 # Run all necessary quality checks and tests and then build the release binary
 all: build check test-sqlite e2e-local

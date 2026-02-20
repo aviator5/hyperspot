@@ -359,14 +359,10 @@ def cmd_e2e(args):
             os.makedirs(logs_dir, exist_ok=True)
 
             # Start server in background with logs redirected to files
+            # Use the pre-built release binary to avoid cargo compilation overhead
+            release_bin = os.path.join(PROJECT_ROOT, "target", "release", "hyperspot-server")
             server_cmd = [
-                "cargo",
-                "run",
-                "--bin",
-                "hyperspot-server",
-                "--features",
-                "users-info-example,tenant-resolver-example",
-                "--",
+                release_bin,
                 "--config",
                 "config/e2e-local.yaml",
             ]
@@ -403,7 +399,7 @@ def cmd_e2e(args):
             print(f"  - API logs: {os.path.join(logs_dir, 'api.log')}")
 
             # Wait for server to be ready
-            wait_for_health(base_url, timeout_secs=30)
+            wait_for_health(base_url, timeout_secs=60)
 
     # Run pytest
     step("Running pytest")

@@ -62,6 +62,19 @@ const WILDCARD_ALLOWED_CONTEXTS: &[&str] = &[
     "p1 -",
     "p2 -",
     "p3 -",
+    // Type descriptor contexts (e.g. listing plugin types)
+    "plugin type",
+    "base type",
+    "authplugin",
+    "guardplugin",
+    "transformplugin",
+    "auth plugin",
+    "guard plugin",
+    "transform plugin",
+    "plugin types",
+    "**auth**",
+    "**guard**",
+    "**transform**",
 ];
 
 /// Contexts that indicate "bad example" or intentionally invalid identifiers
@@ -99,6 +112,26 @@ pub fn is_example_vendor(vendor: &str) -> bool {
     EXAMPLE_VENDORS.contains(&vendor)
 }
 
+/// Contexts where wildcards are allowed when found anywhere in the line
+const WILDCARD_ALLOWED_LINE_CONTEXTS: &[&str] = &[
+    "$filter",
+    "plugin type",
+    "plugin types",
+    "auth plugin",
+    "guard plugin",
+    "transform plugin",
+    "authentication plugin",
+    "validation and policy",
+    "request/response transformation",
+    "authplugin",
+    "guardplugin",
+    "transformplugin",
+    "base type",
+    "**auth**",
+    "**guard**",
+    "**transform**",
+];
+
 /// Check if the GTS identifier is in a context where wildcards are allowed
 #[must_use]
 pub fn is_wildcard_context(line: &str, match_start: usize) -> bool {
@@ -114,9 +147,12 @@ pub fn is_wildcard_context(line: &str, match_start: usize) -> bool {
         }
     }
 
-    // Also check for $filter anywhere in the line
-    if line.to_lowercase().contains("$filter") {
-        return true;
+    // Also check the full line for contexts that can appear anywhere
+    let line_lower = line.to_lowercase();
+    for ctx in WILDCARD_ALLOWED_LINE_CONTEXTS {
+        if line_lower.contains(ctx) {
+            return true;
+        }
     }
 
     false
@@ -145,6 +181,45 @@ pub fn is_bad_example_context(line: &str, prev_lines: &[&str]) -> bool {
     }
 
     false
+}
+
+/// Validate an instance segment (after ~) - less strict than schema segments
+/// Instance segments can be UUIDs (with hyphens), short IDs, or named identifiers.
+/// Named instance segments (e.g., weather.api.current.v1) don't need 5 components.
+pub fn validate_instance_segment(segment: &str) -> Result<(), String> {
+    if segment.is_empty() {
+        return Ok(());
+    }
+    // Skip known filename suffixes like .schema.json
+    if segment.starts_with('.')
+        && std::path::Path::new(segment)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+        return Ok(());
+    }
+    // UUIDs and other instance IDs with hyphens are allowed as-is
+    if segment.contains('-') {
+        return Ok(());
+    }
+    // Named instance segments with dots: only check for invalid characters
+    // (no 5-component requirement - instance IDs can have any number of parts)
+    if segment.contains('.') {
+        for part in segment.split('.') {
+            if !part.is_empty()
+                && !part
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '*')
+            {
+                return Err(format!(
+                    "Instance segment contains invalid characters: '{segment}'"
+                ));
+            }
+        }
+        return Ok(());
+    }
+    // Short IDs (no dots, no hyphens) - allow them
+    Ok(())
 }
 
 /// Validate a single GTS segment like 'x.core.modkit.plugin.v1'
@@ -284,8 +359,13 @@ pub fn validate_gts_id(
             return errors;
         }
 
-        for seg in &non_empty_segments {
-            if let Err(e) = validate_gts_segment(seg) {
+        for (i, seg) in non_empty_segments.iter().enumerate() {
+            let result = if i == 0 {
+                validate_gts_segment(seg)
+            } else {
+                validate_instance_segment(seg)
+            };
+            if let Err(e) = result {
                 errors.push(e);
             }
         }
@@ -296,7 +376,10 @@ pub fn validate_gts_id(
         }
 
         // If gts library rejected it but our validation passed, add a generic error
-        if errors.is_empty() {
+        // Exception: IDs with instance segments (after ~) are valid even if the gts library
+        // doesn't recognize them (e.g., UUID instance IDs, chained IDs)
+        let has_instance_segment = non_empty_segments.len() > 1 || gts_id.contains('~');
+        if errors.is_empty() && !has_instance_segment {
             errors.push(format!("Invalid GTS ID format: '{original}'"));
         }
 
