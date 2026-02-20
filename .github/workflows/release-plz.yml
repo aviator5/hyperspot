@@ -30,7 +30,7 @@ jobs:
   release-pr:
     name: Create release PR
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event.inputs.mode == 'release-pr' }}
+    if: ${{ github.repository == 'cyberfabric/cyberfabric-core' && (github.event_name == 'push' || github.event.inputs.mode == 'release-pr') }}
     permissions:
       contents: write
       pull-requests: write
@@ -56,11 +56,14 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       ${{
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'release')
-        || (
-          github.event_name == 'pull_request'
-          && github.event.pull_request.merged == true
-          && contains(join(github.event.pull_request.labels.*.name, ','), 'release-plz')
+        github.repository == 'cyberfabric/cyberfabric-core'
+        && (
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'release')
+          || (
+            github.event_name == 'pull_request'
+            && github.event.pull_request.merged == true
+            && contains(join(github.event.pull_request.labels.*.name, ','), 'release-plz')
+          )
         )
       }}
     permissions:
@@ -125,11 +128,14 @@ jobs:
     # - when a release PR (labeled `release-plz`) is merged into main.
     if: >-
       ${{
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'release')
-        || (
-          github.event_name == 'pull_request'
-          && github.event.pull_request.merged == true
-          && contains(join(github.event.pull_request.labels.*.name, ','), 'release-plz')
+        github.repository == 'cyberfabric/cyberfabric-core'
+        && (
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'release')
+          || (
+            github.event_name == 'pull_request'
+            && github.event.pull_request.merged == true
+            && contains(join(github.event.pull_request.labels.*.name, ','), 'release-plz')
+          )
         )
       }}
     permissions:
