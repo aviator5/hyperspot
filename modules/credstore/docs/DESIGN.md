@@ -48,7 +48,7 @@ DESIGN LANGUAGE:
 
 CredStore follows the ModKit Gateway + Plugins pattern (same architecture as `tenant_resolver`). A gateway module (`credstore`) exposes a simple public API to platform consumers, enforces authorization policy, and implements hierarchical secret resolution. Backend-specific storage is implemented as plugins that register via the GTS type system and are selected at runtime by configuration.
 
-The SDK crate (`credstore-sdk`) defines two trait boundaries: `CredStoreClient` for consumers and `CredStorePluginClient` for backend implementations. Consumers depend only on the gateway trait and never interact with plugins directly. This decoupling allows runtime backend selection without changing consumer code.
+The SDK crate (`credstore-sdk`) defines two trait boundaries: `CredStoreClientV1` for consumers and `CredStorePluginClientV1` for backend implementations. Consumers depend only on the gateway trait and never interact with plugins directly. This decoupling allows runtime backend selection without changing consumer code.
 
 The architecture provides simple CRUD operations (get, put, delete) for tenant-scoped secrets. The tenant ID is always derived from SecurityCtx for self-service operations. Authorization is enforced exclusively in the gateway layer. **Hierarchical secret resolution** (the walk-up algorithm that searches for secrets across tenant ancestors) is implemented in the Gateway using `tenant_resolver` to query the tenant hierarchy. Plugins are pure storage adapters providing simple per-tenant key-value operations with no policy or hierarchical logic.
 
@@ -219,7 +219,7 @@ graph TB
 
 - [ ] `p1` - **ID**: `cpt-cf-credstore-component-sdk`
 
-`credstore-sdk` — Trait definitions, models, error types. Interfaces: `CredStoreClient`, `CredStorePluginClient`.
+`credstore-sdk` — Trait definitions, models, error types. Interfaces: `CredStoreClientV1`, `CredStorePluginClientV1`.
 
 - [ ] `p1` - **ID**: `cpt-cf-credstore-component-gateway`
 
@@ -234,8 +234,8 @@ graph TB
 `os_protected_storage` — OS keychain integration (P2) — simple per-tenant CRUD. Interfaces: Platform-native secure storage APIs.
 
 **Interactions**:
-- Consumer → Gateway: via `CredStoreClient` trait through ClientHub
-- Gateway → Plugin: via `CredStorePluginClient` trait through scoped ClientHub (GTS instance ID)
+- Consumer → Gateway: via `CredStoreClientV1` trait through ClientHub
+- Gateway → Plugin: via `CredStorePluginClientV1` trait through scoped ClientHub (GTS instance ID)
 - Gateway → tenant_resolver: queries tenant ancestry chain for hierarchical secret resolution walk-up
 - VendorA Plugin → Credstore: HTTP REST with OAuth2 bearer token (simple per-tenant CRUD operations)
 - VendorA Plugin → OAuth provider: token acquisition and caching
@@ -248,21 +248,21 @@ graph TB
 
 #### ClientHub API (in-process)
 
-`CredStoreClient` trait (public API for consumers):
+`CredStoreClientV1` trait (public API for consumers):
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `get` | `(ctx: &SecurityCtx, key: &SecretRef) → Result<Option<SecretValue>>` | Retrieve own secret |
+| `get` | `(ctx: &SecurityCtx, key: &SecretRef) → Result<Option<GetSecretResponse>>` | Retrieve secret with metadata (value, owner_tenant_id, sharing, is_inherited) |
 | `put` | `(ctx: &SecurityCtx, key: &SecretRef, value: SecretValue, sharing: SharingMode) → Result<()>` | Create or update secret with sharing mode |
 | `delete` | `(ctx: &SecurityCtx, key: &SecretRef) → Result<()>` | Delete own secret |
 
-`CredStorePluginClient` trait (backend adapter interface):
+`CredStorePluginClientV1` trait (backend adapter interface):
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `get` | `(tenant_id: &TenantId, key: &SecretRef, owner_id: Option<&OwnerId>) → Result<Option<SecretMetadata>>` | Get secret from backend. If `owner_id` is `Some`, looks up the private secret for that owner; if `None`, looks up the tenant/shared secret. |
-| `put` | `(tenant_id: &TenantId, key: &SecretRef, value: SecretValue, sharing: SharingMode, owner_id: OwnerId) → Result<()>` | Store secret in backend. ExternalID is derived from sharing mode and owner_id (see ExternalID Mapping). |
-| `delete` | `(tenant_id: &TenantId, key: &SecretRef, owner_id: Option<&OwnerId>) → Result<()>` | Delete secret from backend. If `owner_id` is `Some`, deletes the private secret for that owner; if `None`, deletes the tenant/shared secret. |
+| `get` | `(ctx: &SecurityCtx, tenant_id: &TenantId, key: &SecretRef, owner_id: Option<&OwnerId>) → Result<Option<SecretMetadata>>` | Get secret from backend. If `owner_id` is `Some`, looks up the private secret for that owner; if `None`, looks up the tenant/shared secret. |
+| `put` | `(ctx: &SecurityCtx, tenant_id: &TenantId, key: &SecretRef, value: SecretValue, sharing: SharingMode, owner_id: OwnerId) → Result<()>` | Store secret in backend. ExternalID is derived from sharing mode and owner_id (see ExternalID Mapping). |
+| `delete` | `(ctx: &SecurityCtx, tenant_id: &TenantId, key: &SecretRef, owner_id: Option<&OwnerId>) → Result<()>` | Delete secret from backend. If `owner_id` is `Some`, deletes the private secret for that owner; if `None`, deletes the tenant/shared secret. |
 
 **SecretMetadata structure**:
 ```rust
@@ -284,10 +284,10 @@ For `private` secrets, owner match is guaranteed by ExternalID construction (own
 
 | Method | Path | Description | Stability |
 |--------|------|-------------|-----------|
-| `POST` | `/api/credstore/v1/secrets` | Create secret with sharing mode | stable |
-| `PUT` | `/api/credstore/v1/secrets/{ref}` | Update secret value and/or sharing mode | stable |
-| `GET` | `/api/credstore/v1/secrets/{ref}` | Get own secret value | stable |
-| `DELETE` | `/api/credstore/v1/secrets/{ref}` | Delete own secret | stable |
+| `POST` | `/credstore/v1/secrets` | Create secret with sharing mode | stable |
+| `PUT` | `/credstore/v1/secrets/{ref}` | Update secret value and/or sharing mode | stable |
+| `GET` | `/credstore/v1/secrets/{ref}` | Get own secret value | stable |
+| `DELETE` | `/credstore/v1/secrets/{ref}` | Delete own secret | stable |
 
 **Create Secret Request:**
 ```json
@@ -498,9 +498,9 @@ sequenceDiagram
 1. Extract `tenant_id` and `subject_id` from SecurityCtx
 2. Query `tenant_resolver` to get ancestor chain (child → parent → ... → root)
 3. For each tenant in the chain (starting from requesting tenant), perform two-phase lookup:
-   - **Phase 1 — Private**: Call Plugin `get(tenant_id, key, Some(subject_id))` to look up a private secret for this owner
+   - **Phase 1 — Private**: Call Plugin `get(ctx, tenant_id, key, Some(subject_id))` to look up a private secret for this owner
      - If found and `sharing == private`: owner match is guaranteed by ExternalID construction → return secret value
-   - **Phase 2 — Tenant/Shared**: Call Plugin `get(tenant_id, key, None)` to look up the tenant/shared secret
+   - **Phase 2 — Tenant/Shared**: Call Plugin `get(ctx, tenant_id, key, None)` to look up the tenant/shared secret
      - If found, check `sharing` mode for access control:
        - **`tenant` mode**: Check `metadata.owner_tenant_id == ctx.tenant_id()`
        - **`shared` mode**: Allow if requester is descendant or same tenant as owner_tenant_id
@@ -811,15 +811,15 @@ All open questions below are documented in detail in PRD.md Section 13 (lines 60
 Following the ModKit plugin pattern (as documented in `docs/MODKIT_PLUGINS.md` and exemplified by `tenant_resolver`):
 
 1. `credstore` registers the plugin GTS schema during init
-2. Each plugin registers its GTS instance and scoped `CredStorePluginClient` in ClientHub
+2. Each plugin registers its GTS instance and scoped `CredStorePluginClientV1` in ClientHub
 3. Gateway resolves the active plugin via GTS instance query and vendor configuration
 
 **Exactly one storage plugin is active per deployment** (selected by configuration `vendor` field match). The Gateway handles all cross-cutting concerns (authorization, hierarchical resolution, sharing mode enforcement), while plugins provide simple per-tenant CRUD operations without policy or hierarchical logic.
 
 **GTS Types:**
-- Schema: `gts.x.core.modkit.plugin.v1~credstore.plugin.v1~`
-- VendorA instance: `gts.x.core.modkit.plugin.v1~credstore.plugin.v1~vendor_a.app._.plugin.v1`
-- OS storage instance: `gts.x.core.modkit.plugin.v1~credstore.plugin.v1~os_protected.app._.plugin.v1`
+- Schema: `gts.x.core.modkit.plugin.v1~x.core.credstore.plugin.v1~`
+- VendorA instance: `gts.x.core.modkit.plugin.v1~x.core.credstore.plugin.v1~x.core.vendor_a.app._.plugin.v1`
+- OS storage instance: `gts.x.core.modkit.plugin.v1~x.core.credstore.plugin.v1~x.core.os_protected.app._.plugin.v1`
 
 ### Configuration
 

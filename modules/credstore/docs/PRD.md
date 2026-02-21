@@ -336,7 +336,7 @@ Secret values **MUST NOT** appear in logs, error messages, or debug output at an
 
 ### 7.1 Public API Surface
 
-#### CredStoreClient
+#### CredStoreClientV1
 
 - [ ] `p1` - **ID**: `cpt-cf-credstore-interface-client`
 
@@ -347,7 +347,7 @@ Secret values **MUST NOT** appear in logs, error messages, or debug output at an
 **Breaking Change Policy**: Major version bump required
 <!-- cpt-cf-id-content -->
 
-#### CredStorePluginClient
+#### CredStorePluginClientV1
 
 - [ ] `p1` - **ID**: `cpt-cf-credstore-interface-plugin-client`
 
@@ -367,7 +367,7 @@ Secret values **MUST NOT** appear in logs, error messages, or debug output at an
 <!-- cpt-cf-id-content -->
 **Direction**: provided by library
 **Protocol/Format**: HTTP/REST, JSON
-**Compatibility**: Versioned URL path (`/api/credstore/v1/...`), backward-compatible within major version
+**Compatibility**: Versioned URL path (`/credstore/v1/...`), backward-compatible within major version
 <!-- cpt-cf-id-content -->
 
 #### VendorA Credstore REST
