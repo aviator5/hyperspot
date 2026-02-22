@@ -314,7 +314,7 @@
             }
           },
           "429": {
-            "description": "Quota exceeded. Code: `quota_exceeded`. Returned when all tier quotas are exhausted, emergency flags force rejection, or all models are disabled.",
+            "description": "Token quota exceeded. Code: `quota_exceeded`, `quota_scope`: `tokens`. Returned when all tier quotas are exhausted, emergency flags force rejection, or all models are disabled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -390,7 +390,6 @@
                   "filename": "Q3_Report.pdf",
                   "content_type": "application/pdf",
                   "size_bytes": 245000,
-                  "provider_file_id": null,
                   "doc_summary": null,
                   "created_at": "2025-06-15T10:35:00Z"
                 }
@@ -424,7 +423,7 @@
             }
           },
           "429": {
-            "description": "Daily image upload quota exceeded. Code: `quota_exceeded`.",
+            "description": "Daily upload quota exceeded. Code: `quota_exceeded`, `quota_scope`: `uploads`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -542,7 +541,7 @@
             }
           },
           "429": {
-            "description": "Quota exceeded for regeneration.",
+            "description": "Token quota exceeded for regeneration. Code: `quota_exceeded`, `quota_scope`: `tokens`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +655,7 @@
             }
           },
           "429": {
-            "description": "Quota exceeded for regeneration.",
+            "description": "Token quota exceeded for regeneration. Code: `quota_exceeded`, `quota_scope`: `tokens`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -834,9 +833,16 @@
     },
     "schemas": {
       "ErrorResponse": {
+        "description": "Standard error envelope for JSON error responses and SSE terminal error events.",
+        "oneOf": [
+          { "$ref": "#/components/schemas/QuotaExceededError" },
+          { "$ref": "#/components/schemas/GenericError" }
+        ]
+      },
+      "GenericError": {
         "type": "object",
         "required": ["code", "message"],
-        "description": "Standard error envelope for JSON error responses and SSE terminal error events.",
+        "description": "Error response for all non-quota error codes.",
         "properties": {
           "code": {
             "type": "string",
@@ -846,7 +852,6 @@
               "insufficient_permissions",
               "chat_not_found",
               "message_not_found",
-              "quota_exceeded",
               "rate_limited",
               "web_search_disabled",
               "file_too_large",
@@ -864,6 +869,26 @@
           "message": {
             "type": "string",
             "description": "Human-readable error description."
+          }
+        }
+      },
+      "QuotaExceededError": {
+        "type": "object",
+        "required": ["code", "message", "quota_scope"],
+        "description": "Error response for quota exhaustion. The quota_scope field is REQUIRED and distinguishes token quota exhaustion from upload quota exhaustion.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["quota_exceeded"]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error description."
+          },
+          "quota_scope": {
+            "type": "string",
+            "enum": ["tokens", "uploads"],
+            "description": "Distinguishes token quota exhaustion (tokens) from upload quota exhaustion (uploads). Clients MUST use this field, not message parsing, to determine quota scope."
           }
         }
       },
@@ -919,7 +944,7 @@
             "properties": {
               "messages": {
                 "type": "array",
-                "description": "Most recent messages in chronological order. The server enforces an internal configurable limit. This endpoint does not support pagination at P1.",
+                "description": "Most recent messages in chronological order, deterministically ordered by (created_at, id). The server enforces an internal configurable limit. This endpoint does not support pagination at P1.",
                 "items": {
                   "$ref": "#/components/schemas/Message"
                 }
@@ -1002,10 +1027,6 @@
             "type": "integer",
             "format": "int64"
           },
-          "provider_file_id": {
-            "type": ["string", "null"],
-            "description": "Opaque provider file identifier (display-only). Clients MUST NOT send this back to any API."
-          },
           "doc_summary": {
             "type": ["string", "null"],
             "description": "LLM-generated document summary. Present for documents after background processing completes; always null for images."
@@ -1028,7 +1049,7 @@
       "TurnStatus": {
         "type": "object",
         "required": ["chat_id", "request_id", "state", "updated_at"],
-        "description": "Authoritative server-side turn state. Internal-to-API state mapping: running->running, completed->done, failed->error, cancelled->cancelled.",
+        "description": "Authoritative server-side turn state. Internal-to-API state mapping: running->running, completed->done, failed->error, cancelled->cancelled. All terminal states (done, error, cancelled) indicate that quota settlement has been finalized.",
         "properties": {
           "chat_id": {
             "type": "string",
@@ -1237,11 +1258,7 @@
           "attachment_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Internal attachment ID. Preferred reference for clients."
-          },
-          "file_id": {
-            "type": "string",
-            "description": "Opaque provider file ID. Display-only; clients MUST NOT send this back to any API."
+            "description": "Internal attachment ID. The only file identifier exposed to clients."
           },
           "span": {
             "type": "object",
@@ -1299,7 +1316,7 @@
           },
           "downgrade_reason": {
             "type": "string",
-            "enum": ["premium_quota_exhausted", "balanced_quota_exhausted", "kill_switch"],
+            "enum": ["premium_quota_exhausted", "kill_switch"],
             "description": "Why downgrade occurred. Present only when quota_decision=\"downgrade\"."
           },
           "provider": {

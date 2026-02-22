@@ -44,9 +44,9 @@ Long conversations are managed via thread summaries - a Level 1 compression stra
 
 | NFR ID | NFR Summary | Allocated To | Design Response | Verification Approach |
 |--------|-------------|--------------|-----------------|----------------------|
-| `cpt-cf-mini-chat-nfr-tenant-isolation` | Tenant data must never leak across tenants | mini-chat module (domain + infra layers) | Per-chat vector store; all queries scoped via `AccessScope` (owner_col + tenant_col); no user-supplied `file_id` or `vector_store_id` in API | Integration tests with multi-tenant scenarios |
+| `cpt-cf-mini-chat-nfr-tenant-isolation` | Tenant data must never leak across tenants | mini-chat module (domain + infra layers) | Per-chat vector store; all queries scoped via `AccessScope` (owner_col + tenant_col); no provider identifiers (`provider_file_id`, `vector_store_id`) exposed or accepted in API | Integration tests with multi-tenant scenarios |
 | `cpt-cf-mini-chat-nfr-authz-alignment` | Authorization must follow platform PDP/PEP model | mini-chat module (PEP via PolicyEnforcer) | AuthZ Resolver evaluates every data-access operation; constraints compiled to `AccessScope` objects applied via secure ORM; fail-closed on PDP errors | Integration tests with mock PDP; fail-closed verification tests |
-| `cpt-cf-mini-chat-nfr-cost-control` | Predictable and bounded LLM costs | mini-chat module (domain service + quota_service) | Token-based rate limits per tier across multiple periods (4-hourly, daily, monthly) tracked in real-time; premium models have stricter limits, standard models (balanced, cost-efficient) have separate, higher limits; three-tier downgrade cascade (premium → balanced → cost-efficient); file search and web search call limits; token budget per request | Usage metrics dashboard; budget alert tests |
+| `cpt-cf-mini-chat-nfr-cost-control` | Predictable and bounded LLM costs | mini-chat module (domain service + quota_service) | Token-based rate limits per tier across multiple periods (daily, monthly) tracked in real-time; premium models have stricter limits, standard-tier models have separate, higher limits; two-tier downgrade cascade (premium → standard); file search and web search call limits; token budget per request | Usage metrics dashboard; budget alert tests |
 | `cpt-cf-mini-chat-nfr-streaming-latency` | Low time-to-first-token for chat responses | mini-chat module (domain service), OAGW | Direct SSE relay without buffering; cancellation propagation on disconnect | TTFT benchmarks under load; **Disconnect test**: open SSE -> receive 1-2 tokens -> disconnect -> assert provider request closed within 200 ms and active-generation counter decrements; **TTFT delta test**: measure `t_first_token_ui - t_first_byte_from_provider` -> assert platform overhead < 50 ms p99 |
 | `cpt-cf-mini-chat-nfr-data-retention` | Deleted chats purged from provider; temporary chat cleanup (P2) | mini-chat module (domain + infra layers) | Scheduled cleanup job; cascade delete to provider files and chat vector stores (OpenAI Files API / Azure OpenAI Files API) | Retention policy compliance tests |
 | `cpt-cf-mini-chat-nfr-observability-supportability` | Operational visibility for on-call, SRE, and cost governance | mini-chat module (domain service + quota_service) | `mini_chat_*` Prometheus metrics on all critical paths; stable `request_id` tracing per turn; structured audit events; turn state API (`GET /turns/{request_id}`) | Metric series presence tests; request_id propagation tests; alert rule validation |
@@ -100,7 +100,7 @@ Long conversations are managed via thread summaries - a Level 1 compression stra
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-principle-tenant-scoped`
 
-Every data access is scoped by constraints issued by the AuthZ Resolver (PDP). At P1, chat content is owner-only: the PDP returns `eq` predicates on `owner_tenant_id` and `user_id` that the domain service (PEP, via PolicyEnforcer) compiles to `AccessScope` and applies as SQL WHERE clauses through Secure ORM (`#[derive(Scopable)]`). This replaces application-level tenant/user scoping with a formalized constraint model aligned with the platform's [Authorization Design](../../../docs/arch/authorization/DESIGN.md). Vector stores, file uploads, and quota checks all require tenant context. No API accepts raw `vector_store_id` or `file_id` from the client.
+Every data access is scoped by constraints issued by the AuthZ Resolver (PDP). At P1, chat content is owner-only: the PDP returns `eq` predicates on `owner_tenant_id` and `user_id` that the domain service (PEP, via PolicyEnforcer) compiles to `AccessScope` and applies as SQL WHERE clauses through Secure ORM (`#[derive(Scopable)]`). This replaces application-level tenant/user scoping with a formalized constraint model aligned with the platform's [Authorization Design](../../../docs/arch/authorization/DESIGN.md). Vector stores, file uploads, and quota checks all require tenant context. No API accepts or returns provider identifiers (`provider_file_id`, `vector_store_id`). Client-visible identifiers are internal UUIDs only (`attachment_id`, `chat_id`, etc.).
 
 #### Owner-Only Chat Content
 
@@ -152,23 +152,23 @@ P1 targets the OpenAI-compatible API surface - either **OpenAI** or **Azure Open
 
 Image capability validation is performed during preflight in a strict two-step order:
 
-1. **Resolve effective_model** via the quota downgrade cascade (premium → balanced → cost-efficient), applying kill switches (`disable_premium_tier`, `force_cost_efficient_tier`).
+1. **Resolve effective_model** via the quota downgrade cascade (premium → standard), applying kill switches (`disable_premium_tier`, `force_standard_tier`).
 2. **Validate capabilities** of the resolved effective_model against the request content.
 
 ```text
 effective_model = resolve_effective_model(selected_model, quotas, kill_switches)
-if request.has_images && !catalog[effective_model].image_capable:
+if request.has_images && "VISION_INPUT" not in catalog[effective_model].capabilities:
     return HTTP 415 unsupported_media   # no outbound call
 proceed with provider call
 ```
 
-If the effective_model does not support image input, the domain service MUST reject with `unsupported_media` (HTTP 415) before any provider call. This applies even when the selected_model is image-capable but the effective_model is not (e.g. user selected a premium image-capable model, but quota exhaustion downgraded to a cost-efficient model without image support).
+If the effective_model does not support image input, the domain service MUST reject with `unsupported_media` (HTTP 415) before any provider call. This applies even when the selected_model supports images but the effective_model does not (e.g. user selected a premium model with `VISION_INPUT` capability, but quota exhaustion downgraded to a standard model without it).
 
-The system MUST NOT silently drop image attachments, strip images from the request, or auto-upgrade to a different model to satisfy the request. Image capability is determined by the `image_capable` flag on the model's entry in the model catalog (see Model Catalog Configuration).
+The system MUST NOT silently drop image attachments, strip images from the request, or auto-upgrade to a different model to satisfy the request. Image capability is determined by the presence of `VISION_INPUT` in the model's `capabilities` array (see Model Catalog Configuration).
 
 #### Downgrade Decision Matrix
 
-| selected_model image_capable | effective_model image_capable | Request has images | Result |
+| selected_model has VISION_INPUT | effective_model has VISION_INPUT | Request has images | Result |
 |------------------------------|-------------------------------|--------------------|--------|
 | yes | yes | yes | Proceed |
 | yes | yes | no  | Proceed |
@@ -178,6 +178,8 @@ The system MUST NOT silently drop image attachments, strip images from the reque
 | no  | no  | no  | Proceed |
 
 The matrix is evaluated after `resolve_effective_model()` and before any provider call.
+
+**P1 note**: All models in the P1 catalog include `VISION_INPUT` capability (see Model Catalog Configuration). The `unsupported_media` rejection path exists as a safety net but is not expected to trigger in P1 deployments. If a future catalog introduces a model without `VISION_INPUT`, the rejection logic activates automatically.
 
 #### No Credential Storage
 
@@ -192,12 +194,12 @@ Mini Chat never stores or handles API keys. All external calls go through OAGW, 
 Every request must fit within the **effective_model's** context window. The input token budget is:
 
 ```text
-token_budget = min(configured_max_input_tokens, effective_model_context_limit − reserved_output_tokens)
+token_budget = min(configured_max_input_tokens, effective_model_context_window − reserved_output_tokens)
 ```
 
 Where:
 - `configured_max_input_tokens` — deployment config hard cap
-- `effective_model_context_limit` — from model catalog entry for the resolved effective_model (see `context_limit` field)
+- `effective_model_context_window` — from model catalog entry for the resolved effective_model (see `context_window` field)
 - `reserved_output_tokens` — `max_output_tokens` configured for the request
 
 When context exceeds the budget, the system truncates in reverse priority: retrieval excerpts first, then document summaries, then old messages (not summary). Thread summary and system prompt are never truncated.
@@ -231,13 +233,13 @@ Once a chat is created with a model (user-selected or catalog default), that mod
 The **effective_model** is the model actually used for a specific turn. Invariants:
 
 - `selected_model` never changes during chat lifetime.
-- `effective_model` may differ from `selected_model` due to automatic downgrade (quota exhaustion) or kill switches (`disable_premium_tier`, `force_cost_efficient_tier`).
+- `effective_model` may differ from `selected_model` due to automatic downgrade (quota exhaustion) or kill switches (`disable_premium_tier`, `force_standard_tier`).
 - `effective_model` MUST be recorded in:
   - `messages.model` column (per assistant message)
   - SSE `event: done` payload (`effective_model` and `usage.model` fields)
   - audit event payload (`selected_model` + `effective_model`)
 
-**Exception**: quota-driven automatic downgrade within the three-tier cascade IS permitted mid-conversation. This is a system-level decision enforced by `quota_service`, not a user-initiated model switch. The effective_model is recorded on the assistant message (`messages.model`), not on the chat itself.
+**Exception**: quota-driven automatic downgrade within the two-tier cascade IS permitted mid-conversation. This is a system-level decision enforced by `quota_service`, not a user-initiated model switch. The effective_model is recorded on the assistant message (`messages.model`), not on the chat itself.
 
 If a user wants a different model, they create a new chat.
 
@@ -245,17 +247,17 @@ If a user wants a different model, they create a new chat.
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-constraint-quota-before-outbound`
 
-All product-level quota decisions (block, downgrade, limit) MUST be made in the domain service before any request reaches OAGW. OAGW never makes user-level or tenant-level quota decisions — it is transport + credential broker only. Only the domain service has the business context needed for quota decisions: tenant, user, license tier, model tier, three-tier downgrade cascade, file_search call limits. OAGW sees an opaque HTTP request with no business semantics.
+All product-level quota decisions (block, downgrade, limit) MUST be made in the domain service before any request reaches OAGW. OAGW never makes user-level or tenant-level quota decisions — it is transport + credential broker only. Only the domain service has the business context needed for quota decisions: tenant, user, license tier, model tier, two-tier downgrade cascade, file_search call limits. OAGW sees an opaque HTTP request with no business semantics.
 
 Model selection and lifecycle rules (P1) are defined in the model catalog (deployment configuration) and applied at the module boundary:
 
 - The model catalog, downgrade cascade, and per-tier thresholds MUST be defined in deployment configuration (P1) and are expected to be owned by a platform Settings Service / License Manager layer as the long-term system of record.
-- The domain service / `quota_service` is the enforcement point: it MUST deterministically choose the effective model before the outbound call using the three-tier downgrade cascade (premium → balanced → cost-efficient). All tiers have token-based rate limits across 4-hourly, daily, and monthly periods; premium models have stricter limits, standard models (balanced, cost-efficient) have separate, higher limits. When any tier's period quota is exhausted, the system downgrades to the next available tier. When all tiers are exhausted, the system MUST reject with `quota_exceeded` (HTTP 429). The chosen model MUST be surfaced via metrics (`{model}` and `{tier}` labels) and audit.
+- The domain service / `quota_service` is the enforcement point: it MUST deterministically choose the effective model before the outbound call using the two-tier downgrade cascade (premium → standard). All tiers have token-based rate limits across daily and monthly periods; premium models have stricter limits, standard-tier models have separate, higher limits. When any tier's period quota is exhausted, the system downgrades to the next available tier. When all tiers are exhausted, the system MUST reject with `quota_exceeded` (HTTP 429). The chosen model MUST be surfaced via metrics (`{model}` and `{tier}` labels) and audit.
 
 Global emergency flags / kill switches (P1): operators MUST have a way to immediately reduce cost and risk at runtime via configuration-owned flags.
 
-- `disable_premium_tier` — if enabled, premium-tier models MUST NOT be used; requests that would have used premium MUST begin the downgrade cascade from the balanced tier.
-- `force_cost_efficient_tier` — if enabled, all requests MUST use the cost-efficient tier model regardless of quota state or user selection.
+- `disable_premium_tier` — if enabled, premium-tier models MUST NOT be used; requests that would have used premium MUST begin the downgrade cascade from the standard tier.
+- `force_standard_tier` — if enabled, all requests MUST use the standard-tier model regardless of quota state or user selection.
 - `disable_file_search` — if enabled, `file_search` tool calls MUST be skipped; responses proceed without retrieval.
 - `disable_web_search` — if enabled, requests with `web_search.enabled=true` MUST be rejected with HTTP 400 and error code `web_search_disabled` before opening an SSE stream. The system MUST NOT silently ignore the parameter.
 
@@ -275,11 +277,11 @@ Hard caps: token budgets (`max_input_tokens`, `max_output_tokens`) MUST remain c
 |--------|-------------|
 | Chat | A conversation belonging to a user within a tenant. Has title, **selected_model** (locked at creation from catalog; immutable), creation/update timestamps. Temporary flag reserved for P2. |
 | Message | A single turn in a chat (role: user/assistant/system). Stores content, token estimate, compression status. Assistant messages record the **effective_model** (the model actually used after quota/policy evaluation). |
-| Attachment | File uploaded to a chat (document or image). References provider `file_id` (OpenAI or Azure OpenAI). Documents are linked to the chat's vector store; images are not. Has processing status and `attachment_kind` (`document|image`). |
+| Attachment | File uploaded to a chat (document or image). Identified by internal `attachment_id` (UUID). Stores `provider_file_id` internally (never exposed via API). Documents are linked to the chat's vector store; images are not. Has processing status and `attachment_kind` (`document|image`). |
 | ThreadSummary | Compressed representation of older messages in a chat. Replaces old history in the context window. |
 | ChatVectorStore | Mapping from `(tenant_id, chat_id)` to provider `vector_store_id` (OpenAI or Azure OpenAI Vector Stores API). One vector store per chat (created on first document upload). Physical and logical isolation are both per chat (see File Search Retrieval Scope). |
 | AuditEvent | Structured event emitted to platform `audit_service`: prompt, response, user/tenant, timestamps, policy decisions, usage. Not stored locally. |
-| QuotaUsage | Per-user usage counters for rate limiting and budget enforcement. Tracks 4-hourly, daily, and monthly periods per tier. Premium models have stricter limits; standard models (balanced, cost-efficient) have separate, higher limits. |
+| QuotaUsage | Per-user usage counters for rate limiting and budget enforcement. Tracks daily and monthly periods per tier. Premium models have stricter limits; standard-tier models have separate, higher limits. |
 | MessageReaction | A binary like or dislike reaction on an assistant message. One reaction per user per message. Stored for analytics and feedback collection. |
 | ContextPlan | Transient object assembled per request: system prompt, summary, doc summaries, recent messages, user message, retrieval excerpts. |
 
@@ -337,24 +339,37 @@ graph TB
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-component-quota-service`
 
-- **quota_service** — Enforces per-user token-based rate limits per tier across multiple periods (4-hourly, daily, monthly), tracked in real-time. Premium models have stricter limits; standard models (balanced and cost-efficient tiers) have separate, higher limits. Tracks per-tier call counts, file search call counts, web search call counts, and image usage counters (image_inputs, image_upload_bytes) separately. Uses **two-phase quota counting**:
+- **quota_service** — Enforces per-user token-based rate limits per tier across multiple periods (daily, monthly), tracked in real-time. Premium models have stricter limits; standard-tier models have separate, higher limits. Tracks per-tier call counts, file search call counts, web search call counts, and image usage counters (image_inputs, image_upload_bytes) separately. Uses **two-phase quota counting**:
 
   **Tier availability rule**: a tier is considered **available** only if it has remaining quota in **ALL** configured periods for that tier. If **ANY** period is exhausted, the tier is treated as exhausted and the downgrade cascade continues to the next tier. When all tiers are exhausted, the system rejects with `quota_exceeded`.
 
   - **Phase 1 - Preflight (reserve) estimate** (on request start, before any streaming begins and before outbound call): estimate token cost from `ContextPlan` size + `max_output_tokens` and reserve it for quota enforcement. Decision: allow at requested tier / downgrade to next tier / reject if all tiers exhausted.
     - Reserve MUST prevent parallel requests from overspending remaining tier quota.
-    - Reserve SHOULD be keyed by `(tenant_id, user_id, period_type, period_start)` and reconciled on terminal outcome. Reserves MUST be checked across all three period types (`4h`, `daily`, `monthly`) for the current tier; if any period is exhausted, the tier is considered exhausted and the cascade proceeds to the next tier.
+    - Reserve SHOULD be keyed by `(tenant_id, user_id, period_type, period_start)` and reconciled on terminal outcome. Reserves MUST be checked across all configured period types (`daily`, `monthly`) for the current tier; if any period is exhausted, the tier is considered exhausted and the cascade proceeds to the next tier.
   - **Phase 2 - Commit actual** (on `event: done`): reconcile the reserve to actual usage (`response.usage.input_tokens` + `response.usage.output_tokens`) and commit actual to `quota_usage`. If actual exceeds estimate (overshoot), the completed response is never retroactively cancelled, but guardrails apply:
     - Commit MUST be atomic per `(tenant_id, user_id, period_type, period_start)` (avoid race conditions under parallel streams)
-    - If the remaining quota for a tier is below a configured negative threshold, preflight MUST downgrade new requests to the next tier in the cascade
+    - If the remaining quota for a tier is below a configured negative threshold, preflight MUST downgrade new requests to the next tier in the cascade. The negative threshold is a configurable absolute token value defined in quota configuration.
     - `max_output_tokens` and an explicit input budget MUST bound the maximum cost per request
   - **Streaming constraint**: quota check is preflight-only. Mid-stream abort due to quota is NOT supported (would produce broken UX and partial content). Mid-stream abort is only triggered by: user cancel, provider error, or infrastructure limits.
 
 Preflight failures MUST be returned as normal JSON HTTP errors and MUST NOT open an SSE stream.
 
-Cancel/disconnect rule: if a stream ends without a terminal `done`/`error` event, `quota_service` MUST commit a bounded best-effort debit (default: the reserved estimate) so cancellations cannot evade quotas.
+Cancel/disconnect rule: if a stream ends without a terminal `done`/`error` event, `quota_service` MUST commit a bounded best-effort debit (default: the reserved estimate) so cancellations cannot evade quotas. The quota settlement and the corresponding `usage_outbox` row MUST be written in the same DB transaction (see section 5.3 turn finalization contract).
 
 Reserve is an internal accounting concept (it may be implemented as held/pending fields or a row-level marker), but the observable external semantics MUST match the rules above.
+
+#### Quota Period Reset Semantics
+
+| Period | Reset Rule | Example |
+|--------|-----------|---------|
+| `daily` | Calendar-based: resets at midnight UTC. | Resets at 00:00 UTC |
+| `monthly` | Calendar-based: resets 1st of each month at midnight UTC. | Resets on the 1st at 00:00 UTC |
+
+All period boundaries use UTC. Per-tenant timezone configuration (`quota_timezone`) is deferred to P2+. Additional periods (4-hourly rolling windows, weekly) are deferred to P2+.
+
+#### Quota Warning Thresholds (P2+)
+
+Quota warning thresholds (`warning_threshold_pct`, `quota_warnings` array in the SSE `done` event) are deferred to P2+. P1 does not emit quota warning notifications in the SSE stream.
 
 Background tasks (thread summary update, document summary generation) MUST run with `requester_type=system` and MUST NOT be charged to an arbitrary end user. Usage for these tasks is charged to a tenant operational bucket (implementation-defined) and still emitted to `audit_service`.
 
@@ -389,7 +404,6 @@ Covers public API from PRD: `cpt-cf-mini-chat-interface-public-api`
 | `DELETE` | `/v1/chats/{id}/turns/{request_id}` | Delete last turn (soft-delete) | stable |
 | `PUT` | `/v1/chats/{id}/messages/{msg_id}/reaction` | Set like/dislike reaction on an assistant message | stable |
 | `DELETE` | `/v1/chats/{id}/messages/{msg_id}/reaction` | Remove reaction from an assistant message | stable |
-
 **Create Chat** (`POST /v1/chats`):
 
 Request body:
@@ -400,7 +414,7 @@ Request body:
 }
 ```
 
-- `model`: If provided, MUST reference a valid model `name` in the model catalog. If absent, the system uses the first entry in the model catalog as the default. The model is stored on the chat and locked for all subsequent messages (see `cpt-cf-mini-chat-constraint-model-locked-per-chat`). Returns HTTP 400 if the model name is not in the catalog.
+- `model`: If provided, MUST reference a valid `model_id` in the model catalog with `status: enabled`. If absent, the system uses the `is_default` premium model (see Model Catalog Configuration). The model is stored on the chat and locked for all subsequent messages (see `cpt-cf-mini-chat-constraint-model-locked-per-chat`). Returns HTTP 400 if the model_id is not in the catalog or is disabled.
 
 Response includes the resolved `model` in chat metadata.
 
@@ -520,7 +534,7 @@ Delivers source references used in the answer.
 
 ```
 event: citations
-data: {"items": [{"source": "file", "title": "Q3 Report.pdf", "attachment_id": "uuid", "file_id": "file-abc123", "snippet": "Revenue grew 15%...", "score": 0.92}]}
+data: {"items": [{"source": "file", "title": "Q3 Report.pdf", "attachment_id": "b2f7c1a0-1234-4abc-9def-567890abcdef", "snippet": "Revenue grew 15%...", "score": 0.92}]}
 ```
 
 | Field | Type | Description |
@@ -528,13 +542,12 @@ data: {"items": [{"source": "file", "title": "Q3 Report.pdf", "attachment_id": "
 | `items[].source` | `"file"` \| `"web"` | Citation source type. |
 | `items[].title` | string | Document or page title. |
 | `items[].url` | string (optional) | URL for web sources. |
-| `items[].attachment_id` | UUID (optional) | Internal attachment identifier for file sources. Preferred identifier for UI references. |
-| `items[].file_id` | string (optional) | Provider file ID for file sources. |
+| `items[].attachment_id` | UUID (optional) | Internal attachment identifier for file sources. This is the only file identifier exposed to clients. |
 | `items[].span` | object (optional) | Reserved for mapping citations to the final assistant text. If provided: `{ "start": number, "end": number }` character offsets into the full assistant output. |
 | `items[].snippet` | string | Relevant excerpt. |
 | `items[].score` | number (optional) | Relevance score (0-1). |
 
-`items[].file_id` is provider-issued and MUST be treated as opaque display-only metadata. Clients MUST NOT send it back to any API.
+**Provider identifier security invariant**: the public API MUST NOT expose provider identifiers (`provider_file_id`, `vector_store_id`, or any provider-issued ID) to clients. All client-visible file references use internal `attachment_id` (UUID) only. Provider identifiers are stored internally for LLM operations and MUST NOT appear in any API response, SSE event payload, or error message.
 
 P1: `citations` is sent once near stream completion, before `done`. The contract supports multiple `citations` events per stream for future use. When web search contributes to the response, citations with `source: "web"` include `url`, `title`, and `snippet`.
 
@@ -572,9 +585,10 @@ Finalizes the stream. Provides usage, model selection, and provider correlation 
 | `selected_model` | string | Model chosen at chat creation (`chats.model`). Always present. Equals `effective_model` when no downgrade occurred. |
 | `quota_decision` | `"allow"` \| `"downgrade"` (required) | Always present. `"allow"` when the turn used the selected model without override; `"downgrade"` when a quota-driven downgrade occurred. |
 | `downgrade_from` | string (optional) | Always equals `selected_model` when present — the model from which the quota-driven downgrade occurred. Present only when `quota_decision="downgrade"`. |
-| `downgrade_reason` | string (optional) | Why downgrade occurred: `"premium_quota_exhausted"`, `"balanced_quota_exhausted"`, or `"kill_switch"`. Present only when `quota_decision="downgrade"`. |
+| `downgrade_reason` | string (optional) | Why downgrade occurred: `"premium_quota_exhausted"` or `"kill_switch"`. Present only when `quota_decision="downgrade"`. |
 | `provider.name` | `"openai"` \| `"azure_openai"` | Active provider. |
 | `provider.response_id` | string | Provider-side response ID for debugging and OAGW log correlation. |
+| `quota_warnings` | array of objects (optional) | Deferred to P2+. Not emitted in P1. |
 
 ##### `event: error`
 
@@ -582,7 +596,7 @@ Terminates the stream with an application error. No further events follow.
 
 ```
 event: error
-data: {"code": "quota_exceeded", "message": "Daily limit reached"}
+data: {"code": "quota_exceeded", "message": "Daily limit reached", "quota_scope": "tokens"}
 ```
 
 | Field | Type | Description |
@@ -642,7 +656,7 @@ For streaming endpoints, failures before any streaming begins MUST be returned a
 | `feature_not_licensed` | 403 | Tenant lacks `ai_chat` feature |
 | `insufficient_permissions` | 403 | Subject lacks permission for the requested action (AuthZ Resolver denied) |
 | `chat_not_found` | 404 | Chat does not exist or not accessible under current authorization constraints |
-| `quota_exceeded` | 429 | User exceeded token rate limits across all tiers (premium, balanced, cost-efficient) in at least one period, or emergency flags force rejection, or all models are disabled |
+| `quota_exceeded` | 429 | Quota exhaustion. Always accompanied by a `quota_scope` field: `"tokens"` (token rate limits across all tiers exhausted, emergency flags, or all models disabled) or `"uploads"` (daily upload quota exceeded for the attachment endpoint). |
 | `web_search_disabled` | 400 | Request includes `web_search.enabled=true` but the global `disable_web_search` kill switch is active |
 | `rate_limited` | 429 | Too many requests in time window |
 | `file_too_large` | 413 | Uploaded file exceeds size limit |
@@ -652,6 +666,8 @@ For streaming endpoints, failures before any streaming begins MUST be returned a
 | `unsupported_media` | 415 | Request includes image input but the effective model does not support multimodal input |
 | `provider_error` | 502 | LLM provider returned an error |
 | `provider_timeout` | 504 | LLM provider request timed out |
+
+**Quota error disambiguation invariant**: token quota exhaustion and upload quota exhaustion MUST be distinguishable to clients via the stable, machine-readable `quota_scope` field on every `quota_exceeded` error response. Clients MUST NOT parse the `message` string to determine quota scope. The `quota_scope` field is REQUIRED when `code` is `quota_exceeded` and MUST be one of: `"tokens"` (token-based rate limit exhaustion) or `"uploads"` (per-user daily upload limit exhaustion).
 
 ### 3.4 Internal Dependencies
 
@@ -697,7 +713,7 @@ Note: Azure OpenAI path variants differ by rollout; OAGW owns the exact path map
 | **API version** | Not required | Azure may require an `api-version` query parameter depending on feature/rollout; OAGW owns this provider-specific detail |
 | **File upload `purpose` (documents)** | `assistants` (P1) | `assistants` only (`user_data` not supported) |
 | **File upload `purpose` (images)** | `vision` (when required by the configured endpoint/model) | `assistants` |
-| **Vector stores per `file_search`** | Multiple | **One** (sufficient for P1: one store per tenant) |
+| **Vector stores per `file_search`** | Multiple | **One** (sufficient for P1: one store per chat) |
 | **SSE format** | `event:` + `data:` lines, structured events | Identical format |
 | **`user` field** | Supported | Supported (feeds into Azure abuse monitoring) |
 | **`metadata` object** | Supported | Supported |
@@ -750,7 +766,7 @@ sequenceDiagram
     end
 
     CS->>CS: Build ContextPlan (system prompt + summary + doc summaries + recent msgs + user msg)
-    CS->>CS: Preflight (reserve) quota check (resolve model from chat.model, check quota across all tiers 4h/daily/monthly -> allow at tier / downgrade / reject)
+    CS->>CS: Preflight (reserve) quota check (resolve model from chat.model, check quota across all tiers daily/monthly -> allow at tier / downgrade / reject)
 
     alt all tiers exhausted or all models disabled (emergency flags)
         CS-->>AG: 429 quota_exceeded (JSON error response; no SSE stream is opened)
@@ -802,8 +818,8 @@ sequenceDiagram
     CS->>DB: Insert attachment metadata (status: pending)
     CS->>OG: POST /outbound/llm/files (upload)
     OG->>OAI: Files API upload
-    OAI-->>OG: file_id
-    OG-->>CS: file_id
+    OAI-->>OG: provider_file_id
+    OG-->>CS: provider_file_id
     CS->>OG: POST /outbound/llm/vector_stores/{chat_store}/files (add file)
     OG->>OAI: Add file to vector store
     OAI-->>OG: OK
@@ -821,7 +837,7 @@ sequenceDiagram
 **Description**: File upload flow - the file is uploaded to the LLM provider (OpenAI or Azure OpenAI) via OAGW. The subsequent steps depend on attachment kind:
 
 - **Document** (`attachment_kind=document`): file is added to the chat's vector store (created on first upload), optionally summarized, and metadata is persisted locally. Status transitions: `pending` -> `ready`.
-- **Image** (`attachment_kind=image`): file is uploaded to the provider via Files API but is NOT added to the vector store and NOT summarized. Status transitions: `pending` -> `ready`. The image is available for multimodal input in subsequent Responses API calls via its `provider_file_id`.
+- **Image** (`attachment_kind=image`): file is uploaded to the provider via Files API but is NOT added to the vector store and NOT summarized. Status transitions: `pending` -> `ready`. The image is available for multimodal input in subsequent Responses API calls via the internally stored `provider_file_id` (never exposed to clients).
 
 Attachment kind is derived from `content_type`: MIME types matching `image/png`, `image/jpeg`, or `image/webp` are classified as `image`; all other supported types are classified as `document`.
 
@@ -1016,7 +1032,7 @@ Soft-delete rules:
 | filename | VARCHAR(255) | Original filename |
 | content_type | VARCHAR(128) | MIME type |
 | size_bytes | BIGINT | File size |
-| provider_file_id | VARCHAR(128) | LLM provider file ID - OpenAI `file-*` or Azure OpenAI `assistant-*` (nullable until upload completes) |
+| provider_file_id | VARCHAR(128) | LLM provider file ID - OpenAI `file-*` or Azure OpenAI `assistant-*` (nullable until upload completes). Internal-only; MUST NOT be exposed via any API response. |
 | status | VARCHAR(16) | `pending`, `ready`, `failed` |
 | attachment_kind | VARCHAR(16) | `document` or `image`. Derived from `content_type` on INSERT: MIME types `image/png`, `image/jpeg`, `image/webp` -> `image`; all others -> `document`. Stored explicitly for efficient query filtering. |
 | doc_summary | TEXT | LLM-generated document summary (nullable; always NULL for `attachment_kind=image`) |
@@ -1069,19 +1085,55 @@ Soft-delete rules:
 
 **PK**: `id`
 
-**Constraints**: UNIQUE on `(tenant_id, chat_id)`. NOT NULL on `vector_store_id`, `provider`, `created_at`. One vector store per chat within a tenant.
+**Constraints**: UNIQUE on `(tenant_id, chat_id)`. NOT NULL on `provider`, `created_at`. `vector_store_id` is nullable (NULL while provider creation is in progress). One vector store per chat within a tenant.
 
 **Secure ORM**: `#[secure(owner_col = "chat_id", resource_col = "id", no_type)]`
 
-Creation protocol (P1): the domain service uses a get-or-create flow with database uniqueness as the race arbiter. The vector store is created lazily on the first document upload to a chat.
+**Concurrency invariants**:
 
-1. Attempt to read the row by `(tenant_id, chat_id)`.
-2. If not present, create the vector store via OAGW and attempt INSERT.
-3. If INSERT fails due to unique violation (concurrent creator), re-read the row and use the existing `vector_store_id`. Best-effort delete the newly created provider vector store to avoid orphans.
+- UNIQUE(`tenant_id`, `chat_id`) is the sole arbiter: exactly one row per chat.
+- `vector_store_id` is nullable; NULL means "creation in progress".
+- The system MUST NOT create multiple provider vector stores for the same chat under any race condition.
+- The winner is the request that successfully INSERTs the row with `vector_store_id = NULL`.
+- The winner MUST set `vector_store_id` using a conditional UPDATE that succeeds only if `vector_store_id IS NULL` (compare-and-set). This prevents overwriting an already-set `vector_store_id` under races where a rollback-and-retry cycle allows a second winner to complete before the first winner's UPDATE.
 
-**P1**: run a periodic reconcile/orphan reaper job (for example nightly) to reconcile provider state with `chat_vector_stores`:
-- If a provider vector store exists but is not referenced in DB → delete it.
-- If a DB row exists but the provider vector store is missing → recreate the vector store and update the DB row.
+**Creation protocol (P1, insert-first get-or-create):**
+
+The domain service creates the vector store lazily on the first document upload to a chat.
+
+1. Begin transaction.
+2. Attempt INSERT:
+   ```
+   INSERT INTO chat_vector_stores (tenant_id, chat_id, vector_store_id, provider, created_at)
+   VALUES (:tenant_id, :chat_id, NULL, :provider, now())
+   ```
+3. If INSERT fails due to unique constraint violation (loser path):
+   a. SELECT the existing row by `(tenant_id, chat_id)`.
+   b. If `vector_store_id IS NOT NULL`, reuse it and return. Done.
+   c. If `vector_store_id IS NULL` (creation in progress by winner), retry SELECT with bounded backoff until populated, or fail with 503 and let client retry.
+   d. Loser MUST NOT call provider create.
+4. If INSERT succeeds (winner path):
+   a. Create provider vector store via OAGW.
+   b. Perform conditional UPDATE:
+      ```
+      UPDATE chat_vector_stores
+         SET vector_store_id = :provider_id
+       WHERE tenant_id = :tenant_id
+         AND chat_id = :chat_id
+         AND vector_store_id IS NULL
+      ```
+   c. Check `rows_affected`:
+      - If 1: commit transaction and return the mapping.
+      - If 0: another request already set the value. Best-effort delete the newly created provider store (orphan). Re-read the row and return the existing mapping.
+
+**Failure handling**:
+
+- If provider store creation fails (step 4a fails) before the conditional UPDATE: roll back the transaction so that no row remains with `vector_store_id = NULL`. A subsequent upload attempt restarts from step 1.
+- If provider store creation succeeds but the conditional UPDATE returns 0 rows (step 4c, `rows_affected = 0`): the created provider store MUST be best-effort deleted as an orphan. The winner re-reads the row and returns the existing mapping.
+
+**Deletion race**:
+
+If the chat is soft-deleted before vector store creation completes, the creation transaction MUST fail: the upload handler loads the chat via a scoped query before entering the creation protocol. If the chat is soft-deleted, the scoped query returns not-found and the upload is rejected with 404 before reaching step 1. If deletion occurs after the chat-load check but before transaction commit, the cleanup worker will delete the orphaned row (the cleanup worker treats "not found" / "already deleted" as success).
 
 #### Table: quota_usage
 
@@ -1094,7 +1146,7 @@ Creation protocol (P1): the domain service uses a get-or-create flow with databa
 | id | UUID | Record identifier |
 | tenant_id | UUID | Tenant |
 | user_id | UUID | User |
-| period_type | VARCHAR(16) | `4h`, `daily`, or `monthly` |
+| period_type | VARCHAR(16) | `daily` or `monthly` (P2+: `4h`, `weekly`) |
 | period_start | DATE | Start of the period |
 | input_tokens | BIGINT | Total input tokens consumed |
 | output_tokens | BIGINT | Total output tokens consumed |
@@ -1102,8 +1154,7 @@ Creation protocol (P1): the domain service uses a get-or-create flow with databa
 | web_search_calls | INTEGER | Number of web search tool calls (P1) |
 | rag_retrieval_calls | INTEGER | Number of internal RAG retrieval calls (P2+) |
 | premium_tier_calls | INTEGER | Calls to premium-tier models (e.g., GPT-5.x) |
-| balanced_tier_calls | INTEGER | Calls to balanced-tier models (e.g., GPT-5 Mini) |
-| cost_efficient_tier_calls | INTEGER | Calls to cost-efficient-tier models (e.g., GPT-5 Nano) |
+| standard_tier_calls | INTEGER | Calls to standard-tier models (e.g., GPT-5 Mini) |
 | image_inputs | INTEGER | Number of image attachments included in Responses API calls (default 0) |
 | image_upload_bytes | BIGINT | Total bytes of uploaded images (default 0) |
 | updated_at | TIMESTAMPTZ | Last update time |
@@ -1577,9 +1628,9 @@ These events are emitted to platform `audit_service` following the same emission
 - On-upload document summary via File Search (Variant 1 from draft)
 - Image upload and image-aware chat via multimodal Responses API input (PNG/JPEG/WebP); images stored via Files API, not indexed in vector stores
 - Retry, edit, and delete for the last turn only (tail-only mutation; see section 3.9)
-- Quota enforcement: 4-hourly + daily + monthly per user; token-based rate limits per tier tracked in real-time; premium models have stricter limits, standard models have separate, higher limits; when all tiers are exhausted, reject with `quota_exceeded`; image counters enforced separately
+- Quota enforcement: daily + monthly per user; token-based rate limits per tier tracked in real-time; premium models have stricter limits, standard models have separate, higher limits; when all tiers are exhausted, reject with `quota_exceeded`; image counters enforced separately
 - File Search per-message call limit is configurable per deployment (default: 2 tool calls per message)
-- Web search via provider tooling (Azure Foundry), explicitly enabled per request via `web_search.enabled` parameter; per-message call limit (default: 2) and per-user daily call limit (default: 20); global `disable_web_search` kill switch
+- Web search via provider tooling (Azure Foundry), explicitly enabled per request via `web_search.enabled` parameter; per-message call limit (default: 2) and per-user daily quota (default: 75); global `disable_web_search` kill switch
 
 **Deferred to P2+**:
 - Temporary chats with 24h scheduled cleanup
@@ -1628,7 +1679,7 @@ Chat content may contain PII or sensitive data. Mini Chat treats messages and su
 - Any included string content MUST be truncated after redaction to a maximum of 8 KiB per field (append `…[TRUNCATED]`).
 - Full DLP-based content redaction is deferred to P2.
 
-### Context Plan Assembly Rules
+### Context Plan Assembly and Truncation
 
 On each user message, the domain service assembles a `ContextPlan` in this normative order:
 
@@ -1639,7 +1690,7 @@ On each user message, the domain service assembles a `ContextPlan` in this norma
 5. **Recent messages** — last N messages not covered by summary (N configurable, default 6-10).
 6. **Retrieval excerpts** — file_search results from the chat's vector store (top-k chunks).
 7. **User message** — current turn.
-8. **Image attachments** — if the current request includes `attachment_ids`, include up to N images (configurable, default: 4) as file ID references in the Responses API input content array. Images are appended to the user message content as `input_image` items with `file_id` references. Images from previous turns are NOT re-included unless explicitly re-attached via `attachment_ids`.
+8. **Image attachments** — if the current request includes `attachment_ids`, include up to N images (configurable, default: 4) in the Responses API input content array. Images are appended to the user message content as `input_image` items with internal `provider_file_id` references (resolved from the `attachments` table; never exposed to clients). Images from previous turns are NOT re-included unless explicitly re-attached via `attachment_ids`.
 
 **Truncation priority** (when total exceeds `token_budget` — see Context Window Budget constraint): items are dropped in reverse order of priority. Lowest priority is truncated first:
 
@@ -1658,6 +1709,71 @@ Image attachments on the current turn are not truncated (they are subject to per
 
 **Web search tool inclusion**: When `web_search.enabled=true` on the request, the domain service includes the `web_search` tool in the Responses API request alongside `file_search`. The provider decides whether to invoke the tool based on the query. Web search tool inclusion does not affect context assembly order or truncation priority. Web search call limits (per-message and per-day) are enforced by `quota_service` at preflight and committed on turn completion.
 
+#### Context Plan Truncation Algorithm
+
+When the assembled `ContextPlan` exceeds the token budget, the domain service applies a deterministic truncation algorithm. The budget is computed as:
+
+```text
+token_budget = min(configured_max_input_tokens, effective_model.context_window - reserved_output_tokens)
+```
+
+**Truncation classification**:
+
+| Category | Items | Rule |
+|----------|-------|------|
+| Never truncated | System prompt + tool guard instructions, thread summary | Always included. If these alone exceed the budget, the turn is rejected at preflight. |
+| Truncatable | User message + image attachments, recent messages, document summaries, retrieval excerpts | Removed in reverse priority order (lowest priority first, per the table above). |
+
+**Algorithm** (step by step):
+
+1. Assemble the full `ContextPlan` with all candidate items in normative order.
+2. Estimate total tokens using the provider's tokenizer (or a conservative approximation).
+3. If total <= `token_budget`, accept the plan as-is.
+4. Otherwise, reduce in this order until the plan fits within `token_budget`:
+   a. **Retrieval excerpts**: drop lowest-ranked chunks first, then reduce `retrieval_k` until retrieval is empty or budget is met.
+   b. **Document summaries**: drop document summaries starting from the least relevant.
+   c. **Recent messages**: drop oldest conversation turns first, preserving the most recent turns.
+   d. **User message**: never truncated. If the plan still exceeds the budget after steps a-c, reject at preflight with an oversize error.
+5. Thread summary is never truncated. If the system prompt + thread summary + user message alone exceed the budget, the turn MUST be rejected before any outbound call.
+
+**Determinism note**: given identical inputs (same message history, same retrieval results, same model context window), the truncation algorithm MUST produce the same `ContextPlan`. This property is important for debugging and idempotent retry scenarios. Determinism applies to truncation and ordering logic given identical retrieval inputs. Retrieval results themselves may vary depending on provider behavior.
+
+**Link to quota preflight**: the token estimate used for quota reservation (see "Quota counting flow" above) is computed from the final truncated `ContextPlan` size plus `max_output_tokens`.
+
+#### ContextPlan Determinism and Snapshot Boundary (P1)
+
+The following invariants ensure that ContextPlan assembly is deterministic under concurrent writes and consistent with quota preflight.
+
+**Stable ordering**:
+
+The server MUST order messages deterministically using a composite ordering key: `(created_at ASC, id ASC)` for chronological assembly, and `(created_at DESC, id DESC)` when selecting the latest N messages. The `(chat_id, created_at)` index on the `messages` table supports this ordering. The server MUST NOT rely on `request_id` or insertion order for sorting unless guaranteed monotonic by the database.
+
+**Snapshot boundary**:
+
+At preflight time, the domain service MUST compute a snapshot boundary before assembling the ContextPlan. The boundary is defined as a tuple `(max_included_created_at, max_included_id)` derived from the latest message visible at the time of the preflight query. The ContextPlan MUST include only messages where `(created_at, id) <= boundary` using the same composite ordering key. This ensures that two requests processed close in time against the same chat state produce the same message set for the same boundary, regardless of concurrent inserts.
+
+**Concurrent write isolation**:
+
+If another message is persisted to the chat while the current request is processing, it MUST NOT be included in the current ContextPlan once the snapshot boundary is fixed. The boundary is computed once at preflight and is immutable for the lifetime of the request. This prevents non-deterministic token estimation and makes quota reservation explainable: the reserved amount corresponds exactly to the snapshotted ContextPlan.
+
+**Deterministic truncation**:
+
+Given the same snapshot boundary and the same retrieval results, the truncation algorithm (see above) MUST produce the same ContextPlan. The truncation priority order (retrieval excerpts first, then document summaries, then oldest messages) is stable and deterministic.
+
+**Recent messages query**:
+
+The domain service selects recent messages using the following logic:
+
+```text
+SELECT * FROM messages
+ WHERE chat_id = :chat_id
+   AND (created_at, id) <= (:boundary_created_at, :boundary_id)
+ ORDER BY created_at DESC, id DESC
+ LIMIT :K
+```
+
+The result is reversed to chronological order for ContextPlan assembly. K is a server-side configurable cap (default 6-10) and is not exposed to clients.
+
 ### File Search Trigger Heuristics
 
 File Search is invoked when:
@@ -1673,9 +1789,20 @@ Limits: per-message file_search tool call limit is configurable per deployment (
 
 Web search is an explicitly-enabled tool available when `web_search.enabled=true` on the send-message request. The backend includes the `web_search` tool in the Responses API request; the provider decides whether to invoke it.
 
-**Limits** (configurable per deployment):
-- Per-message web search call limit: default 2
-- Per-user daily web search call limit: default 20
+**Web search provider configuration** (deployment config):
+
+```yaml
+web_search:
+  max_calls_per_message: 2          # hard limit on web_search tool calls per user turn
+  daily_quota: 75                    # per-user daily web search call limit
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_calls_per_message` | integer | `2` | Hard limit on web_search tool calls the provider may make per user turn. Enforced by `quota_service` at preflight. |
+| `daily_quota` | integer | `75` | Per-user daily web search call limit. Tracked in `quota_usage.web_search_calls`. |
+
+**Deferred to P2+**: `web_search.provider_parameters` (search_depth, max_results, include_answer, include_raw_content, include_images, auto_parameters). P1 uses provider defaults. When implemented, provider_parameters are passed through opaquely to the web search provider on every search tool call.
 
 **Kill switch**: `disable_web_search` (see emergency flags in section 2.2). When active, requests with `web_search.enabled=true` MUST be rejected with `web_search_disabled` (HTTP 400) before opening an SSE stream.
 
@@ -1746,61 +1873,102 @@ Since each chat has a dedicated vector store, these limits directly bound the si
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-design-model-catalog`
 
-The model catalog is an ordered list of available models defined in deployment configuration. Each entry specifies the model identifier, tier label, and capability flags. The domain service uses the catalog to resolve model selection, validate user requests, and execute the downgrade cascade.
+The model catalog is an ordered list of available models defined in deployment configuration (file or ConfigMap in k8s). Each entry specifies the model identifier, provider, tier, capability flags, and UI metadata. The domain service uses the catalog to resolve model selection, validate user requests, and execute the downgrade cascade.
 
 **Catalog structure** (deployment config):
 
 ```yaml
 model_catalog:
-  - name: "gpt-5.2"
+  - model_id: "gpt-5.2"
+    display_name: "GPT-5.2"
+    provider: "openai"
     tier: premium
-    image_capable: true
-    context_limit: 128000
-  - name: "gpt-5-mini"
-    tier: balanced
-    image_capable: true
-    context_limit: 128000
-  - name: "gpt-5-nano"
-    tier: cost_efficient
-    image_capable: false
-    context_limit: 32000
+    status: enabled
+    description: "Best for complex reasoning tasks"
+    capabilities: ["VISION_INPUT", "RAG"]
+    context_window: 128000
+    max_output: 4096
+    is_default: true
+  - model_id: "gpt-5-mini"
+    display_name: "GPT-5 Mini"
+    provider: "openai"
+    tier: standard
+    status: enabled
+    description: "Fast and efficient for everyday tasks"
+    capabilities: ["VISION_INPUT", "RAG"]
+    context_window: 128000
+    max_output: 4096
+    is_default: false
 ```
 
 **Fields per entry**:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Model identifier passed to the provider (e.g., `gpt-5.2`) |
-| `tier` | `premium` \| `balanced` \| `cost_efficient` | Named tier for quota accounting and downgrade ordering |
-| `image_capable` | boolean | Whether the model supports multimodal image input |
-| `context_limit` | integer | Maximum context window size (tokens) for this model. Used to compute `token_budget` (see Context Window Budget constraint). |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `model_id` | string | yes | Internal model identifier passed to the provider (e.g., `gpt-5.2`). |
+| `display_name` | string | yes | User-facing name shown in model selector UI (e.g., "GPT-5.2"). |
+| `provider` | string | yes | Internal provider routing identifier. P1 values: `"openai"`, `"azure_openai"`. |
+| `tier` | `premium` \| `standard` | yes | Determines rate limiting behavior and downgrade cascade order. |
+| `status` | `enabled` \| `disabled` | yes | Disabled models are excluded from the runtime catalog and not offered in the model selector. |
+| `description` | string | yes | User-facing help text (e.g., "Best for complex reasoning tasks"). |
+| `capabilities` | array of strings | yes | Supported features. P1 values: `VISION_INPUT` (supports image inputs), `RAG` (supports file_search tool / retrieval grounding). P1 invariant: all catalog models MUST include `VISION_INPUT`, so image turns never downgrade to a non-vision model. |
+| `context_window` | integer | yes | Maximum conversation tokens (e.g., 128000). Used to compute `token_budget` (see Context Window Budget constraint). |
+| `max_output` | integer | yes | Maximum response tokens (e.g., 4096). Used as default `max_output_tokens` for requests to this model unless overridden by deployment config. |
+| `is_default` | boolean | yes | Whether this is the default model for its tier. At most one model per tier may be marked `is_default: true`. The overall default for new chats (when no model specified) is the `is_default` premium model. |
 
 **Rules**:
 
-- The catalog MUST contain at least one model.
-- Tier ordering for the downgrade cascade is fixed: `premium` → `balanced` → `cost_efficient`. If a tier has no entry in the catalog, it is skipped in the cascade. All tiers have token-based rate limits; premium models have stricter limits, standard models (balanced, cost-efficient) have separate, higher limits. When all tiers are exhausted, the system rejects with `quota_exceeded`.
-- The first entry in the catalog is the default model for new chats when the user does not specify one.
-- When a user selects a model at chat creation, the domain service MUST validate the model name exists in the catalog. Unknown models MUST be rejected with HTTP 400.
-- The `image_capable` flag replaces the previous `image_capable_models` list. The domain service resolves capability from the catalog entry for the effective model.
-- The catalog is read at startup and reloaded on configuration change. Runtime model resolution uses the in-memory catalog.
+- The catalog MUST contain at least one enabled model.
+- Tier ordering for the downgrade cascade is fixed: `premium` → `standard`. If a tier has no enabled entry, it is skipped in the cascade. All tiers have token-based rate limits; premium models have stricter limits, standard-tier models have separate, higher limits. When all tiers are exhausted, the system rejects with `quota_exceeded`.
+- The overall default model for new chats (when user does not specify) is the model marked `is_default: true` in the premium tier. If no premium `is_default` exists, the first enabled premium model is used. If no premium models exist, the first enabled standard model is used.
+- When a user selects a model at chat creation, the domain service MUST validate: (a) the `model_id` exists in the catalog, and (b) its `status` is `enabled`. Unknown or disabled models MUST be rejected with HTTP 400.
+- Image capability is resolved from `capabilities`: a model supports image input if `"VISION_INPUT"` is in its capabilities array. P1 invariant: all catalog models MUST include `VISION_INPUT`, so image-bearing turns are never rejected due to a downgrade to a non-vision model in P1. If a future catalog entry lacks `VISION_INPUT`, the existing 415 `unsupported_media` rejection logic applies.
+- `context_window` replaces the previous `context_limit` field in token budget computation.
+- Credit multipliers (`input_tokens_credit_multiplier`, `output_tokens_credit_multiplier`, `multiplier_display`) are deferred to P2+ (credit-based billing). P1 quota enforcement is token-based only.
+- The catalog is read at startup and reloaded on configuration change. Runtime model resolution uses the in-memory catalog (only enabled models).
 
-### Three-Tier Rate Limiting & Throttling
+Operational configuration of rate limits, quota allocations, and model catalog is managed by Product Operations. See **#CON-001** for configuration management details.
+
+#### Configuration Validation Rules
+
+| Property | Rule |
+|----------|------|
+| `model_id` | Non-empty string, unique across catalog |
+| `display_name` | Non-empty string |
+| `provider` | One of: `"openai"`, `"azure_openai"` |
+| `tier` | One of: `premium`, `standard` |
+| `status` | One of: `enabled`, `disabled` |
+| `capabilities` | Array; each element one of: `VISION_INPUT`, `RAG` |
+| `context_window` | Positive integer > 0 |
+| `max_output` | Positive integer > 0 |
+| `is_default` | Boolean; at most one `true` per tier |
+| Token limit (per tier per period) | Positive integer > 0 |
+| `period_type` | One of: `daily`, `monthly` (P2+: `4h`, `weekly`) |
+| Period status | `enabled` or `disabled` (disabled periods are skipped during tier availability check) |
+| `web_search.max_calls_per_message` | Positive integer > 0 |
+| `web_search.daily_quota` | Positive integer > 0 |
+
+Invalid configuration MUST be rejected at startup with a descriptive error. Runtime config reloads that fail validation MUST be rejected without affecting the running configuration.
+
+**P2+ configuration validation**: `web_search.provider_parameters.*` fields (search_depth, max_results, include_answer, include_raw_content, include_images, auto_parameters) will be validated when provider parameter configurability is implemented. P1 uses provider defaults.
+
+### Two-Tier Rate Limiting & Throttling
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-design-throttling-tiers`
 
-Rate limiting and quota enforcement are split into three tiers with strict ownership boundaries. These tiers MUST NOT be mixed - each has a single owner and distinct responsibility.
+Rate limiting and quota enforcement are split into three ownership tiers with strict boundaries. These tiers MUST NOT be mixed — each has a single owner and distinct responsibility.
 
-| Tier | Owner | What It Controls | Examples                                                                                              |
-|------|-------|-----------------|-------------------------------------------------------------------------------------------------------|
-| **Product quota** | `quota_service` (in the domain service) | Per-user token-based rate limits per tier (4-hourly, daily, monthly) tracked in real-time; premium models have stricter limits, standard models have separate, higher limits; file_search and web_search call limits; downgrade cascade | "Premium-tier 4h/daily/monthly quota exhausted → downgrade to balanced tier"; "All tiers exhausted → reject with quota_exceeded" |
-| **Platform rate limit** | `api_gateway` middleware | Per-user/per-IP request rate, concurrent stream caps, abuse protection | "20 rps per user"; "Max 5 concurrent SSE streams"                                                     |
-| **Provider rate limit** | OAGW | Provider 429 handling, `Retry-After` respect, circuit breaker, global concurrency cap | "OpenAI 429 -> wait `Retry-After` -> retry once -> propagate 429 upstream"                            |
+| Tier | Owner | What It Controls | Examples |
+|------|-------|-----------------|----------|
+| **Product quota** | `quota_service` (in the domain service) | Per-user token-based rate limits per model tier (daily, monthly) tracked in real-time; premium models have stricter limits, standard-tier models have separate, higher limits; file_search and web_search call limits; downgrade cascade | "Premium-tier daily/monthly quota exhausted → downgrade to standard tier"; "All tiers exhausted → reject with quota_exceeded" |
+| **Platform rate limit** | `api_gateway` middleware | Per-user/per-IP request rate, concurrent stream caps, abuse protection | "20 rps per user"; "Max 5 concurrent SSE streams" |
+| **Provider rate limit** | OAGW | Provider 429 handling, `Retry-After` respect, circuit breaker, global concurrency cap | "OpenAI 429 -> wait `Retry-After` -> retry once -> propagate 429 upstream" |
 
 **Key rules**:
 - Product quota decisions happen BEFORE the request reaches OAGW. If quota is exhausted, the request never leaves the module.
 - OAGW does NOT know about tenants, users, licenses, or premium status. It handles only provider-level concerns (retry, circuit breaker, concurrency cap).
 - Provider 429 from OAGW is propagated to the domain service, which maps it to `rate_limited` (429) for the client with a meaningful error message.
-- Mid-stream quota abort is NOT supported - quota is checked at preflight only. Mid-stream abort is only triggered by: user cancel, provider error, or infrastructure limits (see `cpt-cf-mini-chat-constraint-quota-before-outbound`).
+- Mid-stream quota abort is NOT supported — quota is checked at preflight only. Mid-stream abort is only triggered by: user cancel, provider error, or infrastructure limits (see `cpt-cf-mini-chat-constraint-quota-before-outbound`).
 
 **Quota counting flow**:
 
@@ -1810,8 +1978,8 @@ fn tier_available(tier, periods) -> bool:
 
 Preflight (reserve) (before LLM call):
   estimate = tokens(ContextPlan) + max_output_tokens
-  cascade = [premium, balanced, cost_efficient]  # fixed order
-  effective_tier = first tier in cascade where tier_available(tier, [4h, daily, monthly])
+  cascade = [premium, standard]  # fixed order
+  effective_tier = first tier in cascade where tier_available(tier, [daily, monthly])
   if none -> reject with quota_exceeded (429)
   reserve(effective_tier, estimate)
 
@@ -1823,20 +1991,58 @@ Commit (after done event):
 
 **Cascade evaluation example** (truth table):
 
-| Tier | 4h | Daily | Monthly | tier_available? | Result |
-|------|----|-------|---------|-----------------|--------|
-| premium | ok | **exhausted** | ok | **no** (daily exhausted) | skip → try balanced |
-| balanced | ok | ok | ok | **yes** | **use balanced** |
+| Tier | Daily | Monthly | tier_available? | Result |
+|------|-------|---------|-----------------|--------|
+| premium | **exhausted** | ok | **no** (daily exhausted) | skip → try standard |
+| standard | ok | ok | **yes** | **use standard** |
 
-If balanced were also partially exhausted:
+If standard were also partially exhausted:
 
-| Tier | 4h | Daily | Monthly | tier_available? | Result |
-|------|----|-------|---------|-----------------|--------|
-| premium | ok | **exhausted** | ok | no | skip |
-| balanced | ok | ok | **exhausted** | no | skip → try cost_efficient |
-| cost_efficient | ok | ok | ok | yes | **use cost_efficient** |
+| Tier | Daily | Monthly | tier_available? | Result |
+|------|-------|---------|-----------------|--------|
+| premium | **exhausted** | ok | no | skip |
+| standard | ok | **exhausted** | no | reject |
 
 If all tiers have at least one exhausted period → reject with `quota_exceeded` (429).
+
+#### Downgrade Decision Flow
+
+The domain service resolves the effective model for each turn before any outbound call to OAGW. The algorithm is deterministic and runs at preflight only; no mid-stream quota abort is performed (see `cpt-cf-mini-chat-constraint-quota-before-outbound`).
+
+**Inputs**: `selected_model` (from request), model catalog, `quota_usage` (daily + monthly per tier), kill switches.
+
+**Algorithm** (step by step):
+
+1. Look up `selected_model` in the catalog. Determine its tier (`premium` or `standard`).
+2. Build the cascade list in fixed order: `[premium, standard]`.
+3. For each tier in the cascade:
+   a. If the tier is disabled by a kill switch, skip.
+   b. Evaluate `tier_available(tier)`: the tier is available only if `remaining_quota(tier, period) > 0` for ALL enabled periods (daily AND monthly).
+   c. If available, select a concrete model for that tier:
+      - Prefer the model marked `is_default: true` in that tier.
+      - If no default, choose the first enabled model in that tier (catalog order).
+   d. Set `effective_model` to the selected model and stop.
+4. If no tier is available after the full cascade, reject with HTTP 429 `quota_exceeded`.
+
+```text
+fn resolve_effective_model(selected_model, catalog, usage, kill_switches) -> Result<Model, QuotaExceeded>:
+    cascade = [premium, standard]
+    for tier in cascade:
+        if kill_switches.is_disabled(tier): continue
+        if tier_available(tier, usage):
+            model = catalog.default_for(tier)
+                    .or_else(|| catalog.first_enabled(tier))
+            return Ok(model)
+    return Err(quota_exceeded)
+```
+
+**Decision outcomes**:
+
+- **allow**: `effective_model == selected_model`. The request proceeds at the originally requested tier.
+- **downgrade**: `effective_model` differs from `selected_model` (premium exhausted, standard available). The domain service records downgrade metadata (`original_tier`, `effective_tier`) on the turn for observability. The response includes the effective model in the SSE `done` event.
+- **reject**: no tier available. Return HTTP 429 with error code `quota_exceeded`. The request never reaches OAGW.
+
+**P1 Invariant**: all enabled catalog models MUST include `VISION_INPUT` capability, so downgrade cannot cause an image request to fail due to missing vision support.
 
 ### Provider Request Metadata
 
@@ -1871,7 +2077,7 @@ These fields are for observability only — they do not provide tenant isolation
 
 Primary cost analytics (per-tenant, per-user) MUST be computed internally from response usage data (see `cpt-cf-mini-chat-fr-cost-metrics`). The provider's dashboard is not a billing backend.
 
-#### Multimodal Input Format (Responses API)
+#### Internal: Multimodal Input Format (Responses API)
 
 When image attachments are included in a chat turn, `llm_provider` constructs the user input as a content array with both text and image items:
 
@@ -1885,7 +2091,7 @@ When image attachments are included in a chat turn, `llm_provider` constructs th
 }
 ```
 
-Multiple images are appended as additional `input_image` items (up to the per-message limit). The `file_id` is the provider-issued identifier returned by the Files API upload.
+Multiple images are appended as additional `input_image` items (up to the per-message limit). The `file_id` in this payload is the provider-issued `provider_file_id` resolved internally from the `attachments` table. This identifier is used only in internal provider API calls and MUST NOT be exposed to clients.
 
 This is the normalized internal representation; provider-specific request shaping (if any) is handled by `llm_provider` / OAGW.
 
@@ -1917,7 +2123,7 @@ Mini Chat MUST instrument Prometheus metrics on all critical paths so that suppo
   - `provider`: provider GTS identifier (low-cardinality — one value per configured provider, e.g. `gts.x.genai.mini_chat.provider.v1~msft.azure.azure_ai.model_api.v1~`)
   - `model`: limited set of pre-defined model identifiers from the model catalog (no auto-discovery)
   - `endpoint`: limited enumerated set
-  - `decision`, `period` (`4h|daily|monthly`), `trigger`, `tool`, `phase`, `result`, `status`
+  - `decision`, `period` (`daily|monthly`), `trigger`, `tool`, `phase`, `result`, `status`
 
 #### Required metric series (P1)
 
@@ -1943,21 +2149,22 @@ The following metric series MUST be exposed (types and label sets shown). These 
 - `mini_chat_time_to_abort_ms{trigger}` (histogram)
 - `mini_chat_time_from_ui_disconnect_to_cancel_ms{trigger}` (histogram)
 - `mini_chat_cancel_orphan_total` (counter; a turn remained `running` longer than a configured timeout after cancellation)
+- `mini_chat_streams_aborted_total{trigger}` (counter; turn transitioned to `ABORTED` billing state; `trigger`: `client_disconnect|pod_crash|orphan_timeout|internal_abort`)
 
 ##### Quota and cost control
 
-- `mini_chat_quota_preflight_total{decision,model,tier}` (counter; `decision`: `allow|downgrade|reject`; `tier`: `premium|balanced|cost_efficient`)
-- `mini_chat_quota_preflight_v2_total{kind,decision,model,tier}` (counter; `kind`: `text|image`; `decision`: `allow|downgrade|reject`; `tier`: `premium|balanced|cost_efficient`)
+- `mini_chat_quota_preflight_total{decision,model,tier}` (counter; `decision`: `allow|downgrade|reject`; `tier`: `premium|standard`)
+- `mini_chat_quota_preflight_v2_total{kind,decision,model,tier}` (counter; `kind`: `text|image`; `decision`: `allow|downgrade|reject`; `tier`: `premium|standard`)
 - `mini_chat_quota_preflight_v2_total` exists to add `{kind}` without changing the label set of `mini_chat_quota_preflight_total`.
 - `mini_chat_quota_tier_downgrade_total{from_tier,to_tier}` (counter; tracks each tier-to-tier downgrade event)
-- `mini_chat_quota_reserve_total{period}` (counter; `period`: `4h|daily|monthly`)
+- `mini_chat_quota_reserve_total{period}` (counter; `period`: `daily|monthly`)
 - `mini_chat_quota_commit_total{period}` (counter)
 - `mini_chat_quota_overshoot_total{period}` (counter; `actual > estimate`)
 - `mini_chat_quota_negative_total{period}` (counter; remaining below 0 or below configured negative threshold)
 - `mini_chat_quota_estimated_tokens` (histogram; `input_estimate + max_output_tokens`)
 - `mini_chat_quota_actual_tokens` (histogram; `usage.input_tokens + usage.output_tokens`)
 - `mini_chat_quota_overshoot_tokens` (histogram; `max(actual-estimate,0)`)
-- `mini_chat_quota_reserved_tokens{period}` (gauge; `period`: `4h|daily|monthly`; only if a pending/reserved concept exists)
+- `mini_chat_quota_reserved_tokens{period}` (gauge; `period`: `daily|monthly`; only if a pending/reserved concept exists)
 
 ##### Tools and retrieval
 
@@ -2016,8 +2223,8 @@ The following metric series MUST be exposed (types and label sets shown). These 
 
 ##### Image quota enforcement
 
-- `mini_chat_quota_preflight_v2_total{kind,decision,model,tier}` (counter; `kind`: `text|image`; `decision`: `allow|downgrade|reject`; `tier`: `premium|balanced|cost_efficient`)
-- `mini_chat_quota_image_commit_total{period}` (counter; `period`: `4h|daily|monthly`)
+- `mini_chat_quota_preflight_v2_total{kind,decision,model,tier}` (counter; `kind`: `text|image`; `decision`: `allow|downgrade|reject`; `tier`: `premium|standard`)
+- `mini_chat_quota_image_commit_total{period}` (counter; `period`: `daily|monthly`)
 
 ##### Cleanup and drift
 
@@ -2195,9 +2402,10 @@ A periodic background job detects and cleans up turns abandoned by crashed pods.
 
 **Timeout**: configurable per deployment; default: 5 minutes.
 
-**Action**:
+**Action** (all steps in a single DB transaction):
 1. Transition the turn to `failed` with `error_code = 'orphan_timeout'`.
 2. Commit a bounded best-effort quota debit for the turn (same rule as cancel/disconnect: debit the reserved estimate).
+3. Insert a `usage_outbox` row with `outcome = "failed"`, `settlement_method = "estimated"` (see section 5.3 turn finalization contract).
 3. Emit metric: `mini_chat_orphan_turn_total` (counter, labeled by `chat_id` excluded — use only low-cardinality labels such as `{reason}` where `reason` = `timeout`).
 
 **Scheduling**: the watchdog runs as a periodic task within the module (e.g. every 60 seconds). It MUST be leader-elected or sharded to avoid duplicate transitions across replicas.
@@ -2228,7 +2436,7 @@ Enforcement: the domain service checks for an existing `running` turn in `chat_t
 
 The following are explicitly out of scope for P1 crash recovery:
 
-- **No partial delta persistence**: streamed deltas are not persisted incrementally. If the pod crashes mid-stream, partial text is lost.
+- **No partial delta persistence**: streamed deltas are not persisted incrementally during normal streaming operation. If the pod crashes mid-stream, partial text is lost. On user-initiated cancellation, the accumulated in-memory content up to the cancel point MAY be persisted as a single final partial message (see cancellation sequence above); this is a one-time snapshot, not incremental delta persistence. No replay or resume from partial content is supported.
 - **No resume-from-delta**: the system does not resume generation from the last streamed token after a crash.
 - **No event sourcing**: turn state is a simple row update, not an append-only event log.
 - **No cross-pod streaming recovery**: a stream cannot be handed off from a crashed pod to a surviving pod. Recovery is client-driven via the turn status API.
@@ -2257,7 +2465,338 @@ P1 operational requirement: run a periodic reconcile job (for example nightly) t
 - Re-enqueue attachment cleanup for rows stuck in `cleanup_status=pending|failed` beyond a configured age.
 - Emit cleanup drift metrics (`mini_chat_cleanup_orphan_found_total`, `mini_chat_cleanup_orphan_fixed_total`) based on what can be detected from DB state and provider responses.
 
-## 5. Traceability
+## 5. Quota Enforcement and Billing Integration
+
+### 5.1 P1 Scope
+
+Mini Chat enforces token-based quotas (daily, monthly) and performs downgrade: premium → standard → reject (`quota_exceeded`). See `quota_service` (section 3.2) for enforcement details.
+
+Credits and pricing conversion are owned by CyberChatManager — not by Mini Chat. No synchronous billing RPC is required during message execution.
+
+After a turn reaches a terminal state, Mini Chat emits a usage event via EventManager. CyberChatManager consumes these events and updates credit balances. Usage events MUST be idempotent (keyed by `turn_id` / `request_id`).
+
+### 5.2 Reliable Usage Event Publication (Outbox Pattern)
+
+**Problem**: after a turn completes, the domain service commits quota usage and must publish a usage event to EventManager. If the process crashes after the DB commit but before the event is published, the usage event is lost. CyberChatManager never learns about the consumed tokens, causing credit balance drift.
+
+**Solution**: use a transactional outbox to guarantee at-least-once event delivery without introducing synchronous billing calls in the hot path.
+
+**Outbox table schema** (`usage_outbox`):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | Tenant identifier |
+| `user_id` | UUID | User who initiated the turn |
+| `chat_id` | UUID | Chat identifier |
+| `turn_id` | UUID | Turn identifier |
+| `request_id` | UUID | Idempotency key from the original request |
+| `event_type` | VARCHAR | Event name (e.g., `MiniChat.TurnCompleted`) |
+| `payload_json` | JSONB | Serialized event payload |
+| `status` | VARCHAR | `pending`, `sent`, or `failed` |
+| `created_at` | TIMESTAMPTZ | Row creation time |
+| `updated_at` | TIMESTAMPTZ | Last status change |
+| `next_retry_at` | TIMESTAMPTZ | Earliest time for next delivery attempt |
+| `attempts` | INT | Number of delivery attempts (default 0) |
+
+Unique constraint: `(turn_id, request_id)` - prevents duplicate outbox rows for the same turn.
+
+**Transactional rule**: the quota usage commit (updating `quota_usage` rows) and the outbox row insert MUST happen in the same database transaction. If either fails, the entire transaction rolls back. This guarantees that every committed quota change has a corresponding pending event.
+
+**Dispatcher worker**: a background job polls `usage_outbox` rows where `status = 'pending'` and `next_retry_at <= now()`, ordered by `created_at`. For each row:
+
+1. Publish the event to EventManager.
+2. On success, set `status = 'sent'` and update `updated_at`.
+3. On transient failure, increment `attempts`, set `next_retry_at` with exponential backoff (e.g., `now() + min(2^attempts * base_delay, max_delay)`), keep `status = 'pending'`.
+4. On permanent failure (attempts exceed configured max), set `status = 'failed'` and emit an alert metric.
+
+**Idempotency rule**: consumers (CyberChatManager) MUST deduplicate events by `(tenant_id, turn_id, request_id)`. At-least-once delivery means duplicates are possible; the consumer is responsible for ignoring replayed events.
+
+**Failure modes**:
+
+- **EventManager unavailable**: outbox rows accumulate in `pending` status. The dispatcher retries with backoff. No data is lost; delivery resumes when EventManager recovers.
+- **Duplicate publish**: the dispatcher may re-publish a row if it crashes after sending but before marking `sent`. The consumer deduplicates using the idempotency key.
+- **Permanent failures**: rows stuck in `failed` status trigger an alert via `mini_chat_outbox_failed_total` metric. Operators investigate and may replay manually or fix the root cause.
+
+**Scope**: the outbox mechanism is P1. It is an internal reliability pattern that does not change any external API contract or introduce synchronous billing calls. Detailed event payload schemas and envelope definitions remain deferred to P2+ (see section 5.4).
+
+### 5.3 Turn Finalization Contract (P1): Quota Settlement and Outbox Emission
+
+Every turn MUST eventually settle into exactly one persisted finalization outcome. The domain service MUST perform quota settlement and outbox emission atomically in a single DB transaction for every outcome that involves a quota debit. There MUST be no code path where quota is debited but an outbox event is not emitted.
+
+#### Terminal outcome taxonomy
+
+| Outcome | Internal state | SSE terminal event | Description |
+|---------|---------------|-------------------|-------------|
+| `completed` | `completed` | `done` | Normal completion. Provider returned a full response. |
+| `failed` | `failed` | `error` | Terminal error (pre-provider or post-provider-start). |
+| `cancelled` | `cancelled` | _(none; stream already disconnected)_ | Server-side cancellation triggered by client disconnect or internal abort. |
+
+Note: "disconnected" is not a separate internal state. Client disconnects are detected by the server and processed as cancellations (the domain service triggers the `CancellationToken` and the turn transitions to `cancelled`). The orphan turn watchdog handles the case where the cancellation signal is lost due to pod crash, finalizing the turn as `failed` with `error_code = 'orphan_timeout'`.
+
+#### Settlement transaction invariant
+
+For any outcome where the server applies a quota debit (actual or estimated), the system MUST write the corresponding outbox row in the same DB transaction as the quota settlement. This is the core invariant that prevents billing drift.
+
+- Quota settlement (reserve release or commit of actual/estimated usage) and outbox INSERT MUST be atomic within one DB transaction.
+- Outbox uniqueness key remains `(turn_id, request_id)`.
+- Consumer deduplication remains by `(tenant_id, turn_id, request_id)`.
+
+#### Usage accounting rules per outcome
+
+**1) completed** (normal `done`):
+
+- Settle using actual provider usage (`response.usage.input_tokens` + `response.usage.output_tokens`).
+- Release unused reserve, commit actual usage to `quota_usage`.
+- If actual exceeds estimate (overshoot), commit the overshoot; never retroactively cancel a completed response.
+- Emit outbox event: `event_type = 'usage_finalized'`, `payload_json` MUST include:
+  - `outcome`: `"completed"`
+  - `settlement_method`: `"actual"`
+  - `effective_model`, `selected_model`, `quota_decision` (and `downgrade_from`, `downgrade_reason` if present)
+  - `usage`: `{ input_tokens, output_tokens }`
+  - `turn_id`, `request_id`, `chat_id`, `tenant_id`, `user_id`
+
+**2) failed** (terminal error):
+
+Two subcases:
+
+- **failed_pre_provider**: error before any provider call (validation, authorization, quota preflight rejection). No reserve was taken or the reserve is immediately released. Usage = 0. Emit outbox event with `outcome = "failed"`, `settlement_method = "none"`, `usage = { input_tokens: 0, output_tokens: 0 }`.
+- **failed_post_provider_start**: provider call started (stream may have begun), then a terminal error occurs (`provider_error`, `provider_timeout`, or internal error). If the provider reported usage, settle on actual usage. Otherwise settle using a bounded estimate capped by the reserved amount. Emit outbox event with `outcome = "failed"`, `settlement_method = "actual"` or `"estimated"`, and `usage` reflecting the settled amount.
+
+**3) cancelled** (client disconnect / internal abort):
+
+- If provider usage is known (provider sent a partial usage report before cancellation), settle on actual usage.
+- Otherwise settle using the bounded best-effort debit (default: the reserved estimate), consistent with the existing cancel/disconnect rule (see section 3.2).
+- Emit outbox event with `outcome = "cancelled"`, `settlement_method = "actual"` or `"estimated"`.
+
+#### Reconciliation backstop
+
+The orphan turn watchdog (see `cpt-cf-mini-chat-component-orphan-watchdog`) serves as the reconciliation backstop. Turns that remain in `running` state beyond the configured timeout are finalized as `failed` with `error_code = 'orphan_timeout'` and a bounded best-effort debit. The watchdog MUST emit the corresponding outbox event in the same transaction as the state transition and quota settlement. This ensures that no turn can permanently evade billing.
+
+### 5.4 Non-Terminal Stream Reconciliation Invariant
+
+- [ ] `p1` - **ID**: `cpt-cf-mini-chat-design-nonterminal-reconciliation`
+
+Section 5.3 defines settlement rules for `completed`, `failed`, and `cancelled` outcomes. This subsection formalizes the deterministic reconciliation rule for streams that end without a provider-issued terminal event (`done` or `error`) — covering client disconnects, pod crashes, cancellation without provider confirmation, and orphan watchdog timeout. These cases are collectively referred to as **aborted** streams at the billing layer.
+
+#### TurnExecution Billing State
+
+When a provider request is issued (after preflight passes and before the first outbound byte), the domain service MUST persist a billing execution record on the `chat_turns` row with:
+
+| Field | Value |
+|-------|-------|
+| `turn_id` | Internal turn identifier (`chat_turns.id`) |
+| `request_id` | Client-generated idempotency key |
+| `reserve_tokens` | Preflight reserve amount (`estimated_input_tokens + max_output_tokens`) |
+| `state` | `IN_PROGRESS` (maps to `chat_turns.state = running`) |
+
+`reserve_tokens` MUST be persisted on the `chat_turns` row (new nullable `BIGINT` column) at the time the reserve is taken. This value is required for deterministic reconciliation if the stream does not complete normally.
+
+#### State Transitions (Billing Layer)
+
+| From | To | Trigger |
+|------|-----|---------|
+| `IN_PROGRESS` | `COMPLETED` | Provider returned terminal `response.completed` (`done` event) |
+| `IN_PROGRESS` | `FAILED` | Provider returned a terminal error, or a pre-provider error occurred after reserve was taken |
+| `IN_PROGRESS` | `ABORTED` | Stream ended without `done` or `error`: client disconnect, pod crash, cancellation without terminal provider event, or orphan watchdog timeout |
+
+Each turn MUST reach exactly one terminal billing state. Terminal states are immutable.
+
+**Mapping to internal `chat_turns.state`**:
+
+| Billing State | Internal State | Notes |
+|---------------|---------------|-------|
+| `COMPLETED` | `completed` | 1:1 mapping |
+| `FAILED` | `failed` | 1:1 mapping (includes `failed_pre_provider` and `failed_post_provider_start`) |
+| `ABORTED` | `cancelled` or `failed` (`error_code = 'orphan_timeout'`) | Unifies all non-terminal stream ends under one billing reconciliation rule |
+
+**Watchdog determinism rule**: the orphan turn watchdog (section 3, `cpt-cf-mini-chat-component-orphan-watchdog`) MUST use the exact same deterministic charged token formula defined below for `ABORTED` streams — no separate estimation path. The watchdog MUST perform (1) quota settlement using the formula, (2) `chat_turns` state transition, and (3) `usage_outbox` insertion in a single atomic DB transaction. It MUST be impossible for a turn to remain in `IN_PROGRESS` indefinitely; the watchdog timeout (default: 5 minutes) is the hard upper bound on turn duration without a terminal provider event.
+
+#### Deterministic Charged Token Formula (Aborted Streams)
+
+When a stream reaches the `ABORTED` billing state and the provider did not report actual usage, the system MUST compute charged tokens deterministically:
+
+```text
+charged_tokens = min(reserve_tokens, estimated_input_tokens + minimal_generation_floor)
+```
+
+Where:
+- `reserve_tokens` — the persisted preflight reserve from the `chat_turns` row.
+- `estimated_input_tokens` — token estimate of the `ContextPlan` that was sent to the provider (derived from `reserve_tokens - max_output_tokens` using the deployment-configured `max_output_tokens`).
+- `minimal_generation_floor` — a configurable constant representing the minimum output token charge for any stream that reached the provider (default: 50 tokens). This prevents zero-charge exploitation via immediate disconnect after the provider begins processing. Configuration constraints: `minimal_generation_floor` MUST be explicitly set in deployment configuration (no implicit default without operator acknowledgment), MUST satisfy `0 < minimal_generation_floor <= max_output_tokens`, and MUST be validated at startup. A value exceeding `max_output_tokens` MUST be rejected as invalid configuration.
+
+If the provider DID report partial usage before the stream ended (e.g., usage metadata on a partial response), the system MUST prefer actual usage over the formula: `charged_tokens = actual_input_tokens + actual_output_tokens`.
+
+The formula is deliberately conservative (charges less than or equal to the reserve) to avoid overcharging users for incomplete work, while the `minimal_generation_floor` ensures non-zero billing for provider resources consumed.
+
+#### Outbox Emission Requirement (Aborted Streams)
+
+When a turn transitions to `ABORTED`, the system MUST emit a `usage_outbox` row with:
+
+| Field | Value |
+|-------|-------|
+| `event_type` | `usage_finalized` |
+| `outcome` | `"aborted"` |
+| `settlement_method` | `"estimated"` (or `"actual"` if provider reported partial usage) |
+| `charged_tokens` | Result of the deterministic formula above |
+| `reserve_tokens` | Original preflight reserve |
+| `effective_model` | Model resolved at preflight |
+| `selected_model` | Model from `chats.model` |
+| `quota_decision`, `downgrade_from`, `downgrade_reason` | If applicable |
+| `turn_id`, `request_id`, `chat_id`, `tenant_id`, `user_id` | Standard identifiers |
+
+This outbox row MUST be written in the **same DB transaction** as the quota settlement and `chat_turns` state transition (consistent with the settlement transaction invariant in section 5.3).
+
+#### Billing Event Completeness Invariant
+
+CyberChatManager MUST receive exactly one usage event for every turn that took a quota reserve, regardless of outcome:
+
+| Billing State | Outbox `outcome` | Charged |
+|---------------|-----------------|---------|
+| `COMPLETED` | `"completed"` | Actual provider usage |
+| `FAILED` (pre-provider) | `"failed"` | 0 (no reserve taken, or reserve released) |
+| `FAILED` (post-provider-start) | `"failed"` | Actual or estimated |
+| `ABORTED` | `"aborted"` | Deterministic formula or actual partial |
+
+**Invariant**: it MUST be impossible for `quota_usage` to be debited without a corresponding `usage_outbox` row. The transactional atomicity guarantee (sections 5.2 and 5.3) applies to all three billing states including `ABORTED`. If the transaction fails, neither the quota debit nor the outbox row is committed.
+
+#### Pre-Provider Failure Handling
+
+If a failure occurs AFTER a quota reserve was taken but BEFORE the provider request is issued (e.g., context assembly error, internal timeout, or transient infrastructure failure between preflight and outbound call):
+
+- The reserve MUST be fully released (`charged_tokens = 0`).
+- `settlement_method` MUST be `"none"`.
+- A `usage_outbox` row MUST still be emitted with `outcome = "failed"` and `usage = { input_tokens: 0, output_tokens: 0 }` to preserve the exactly-once billing event invariant. CyberChatManager receives a zero-charge event rather than no event.
+- The reserve release, `chat_turns` state transition to `failed`, and outbox insertion MUST occur in a single atomic DB transaction.
+
+This eliminates the ambiguity between "reserve taken, provider not called" and "reserve taken, provider called, stream aborted". The former always settles at zero; the latter uses the deterministic charged token formula.
+
+#### Operational Metric
+
+- `mini_chat_streams_aborted_total` (counter) — incremented each time a turn transitions to `ABORTED` billing state. Labels: `{trigger}` where `trigger` is one of: `client_disconnect`, `pod_crash`, `orphan_timeout`, `internal_abort`.
+
+### 5.5 Terminal Error Reconciliation Rule
+
+- [ ] `p1` - **ID**: `cpt-cf-mini-chat-design-terminal-error-reconciliation`
+
+Section 5.3 defines the `failed` outcome taxonomy (pre-provider vs. post-provider-start) and section 5.4 covers aborted streams. This subsection formalizes the deterministic quota reconciliation and billing semantics specifically for **terminal `error` events** received from the provider after streaming has started.
+
+#### Terminal Error Categories
+
+| Category | Trigger | Provider request issued? | Partial generation possible? |
+|----------|---------|--------------------------|------------------------------|
+| **Pre-stream error** | Validation, authorization, or quota preflight failure before the provider request is issued | No | No |
+| **Post-stream terminal error** | Provider returns SSE `event: error` after the stream has started (e.g., `provider_error`, `provider_timeout`, internal failure during streaming) | Yes | Yes |
+
+**Pre-stream error** handling has two distinct subcases depending on whether a quota reserve was taken before the failure occurred. Both return an HTTP error response to the client and result in `charged_tokens = 0`, but they differ in quota settlement and outbox requirements:
+
+**A) Failure before reserve is taken** (validation error, authorization denial, quota preflight rejection — i.e., the failure occurs before or during preflight, so no `chat_turns` row with a reserve exists):
+
+- No quota settlement occurs (there is no reserve to release).
+- Emitting a `usage_outbox` row is OPTIONAL. If the system does emit one, the row MUST use `outcome = "failed"`, `settlement_method = "none"`, `usage = { input_tokens: 0, output_tokens: 0 }`, and MUST follow the standard deduplication keys `(turn_id, request_id)` so that consumers can safely ignore duplicates.
+- No billing state transition applies (no `chat_turns` row was created, or the row never entered `IN_PROGRESS`).
+
+**B) Failure after reserve is taken but before provider invocation** (context assembly error, internal timeout, or transient infrastructure failure between successful preflight and the outbound provider call):
+
+- The reserve MUST be fully released (`charged_tokens = 0`).
+- A `usage_outbox` row MUST be emitted with `outcome = "failed"`, `settlement_method = "none"`, `usage = { input_tokens: 0, output_tokens: 0 }` to satisfy the exactly-once billing event invariant (section 5.3). CyberChatManager receives a zero-charge event rather than no event.
+- The reserve release, `chat_turns` state transition to `failed`, and outbox insertion MUST occur in a single atomic DB transaction (consistent with section 5.4, "Pre-Provider Failure Handling").
+
+This distinction eliminates ambiguity: case (A) never holds a reserve and has no settlement obligation; case (B) holds a reserve that MUST be released with a mandatory outbox event. Both cases result in zero charges. The provider is never called in either case.
+
+The remainder of this subsection addresses **post-stream terminal errors** exclusively.
+
+#### Post-Stream Terminal Error Reconciliation Rule
+
+When the provider issues a terminal `event: error` after streaming has started, the system MUST compute `charged_tokens` as follows:
+
+1. **If the provider reported actual usage** (via `response.usage` or error metadata):
+   ```text
+   charged_tokens = actual_usage.input_tokens + actual_usage.output_tokens
+   ```
+
+2. **If the provider did NOT report actual usage**:
+   ```text
+   charged_tokens = min(reserve_tokens, estimated_input_tokens)
+   ```
+   Where:
+   - `reserve_tokens` — the persisted preflight reserve from the `chat_turns` row.
+   - `estimated_input_tokens` — token estimate of the `ContextPlan` sent to the provider (derived from `reserve_tokens - max_output_tokens` using the deployment-configured `max_output_tokens`).
+
+**Critical constraint**: the system MUST NEVER charge the full `reserve_tokens` unless the provider explicitly reports usage equal to or exceeding the reserve. When no provider usage is available, the charge is bounded by the estimated input cost, reflecting that the provider received the prompt but may not have produced significant output.
+
+**Relation to ABORTED `minimal_generation_floor` (section 5.4)**: The ABORTED reconciliation formula (section 5.4) includes a `minimal_generation_floor` addend to prevent zero-charge exploitation when a stream ends without a provider-issued terminal event — the provider may still be processing or may have generated output that was never acknowledged. In contrast, a post-stream terminal `error` is an explicit provider signal that processing has stopped. The provider had the opportunity to report usage in the error payload; if it did not, the system assumes only input tokens were consumed. Accordingly, `minimal_generation_floor` MUST NOT be applied to post-stream terminal error settlement. If the provider reports actual usage that includes output tokens, those tokens are charged via the actual-usage path (case 1 above), making a floor unnecessary.
+
+#### State Transition
+
+The billing state transition for post-stream terminal errors is:
+
+```text
+IN_PROGRESS → FAILED
+```
+
+This maps to `chat_turns.state` transitioning from `running` to `failed`. The transition is consistent with the billing state table in section 5.4.
+
+#### Outbox Emission Requirement
+
+When a post-stream terminal error is finalized, the system MUST emit a `usage_outbox` row in the **same DB transaction** as the quota settlement and `chat_turns` state transition:
+
+| Field | Value |
+|-------|-------|
+| `event_type` | `usage_finalized` |
+| `outcome` | `"failed"` |
+| `status` | `"failed"` |
+| `settlement_method` | `"actual"` if provider reported usage; `"estimated"` otherwise |
+| `charged_tokens` | Result of the reconciliation rule above |
+| `reserve_tokens` | Original preflight reserve |
+| `error_code` | Provider or internal error code (e.g., `provider_error`, `provider_timeout`) |
+| `effective_model` | Model resolved at preflight |
+| `selected_model` | Model from `chats.model` |
+| `quota_decision`, `downgrade_from`, `downgrade_reason` | If applicable |
+| `turn_id`, `request_id`, `chat_id`, `tenant_id`, `user_id` | Standard identifiers |
+
+#### Reserve Uncommitted Invariant
+
+**Invariant**: a quota reserve MUST NEVER remain uncommitted after terminal error resolution. Upon receiving a post-stream terminal `error` event, the system MUST settle the reserve within the same finalization transaction — either committing `charged_tokens` of actual/estimated usage and releasing the remainder, or (for pre-stream errors) releasing the full reserve. It MUST be impossible for a `chat_turns` row to reach the `failed` state while its associated reserve remains in an unsettled state.
+
+#### Billing Semantics for Failed Invocations
+
+For billing purposes:
+- Failed invocations that reached the provider **may consume input tokens** (the provider processed the prompt).
+- Failed invocations that reached the provider **may consume output tokens** (partial generation before the error).
+- Billing reflects **actual consumed tokens**, not the success or failure status of the invocation. A failed turn is billed identically to a completed turn with the same token consumption.
+
+#### Terminal Signal Race Resolution (First Terminal Wins)
+
+Multiple terminal signals may arrive concurrently or in rapid succession for the same turn — for example, a provider terminal `error` event, a client disconnect triggering cancellation, and the orphan watchdog timeout may all race to finalize the same `chat_turns` row. The following invariants govern which signal takes effect.
+
+**First-terminal-wins rule**: the first terminal state transition that is successfully persisted to `chat_turns` is authoritative. Once a row transitions from `IN_PROGRESS` (`running`) to any terminal state (`COMPLETED`, `FAILED`, or `ABORTED`), the outcome is immutable. Any subsequent terminal signal for the same turn MUST be discarded without modifying quota, outbox, or turn state.
+
+**State transition enforcement**: the domain service MUST enforce the first-terminal-wins rule via a compare-and-set (CAS) guard on the `chat_turns.state` column. The finalization transaction MUST include a precondition that `state = 'running'` (or equivalently, use an `UPDATE ... WHERE state = 'running'` that affects exactly one row). If the CAS check yields zero affected rows, the signal arrived after another terminal transition already committed, and the service MUST treat this as a no-op: no quota settlement, no outbox insertion, no state change.
+
+**Outbox uniqueness backstop**: the `(turn_id, request_id)` unique constraint on `usage_outbox` serves as a secondary defense against duplicate billing events. However, the system MUST NOT rely on the unique constraint as the primary idempotency mechanism. The CAS guard at the state-transition level MUST prevent the duplicate outbox INSERT from being attempted in the first place. The unique constraint exists as a backstop for defensive integrity, not as a control-flow mechanism.
+
+**Combined guarantee**: for any turn that took a quota reserve, exactly one finalization transaction succeeds — performing the state transition, quota settlement, and outbox insertion atomically. All competing terminal signals either lose the CAS race (and become no-ops) or are blocked by the outbox unique constraint. It MUST be impossible for a single turn to produce more than one `usage_outbox` row or to have its quota debited more than once.
+
+**Example scenario**: a provider returns a terminal `event: error` (with `error_code = 'provider_error'`), and 50ms later the client disconnects, triggering the cancellation path:
+
+1. The error-handling path begins a finalization transaction: `UPDATE chat_turns SET state = 'failed' WHERE id = :turn_id AND state = 'running'` — affects 1 row. The transaction proceeds to settle quota using the post-stream terminal error reconciliation rule (section 5.5), inserts a `usage_outbox` row with `outcome = "failed"`, and commits atomically. The turn is now finalized as `FAILED`.
+2. The cancellation path, triggered by client disconnect, attempts its own finalization: `UPDATE chat_turns SET state = 'cancelled' WHERE id = :turn_id AND state = 'running'` — affects 0 rows (state is already `failed`). The cancellation path MUST treat this as a no-op: no quota settlement, no outbox insertion, no further action on this turn.
+3. The orphan watchdog, if it later scans this turn, observes `state = 'failed'` (not `running`) and skips it.
+
+The recorded outcome is `FAILED` with the settlement computed by the error path. The disconnect signal is silently discarded. No double settlement occurs.
+
+### 5.6 Deferred to P2+
+
+The following billing integration details are deferred to P2+:
+
+- Detailed usage event schemas and payload contracts
+- `MiniChat.TurnCompleted` / `MiniChat.TurnCancelled` event envelope definitions
+- `GetLlmQuotaPolicySnapshot` / `GetLlmQuotaPolicyVersion` gRPC interface for centralized policy management
+- UI credit status proxy endpoint
+- Cross-service transactional guarantees between quota enforcement and credit billing
+
+## 6. Traceability
 
 - **PRD**: [PRD.md](./PRD.md) (planned)
 - **ADRs**: [ADR/](./ADR/)

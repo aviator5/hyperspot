@@ -52,8 +52,8 @@ Current gaps: no native chat experience within the platform; no way to query upl
 | OAGW | Outbound API Gateway - platform service that handles external API calls and credential injection |
 | Multimodal Input | Responses API input that includes both text and image references (file IDs) in the content array |
 | Image Attachment | An image file (PNG, JPEG, WebP) uploaded to a chat via the provider Files API, included in LLM requests as multimodal input; not indexed in vector stores and not eligible for file_search |
-| Model Catalog | Deployment-configured list of available LLM models with tier labels and capability flags |
-| Model Tier | One of three cost/capability levels: premium, balanced, or cost-efficient. Determines downgrade cascade order |
+| Model Catalog | Deployment-configured list of available LLM models with tier labels, capabilities, and UI metadata (display_name, description). Stored in config file or ConfigMap. |
+| Model Tier | One of two cost/capability levels: premium or standard. Determines downgrade cascade order |
 | Web Search | An LLM tool call that retrieves information from the public web during a chat turn; explicitly enabled per request via API parameter |
 | Selected Model | The model chosen by the user (or catalog default) at chat creation and stored in `chat.model`. Immutable for the chat lifetime. |
 | Effective Model | The model actually used for a specific turn after quota and policy evaluation. Equals the selected model unless a quota-driven downgrade or kill switch overrides it. Recorded per assistant message. |
@@ -91,7 +91,7 @@ This PRD uses **P1/P2** to describe phased scope. The `p1`/`p2` tags on requirem
 - Document upload and document-aware question answering via file search
 - Document summary on upload
 - Thread summary compression for long conversations
-- Per-user token-based rate limits across multiple periods (4-hourly, daily, monthly) tracked in real-time; premium models have stricter limits, standard models (balanced, cost-efficient) have separate, higher limits; three-tier downgrade cascade (premium → balanced → cost-efficient); when all tiers are exhausted, the system rejects with `quota_exceeded`
+- Per-user token-based rate limits across multiple periods (daily, monthly) tracked in real-time; premium models have stricter limits, standard-tier models have separate, higher limits; two-tier downgrade cascade (premium → standard); when all tiers are exhausted, the system rejects with `quota_exceeded`
 - Model selection per chat at creation time (locked for conversation lifetime)
 - Binary like/dislike reactions on assistant messages (persisted, API-accessible)
 - File search call limits per message and per user/day
@@ -123,7 +123,9 @@ This PRD uses **P1/P2** to describe phased scope. The `p1`/`p2` tags on requirem
 - Web search auto-triggering (P1 requires explicit API parameter; implicit query-based triggering is deferred)
 - URL content extraction
 - Admin configuration UI for AI policies, model selection, or provider settings (P1 uses deployment configuration; see DESIGN.md Section 2.2 constraints and emergency flags)
-- Additional rolling-window quota periods beyond the P1 set (e.g. 12h rolling windows)
+- Additional quota periods beyond the P1 set (4-hourly rolling windows, weekly periods, 12h rolling windows)
+- Per-tenant quota timezone configuration (P1 uses UTC for all calendar-based period boundaries)
+- Quota warning thresholds and `quota_warnings` in SSE done events (deferred to P2+)
 - Module-specific multi-lingual support (LLM handles languages natively; no module-level i18n)
 - Per-feature dynamic feature flags beyond the `ai_chat` license gate and emergency kill switches (DESIGN.md lines 166-168)
 
@@ -154,9 +156,9 @@ The system MUST allow authenticated users to create, list, retrieve, and delete 
 
 The system MUST allow users to select a model from the model catalog when creating a new chat. If no model is specified, the system MUST use the catalog default (first entry). The selected model MUST be locked for the lifetime of the chat — the user MUST NOT be able to change the model within an existing chat. All user-initiated messages in a chat use the same model.
 
-Quota-driven automatic downgrade within the three-tier cascade IS permitted mid-conversation as a system decision (not user-initiated model switching). The effective model used for each turn is recorded on the assistant message.
+Quota-driven automatic downgrade within the two-tier cascade IS permitted mid-conversation as a system decision (not user-initiated model switching). The effective model used for each turn is recorded on the assistant message.
 
-**Rationale**: Users benefit from choosing the appropriate model for their use case (premium for complex tasks, cost-efficient for simple questions), while model locking per chat ensures consistent conversation context.
+**Rationale**: Users benefit from choosing the appropriate model for their use case (premium for complex tasks, standard for everyday tasks), while model locking per chat ensures consistent conversation context.
 **Actors**: `cpt-cf-mini-chat-actor-chat-user`
 
 #### Streamed Chat Responses
@@ -239,7 +241,7 @@ The system MUST support answering questions about uploaded documents by retrievi
 
 The system MUST support web search as an LLM tool, explicitly enabled per request via an API parameter (`web_search.enabled`). When enabled, the backend includes the `web_search` tool in the provider request (Azure Foundry API tooling). The provider decides whether to invoke the tool based on the query; explicit enablement means "tool is available and allowed", not "force a call every time". Web search MUST be disabled by default (safe default for backward compatibility).
 
-**Rate limits**: The system MUST enforce configurable per-message web search call limits (default: 2 calls per message) and per-user daily web search call limits (default: 20 calls per day), tracked in `quota_usage.web_search_calls`.
+**Rate limits**: The system MUST enforce configurable per-message web search call limits (default: 2 calls per message) and per-user daily web search quota (default: 75 calls per day), tracked in `quota_usage.web_search_calls`.
 
 **Kill switch**: A global `disable_web_search` flag MUST allow operators to disable web search at runtime. When the kill switch is active and a request includes `web_search.enabled=true`, the system MUST reject with HTTP 400 and error code `web_search_disabled` before opening an SSE stream. The system MUST NOT silently ignore the parameter.
 
@@ -345,11 +347,17 @@ Reactions are persisted in backend storage (`message_reactions` table) and acces
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-fr-quota-enforcement`
 
-The system MUST enforce per-user token-based rate limits across multiple time periods (4-hourly, daily, monthly). Rate limits apply per user and track model usage in real-time per tier. Premium models have stricter limits; standard models (balanced and cost-efficient tiers) have separate, higher limits. Tracked metrics: input tokens, output tokens, file search calls, web search calls, per-tier model calls (premium, balanced, cost-efficient), image inputs, image upload bytes.
+The system MUST enforce per-user token-based rate limits across multiple time periods (daily, monthly). Rate limits apply per user and track model usage in real-time per tier. Premium models have stricter limits; standard-tier models have separate, higher limits. Tracked metrics: input tokens, output tokens, file search calls, web search calls, per-tier model calls (premium, standard), image inputs, image upload bytes.
 
-**Tier availability rule**: a tier is considered available only if it has remaining quota in **all** configured periods (4-hourly, daily, monthly) for that tier. If any single period is exhausted, the entire tier is treated as exhausted and the system MUST auto-downgrade to the next tier in the cascade (premium → balanced → cost-efficient). When all tier quotas are exhausted across all periods, the system MUST reject with `quota_exceeded` (HTTP 429).
+**Tier availability rule**: a tier is considered available only if it has remaining quota in **all** configured periods (daily, monthly) for that tier. If any single period is exhausted, the entire tier is treated as exhausted and the system MUST auto-downgrade to the next tier in the cascade (premium → standard). When all tier quotas are exhausted across all periods, the system MUST reject with `quota_exceeded` (HTTP 429).
 
 Quota counting MUST use two phases: Preflight (reserve) before the provider call, and commit actual usage after completion.
+
+**Period reset rules**: Daily and monthly periods are calendar-based in UTC, resetting at midnight UTC (daily) and 1st-of-month midnight UTC (monthly). Additional periods (4-hourly, weekly) and per-tenant timezone configuration are deferred to P2+.
+
+**Warning thresholds (P2+)**: Quota warning thresholds (`quota_warnings` in the SSE `done` event) are deferred to P2+. P1 does not emit warning notifications.
+
+Operational configuration of rate limits, quota allocations, and model catalog is managed by Product Operations. See **#CON-001** for configuration management details.
 
 If quota preflight rejects a send-message request, the system MUST return a normal JSON error response with the appropriate HTTP status (typically `quota_exceeded` 429) and MUST NOT open an SSE stream.
 
@@ -429,6 +437,22 @@ When a chat is deleted, the system MUST mark attachments for asynchronous cleanu
 **Rationale**: Prevents orphaned external resources and ensures data governance compliance on deletion.
 **Actors**: `cpt-cf-mini-chat-actor-chat-user`, `cpt-cf-mini-chat-actor-cleanup-scheduler`
 
+### 5.6 Quota and Billing Architecture
+
+- [ ] `p1` - **ID**: `cpt-cf-mini-chat-fr-quota-billing-architecture`
+
+**P1 scope**:
+
+- Mini Chat enforces token-based quotas (daily, monthly) and performs downgrade: premium → standard → reject (`quota_exceeded`).
+- Credits and pricing conversion are owned by CyberChatManager — not by Mini Chat.
+- Integration is asynchronous: Mini Chat emits a usage event (via EventManager) after each turn reaches a terminal state. CyberChatManager consumes events and updates credit balances.
+- Usage events MUST be idempotent (keyed by `turn_id` / `request_id`).
+- No synchronous billing RPC is required during message execution.
+- All LLM invocations that take a quota reserve produce exactly one terminal billing event (completed, failed, or aborted), ensuring no credit drift under disconnect or crash scenarios.
+- Failed LLM invocations that reach the provider may incur token charges and are billed accordingly based on actual consumption.
+
+**Deferred to P2+**: detailed billing integration contracts (event schemas, RPC interfaces, outbox requirements, credit proxy endpoints). See DESIGN.md section 5 for additional context.
+
 ## 6. Non-Functional Requirements
 
 ### 6.1 Module-Specific NFRs
@@ -461,7 +485,7 @@ Authorization MUST follow the platform PDP/PEP model, including query-level cons
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-nfr-cost-control`
 
-Per-user LLM costs MUST be bounded by configurable token-based rate limits across multiple periods (4-hourly, daily, monthly), tracked in real-time. Premium models have stricter limits; standard models (balanced, cost-efficient) have separate, higher limits. File search and web search costs MUST be bounded by per-message and per-day call limits. The system MUST track actual costs with tenant aggregation and per-user attribution for quota enforcement. Administrator visibility is limited to aggregated usage and operational metrics.
+Per-user LLM costs MUST be bounded by configurable token-based rate limits across multiple periods (daily, monthly), tracked in real-time. Premium models have stricter limits; standard-tier models have separate, higher limits. File search and web search costs MUST be bounded by per-message and per-day call limits. The system MUST track actual costs with tenant aggregation and per-user attribution for quota enforcement. Administrator visibility is limited to aggregated usage and operational metrics.
 
 **Threshold**: No user exceeds configured quota; estimated cost available for 100% of requests
 **Rationale**: Unbounded LLM usage can generate unexpected costs; tenants need cost predictability.
@@ -525,6 +549,7 @@ Prometheus labels MUST NOT include high-cardinality identifiers such as `tenant_
 - `mini_chat_time_to_abort_ms{trigger}`
 - `mini_chat_time_from_ui_disconnect_to_cancel_ms{trigger}`
 - `mini_chat_cancel_orphan_total`
+- `mini_chat_streams_aborted_total{trigger}`
 
 ##### Quota and cost control
 
@@ -588,7 +613,7 @@ Prometheus labels MUST NOT include high-cardinality identifiers such as `tenant_
 ##### Image quota enforcement
 
 - `mini_chat_quota_preflight_v2_total{kind,decision,model}` (counter; `kind`: `text|image`; `decision`: `allow|downgrade|reject`) - see Quota and cost control section above
-- `mini_chat_quota_image_commit_total{period}` (counter; `period`: `4h|daily|monthly`)
+- `mini_chat_quota_image_commit_total{period}` (counter; `period`: `daily|monthly`)
 
 ##### Cleanup and drift
 
@@ -726,7 +751,7 @@ Support and UX recovery flows SHOULD be able to query authoritative turn state b
 | `feature_not_licensed` | 403 | Tenant lacks `ai_chat` feature |
 | `insufficient_permissions` | 403 | Subject lacks permission for the requested action (AuthZ Resolver denied) |
 | `chat_not_found` | 404 | Chat does not exist or not accessible under current authorization constraints |
-| `quota_exceeded` | 429 | User exceeded token rate limits across all tiers (premium, balanced, cost-efficient) in at least one period, or emergency flags force rejection, or all models are disabled |
+| `quota_exceeded` | 429 | User exceeded token rate limits across all tiers (premium, standard) in at least one period, or emergency flags force rejection, or all models are disabled |
 | `rate_limited` | 429 | Too many requests in time window |
 | `file_too_large` | 413 | Uploaded file exceeds size limit |
 | `unsupported_file_type` | 415 | File type not supported for upload |
@@ -737,7 +762,7 @@ Support and UX recovery flows SHOULD be able to query authoritative turn state b
 | `provider_error` | 502 | LLM provider returned an error |
 | `provider_timeout` | 504 | LLM provider request timed out |
 
-Provider identifiers (e.g., `file_id` in `citations`) are display-only metadata; clients MUST NOT send them back to any API.
+Provider identifiers (`provider_file_id`, `vector_store_id`, etc.) are internal-only and MUST NOT be exposed in any API response, SSE event, or error message. All client-visible file references use internal identifiers (`attachment_id`) only.
 
 ## 8. Use Cases
 
@@ -991,7 +1016,7 @@ Provider identifiers (e.g., `file_id` in `citations`) are display-only metadata;
 - [ ] Cancellation propagation meets design thresholds: `mini_chat_time_to_abort_ms` p99 < 200 ms and `mini_chat_tokens_after_cancel` p99 < 50 tokens
 - [ ] User can upload a document and ask questions that are answered using document content
 - [ ] Users from different tenants cannot access each other's chats, documents, or search results
-- [ ] User exceeding premium-tier quota (in any period: 4-hourly, daily, or monthly) is auto-downgraded to the next available tier (balanced → cost-efficient); standard models have separate, higher limits; when all tiers are exhausted, the system rejects with `quota_exceeded`
+- [ ] User exceeding premium-tier quota (in any period: daily or monthly) is auto-downgraded to the standard tier; standard-tier models have separate, higher limits; when all tiers are exhausted, the system rejects with `quota_exceeded`
 - [ ] Effective model used for each turn is recorded in `messages.model`, SSE `done` event (`effective_model` + `selected_model` fields), and audit event payload; downgrade decisions are surfaced via optional `quota_decision`/`downgrade_from`/`downgrade_reason` fields
 - [ ] When premium quota is exhausted, `effective_model != selected_model` in the SSE `done` event; the UI can display a downgrade banner based on this metadata
 - [ ] When `web_search.enabled=true` and the `disable_web_search` kill switch is OFF, the provider request includes the `web_search` tool and citations can include web sources (`source: "web"` with `url`, `title`, `snippet`)
@@ -1066,13 +1091,13 @@ These defaults are used for P1 planning and MUST be configurable per tenant/oper
 
 - Model catalog (ordered by tier):
   - Premium tier: `gpt-5.2` (default for new chats)
-  - Balanced tier: `gpt-5-mini`
-  - Cost-efficient tier: `gpt-5-nano`
-- Downgrade cascade: premium → balanced → cost-efficient (no rejection; standard models always available)
-- Default premium-tier token rate limits: 4-hourly `15_000`, daily `50_000`, monthly `1_000_000`
-- Default standard-tier (balanced, cost-efficient) token rate limits: 4-hourly `60_000`, daily `200_000`, monthly `5_000_000` (per tier, configurable per deployment)
-- Web search per-message call limit: 2 (deployment config example: `max_web_search_calls_per_message: 2`)
-- Web search per-user daily call limit: 20 (deployment config example: `max_web_search_calls_per_user_daily: 20`)
+  - Standard tier: `gpt-5-mini`
+- Downgrade cascade: premium → standard; when all tiers exhausted → reject with `quota_exceeded`
+- Default premium-tier token rate limits: daily `50_000`, monthly `1_000_000`
+- Default standard-tier token rate limits: daily `200_000`, monthly `5_000_000` (configurable per deployment)
+- Web search per-message call limit: 2 (deployment config: `web_search.max_calls_per_message: 2`)
+- Web search per-user daily quota: 75 (deployment config: `web_search.daily_quota: 75`)
+- Web search provider parameters: **Deferred to P2+**. P1 uses provider defaults. When implemented, configurable via `web_search.provider_parameters` (search_depth, max_results, include_answer, include_raw_content, include_images, auto_parameters).
 - Upload size limit: 16 MiB (deployment config example: `uploaded_file_max_size_kb: 16384`); PM target: 25 MiB (configurable)
 - Image upload size limit: same as above unless overridden (deployment config example: `uploaded_image_max_size_kb: 16384`)
 - Max image inputs per message: 4 (deployment config example: `max_images_per_message: 4`)
