@@ -40,7 +40,7 @@
         "operationId": "createChat",
         "tags": ["chats"],
         "summary": "Create a new chat",
-        "description": "Creates a chat for the authenticated user. The optional `model` field selects a model from the deployment model catalog; if omitted, the catalog default (first entry) is used. The model is locked for the chat lifetime.",
+        "description": "Creates a chat for the authenticated user. The optional `model` field selects a model from the deployment model catalog; if omitted, the default model is resolved: the is_default premium model, or the first enabled premium model, or the first enabled standard model. The model is locked for the chat lifetime.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1130,7 +1130,7 @@
           },
           "model": {
             "type": "string",
-            "description": "Model from the deployment model catalog. If omitted, the catalog default (first entry) is used."
+            "description": "Model from the deployment model catalog. If omitted, the default model is resolved: the is_default premium model, then the first enabled premium model, then the first enabled standard model."
           }
         }
       },

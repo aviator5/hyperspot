@@ -228,7 +228,7 @@ Internal mpsc channels between `llm_provider` → domain service → SSE writer 
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-constraint-model-locked-per-chat`
 
-Once a chat is created with a model (user-selected or catalog default), that model becomes the **selected_model** (`chats.model`) and is locked for the lifetime of the conversation. The user MUST NOT be able to change the selected_model within an existing chat.
+Once a chat is created with a model (user-selected or resolved via the `is_default` premium model algorithm), that model becomes the **selected_model** (`chats.model`) and is locked for the lifetime of the conversation. The user MUST NOT be able to change the selected_model within an existing chat.
 
 The **effective_model** is the model actually used for a specific turn. Invariants:
 
@@ -410,7 +410,7 @@ Request body:
 ```json
 {
   "title": "string (optional)",
-  "model": "string (optional, defaults to catalog default)"
+  "model": "string (optional, defaults to is_default premium model)"
 }
 ```
 
@@ -924,7 +924,7 @@ Observability:
 | id | UUID | Chat identifier |
 | tenant_id | UUID | Owning tenant |
 | user_id | UUID | Owning user |
-| model | VARCHAR(64) | **selected_model**: model chosen at chat creation, immutable for the chat lifetime. Must reference a valid entry in the model catalog. Defaults to catalog default if not specified at creation. |
+| model | VARCHAR(64) | **selected_model**: model chosen at chat creation, immutable for the chat lifetime. Must reference a valid entry in the model catalog. Resolved via the `is_default` premium model algorithm if not specified at creation (see Model Catalog Configuration). |
 | title | VARCHAR(255) | Chat title (user-set or auto-generated) |
 | is_temporary | BOOLEAN | If true, auto-deleted after 24h (P2; default false at P1) |
 | created_at | TIMESTAMPTZ | Creation time |
@@ -1915,7 +1915,8 @@ model_catalog:
 
 - The catalog MUST contain at least one enabled model.
 - Tier ordering for the downgrade cascade is fixed: `premium` → `standard`. If a tier has no enabled entry, it is skipped in the cascade. All tiers have token-based rate limits; premium models have stricter limits, standard-tier models have separate, higher limits. When all tiers are exhausted, the system rejects with `quota_exceeded`.
-- The overall default model for new chats (when user does not specify) is the model marked `is_default: true` in the premium tier. If no premium `is_default` exists, the first enabled premium model is used. If no premium models exist, the first enabled standard model is used.
+- The overall default model for new chats (when user does not specify) is the model marked `is_default: true` in the premium tier. If no premium `is_default` exists, the first enabled premium model is used. If no premium models exist, the first enabled standard model is used. If no enabled models exist, the system MUST reject with HTTP 400.
+- **Catalog ordering is NOT part of the public contract**. Clients and integrations MUST NOT depend on the order of entries in the model catalog for default selection. The default is determined solely by the `is_default` flag and the tier-aware fallback algorithm above.
 - When a user selects a model at chat creation, the domain service MUST validate: (a) the `model_id` exists in the catalog, and (b) its `status` is `enabled`. Unknown or disabled models MUST be rejected with HTTP 400.
 - Image capability is resolved from `capabilities`: a model supports image input if `"VISION_INPUT"` is in its capabilities array. P1 invariant: all catalog models MUST include `VISION_INPUT`, so image-bearing turns are never rejected due to a downgrade to a non-vision model in P1. If a future catalog entry lacks `VISION_INPUT`, the existing 415 `unsupported_media` rejection logic applies.
 - `context_window` replaces the previous `context_limit` field in token budget computation.

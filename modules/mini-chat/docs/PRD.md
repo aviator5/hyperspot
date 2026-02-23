@@ -55,7 +55,7 @@ Current gaps: no native chat experience within the platform; no way to query upl
 | Model Catalog | Deployment-configured list of available LLM models with tier labels, capabilities, and UI metadata (display_name, description). Stored in config file or ConfigMap. |
 | Model Tier | One of two cost/capability levels: premium or standard. Determines downgrade cascade order |
 | Web Search | An LLM tool call that retrieves information from the public web during a chat turn; explicitly enabled per request via API parameter |
-| Selected Model | The model chosen by the user (or catalog default) at chat creation and stored in `chat.model`. Immutable for the chat lifetime. |
+| Selected Model | The model chosen by the user (or resolved via the `is_default` premium model algorithm) at chat creation and stored in `chat.model`. Immutable for the chat lifetime. |
 | Effective Model | The model actually used for a specific turn after quota and policy evaluation. Equals the selected model unless a quota-driven downgrade or kill switch overrides it. Recorded per assistant message. |
 
 ## 2. Actors
@@ -145,7 +145,7 @@ Group chats and chat sharing (projects) are deferred to P2+ and are out of scope
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-fr-chat-crud`
 
-The system MUST allow authenticated users to create, list, retrieve, and delete chats. Each chat belongs to exactly one user within one tenant. At creation, the user MAY specify a model from the model catalog; if omitted, the catalog default is used. The selected model is locked for the chat lifetime (see `cpt-cf-mini-chat-constraint-model-locked-per-chat`). Chat content (messages, attachments, summaries, citations) MUST be accessible only to the owning user within their tenant. Listing returns chats for the current user ordered by most recent activity. Retrieval returns chat metadata (including selected model) and the most recent messages. Deletion soft-deletes the chat and triggers cleanup of associated external resources.
+The system MUST allow authenticated users to create, list, retrieve, and delete chats. Each chat belongs to exactly one user within one tenant. At creation, the user MAY specify a model from the model catalog; if omitted, the default is resolved via the `is_default` premium model algorithm (see `cpt-cf-mini-chat-fr-model-selection`). The selected model is locked for the chat lifetime (see `cpt-cf-mini-chat-constraint-model-locked-per-chat`). Chat content (messages, attachments, summaries, citations) MUST be accessible only to the owning user within their tenant. Listing returns chats for the current user ordered by most recent activity. Retrieval returns chat metadata (including selected model) and the most recent messages. Deletion soft-deletes the chat and triggers cleanup of associated external resources.
 
 **Rationale**: Users need to manage their conversations - create new ones, resume existing ones, and remove ones they no longer need.
 **Actors**: `cpt-cf-mini-chat-actor-chat-user`
@@ -154,7 +154,7 @@ The system MUST allow authenticated users to create, list, retrieve, and delete 
 
 - [ ] `p1` - **ID**: `cpt-cf-mini-chat-fr-model-selection`
 
-The system MUST allow users to select a model from the model catalog when creating a new chat. If no model is specified, the system MUST use the catalog default (first entry). The selected model MUST be locked for the lifetime of the chat — the user MUST NOT be able to change the model within an existing chat. All user-initiated messages in a chat use the same model.
+The system MUST allow users to select a model from the model catalog when creating a new chat. If no model is specified, the system MUST resolve the default model using the following deterministic algorithm: (1) the model marked `is_default: true` in the premium tier; (2) if no premium model is marked `is_default`, the first enabled premium model; (3) if no premium models exist, the first enabled standard model; (4) if no enabled models exist, reject with HTTP 400. The selected model MUST be locked for the lifetime of the chat — the user MUST NOT be able to change the model within an existing chat. All user-initiated messages in a chat use the same model.
 
 Quota-driven automatic downgrade within the two-tier cascade IS permitted mid-conversation as a system decision (not user-initiated model switching). The effective model used for each turn is recorded on the assistant message.
 
