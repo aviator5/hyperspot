@@ -101,6 +101,10 @@
     {
       "reason": "Ignore module 'serverless-runtime' (not SDLC-documented yet: missing required PRD/DESIGN and ID prefix alignment).",
       "patterns": ["modules/serverless-runtime/*"]
+    },
+    {
+      "reason": "Ignore modules/mini-chat/docs/q_and_b_ru.md - non-SDLC markdown (RU draft).",
+      "patterns": ["modules/mini-chat/docs/q_and_b_ru.md"]
     }
   ],
   "systems": [

@@ -15,7 +15,7 @@
   "tags": [
     {
       "name": "chats",
-      "description": "Chat lifecycle: create, list, get, delete."
+      "description": "Chat lifecycle: create, list, get, update title, delete."
     },
     {
       "name": "messages",
@@ -75,7 +75,7 @@
             }
           },
           "400": {
-            "description": "Invalid request (e.g. unknown model name).",
+            "description": "Invalid request (e.g. unknown model name). Code: `invalid_request`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -181,6 +181,62 @@
         "responses": {
           "204": {
             "description": "Chat deleted. Cleanup of external resources is asynchronous."
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateChatTitle",
+        "tags": ["chats"],
+        "summary": "Update chat title",
+        "description": "Partial update — P1 allows updating only the `title` field. The title is trimmed; strings consisting entirely of whitespace are rejected. On success, `updated_at` is set to the current time. Does not affect messages, attachments, model, or is_temporary.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChatTitleRequest"
+              },
+              "example": {
+                "title": "Renamed Chat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat title updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatDetail"
+                },
+                "example": {
+                  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "model": "gpt-5.2",
+                  "title": "Renamed Chat",
+                  "is_temporary": false,
+                  "message_count": 12,
+                  "created_at": "2025-06-15T10:30:00Z",
+                  "updated_at": "2025-06-15T11:00:00Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (e.g. missing title, empty after trim, exceeds max length).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
@@ -1073,7 +1129,7 @@
     },
     "schemas": {
       "ErrorResponse": {
-        "description": "Standard error envelope for JSON error responses and SSE terminal error events.",
+        "description": "Standard error envelope for JSON error responses and SSE terminal error events. Error messages and codes MUST NOT contain provider-scoped identifiers (provider_file_id, vector_store_id, deployment names). All error codes are stable internal codes.",
         "oneOf": [
           { "$ref": "#/components/schemas/QuotaExceededError" },
           { "$ref": "#/components/schemas/GenericError" }
@@ -1082,12 +1138,13 @@
       "GenericError": {
         "type": "object",
         "required": ["code", "message"],
-        "description": "Error response for all non-quota error codes.",
+        "description": "Error response for all non-quota error codes. No provider identifiers in any field.",
         "properties": {
           "code": {
             "type": "string",
             "description": "Canonical error code.",
             "enum": [
+              "invalid_request",
               "feature_not_licensed",
               "insufficient_permissions",
               "chat_not_found",
@@ -1110,14 +1167,14 @@
           },
           "message": {
             "type": "string",
-            "description": "Human-readable error description."
+            "description": "Human-readable error description. MUST NOT contain provider-scoped identifiers (provider_file_id, vector_store_id, deployment names, upstream error bodies)."
           }
         }
       },
       "QuotaExceededError": {
         "type": "object",
         "required": ["code", "message", "quota_scope"],
-        "description": "Error response for quota exhaustion. The quota_scope field is REQUIRED and distinguishes token quota exhaustion, upload quota exhaustion, and web search quota exhaustion.",
+        "description": "Error response for quota exhaustion. The quota_scope field is REQUIRED and distinguishes token quota exhaustion, upload quota exhaustion, and web search quota exhaustion. No provider identifiers in any field.",
         "properties": {
           "code": {
             "type": "string",
@@ -1125,7 +1182,7 @@
           },
           "message": {
             "type": "string",
-            "description": "Human-readable error description."
+            "description": "Human-readable error description. MUST NOT contain provider-scoped identifiers."
           },
           "quota_scope": {
             "type": "string",
@@ -1381,6 +1438,19 @@
           }
         }
       },
+      "UpdateChatTitleRequest": {
+        "type": "object",
+        "required": ["title"],
+        "description": "Request body for updating a chat title. Only `title` is updatable in P1.",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "New chat title. Trimmed by the server; a string consisting entirely of whitespace is rejected with 400 invalid_request."
+          }
+        }
+      },
       "SendMessageRequest": {
         "type": "object",
         "required": ["content"],
@@ -1588,7 +1658,7 @@
         }
       },
       "SseErrorEvent": {
-        "description": "SSE `event: error` payload. Terminal event indicating a failure after the stream has started. Shares the same error envelope as JSON error responses: GenericError for all non-quota errors, QuotaExceededError (with required quota_scope) when code is quota_exceeded.",
+        "description": "SSE `event: error` payload. Terminal event indicating a failure after the stream has started. Shares the same error envelope as JSON error responses: GenericError for all non-quota errors, QuotaExceededError (with required quota_scope) when code is quota_exceeded. Error messages MUST NOT contain provider-scoped identifiers.",
         "oneOf": [
           { "$ref": "#/components/schemas/QuotaExceededError" },
           { "$ref": "#/components/schemas/GenericError" }
