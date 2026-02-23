@@ -1041,6 +1041,7 @@ Tracks idempotency and in-progress generation state for `request_id`. This avoid
 | provider_response_id | VARCHAR(128) | Provider response ID (nullable) |
 | assistant_message_id | UUID | Persisted assistant message ID (nullable until completed) |
 | error_code | VARCHAR(64) | Terminal error code (nullable) |
+| reserve_tokens | BIGINT | Preflight token reserve (`estimated_input_tokens + max_output_tokens`). Persisted at preflight before any provider call. Nullable — NULL only for turns that fail before a reserve is taken (pre-reserve failures). Immutable after insert. Used exclusively for deterministic reconciliation under ABORTED and post-provider-start FAILED outcomes (sections 5.3, 5.4). |
 | deleted_at | TIMESTAMPTZ | Soft-delete timestamp for turn mutations (nullable). Set when a turn is replaced by retry or edit, or explicitly deleted. |
 | replaced_by_request_id | UUID | `request_id` of the new turn that replaced this one via retry or edit (nullable). Stored on the old (soft-deleted) turn to provide audit traceability. Not used by delete. |
 | started_at | TIMESTAMPTZ | DB-assigned turn creation timestamp (set on INSERT). Used for ordering and latest-turn selection in P1. |
@@ -2693,6 +2694,10 @@ For any outcome where the server applies a quota debit (actual or estimated), th
 - Outbox uniqueness key remains `(turn_id, request_id)`.
 - Consumer deduplication remains by `(tenant_id, turn_id, request_id)`.
 
+#### Reserve persistence prerequisite
+
+Deterministic reconciliation for `ABORTED` and post-provider-start `FAILED` outcomes (sections 5.4, 5.5) depends on the originally reserved token estimate being durably available at settlement time. The `reserve_tokens` column on the `chat_turns` row (see `cpt-cf-mini-chat-dbtable-chat-turns`) satisfies this requirement: it MUST be persisted at preflight — before any outbound provider call — and MUST be immutable after insert. No settlement algorithm may rely on in-memory estimates; the watchdog reconciliation (section 3, `cpt-cf-mini-chat-component-orphan-watchdog`) and disconnect settlement (section 5.4) MUST read `reserve_tokens` from the persisted `chat_turns` row.
+
 #### FinalizeTurn Invariant
 
 **This is the single universal finalization algorithm. Every terminal path MUST use it. No exceptions.**
@@ -2797,7 +2802,7 @@ When a provider request is issued (after preflight passes and before the first o
 | `reserve_tokens` | Preflight reserve amount (`estimated_input_tokens + max_output_tokens`) |
 | `state` | `IN_PROGRESS` (maps to `chat_turns.state = running`) |
 
-`reserve_tokens` MUST be persisted on the `chat_turns` row (new nullable `BIGINT` column) at the time the reserve is taken. This value is required for deterministic reconciliation if the stream does not complete normally.
+`reserve_tokens` MUST be persisted on the `chat_turns` row (see `cpt-cf-mini-chat-dbtable-chat-turns`) at the time the reserve is taken. This value is required for deterministic reconciliation if the stream does not complete normally (see reserve persistence prerequisite, section 5.3).
 
 #### State Transitions (Billing Layer)
 
