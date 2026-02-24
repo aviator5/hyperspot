@@ -31,6 +31,9 @@ use static_authn_plugin as _;
 #[cfg(feature = "static-authz")]
 use static_authz_plugin as _;
 
+#[cfg(feature = "static-credstore")]
+use static_credstore_plugin as _;
+
 // === Example Features ===
 
 #[cfg(feature = "users-info-example")]

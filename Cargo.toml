@@ -45,6 +45,7 @@ members = [
     "libs/system-sdks/sdks/directory",
     "modules/credstore/credstore-sdk",
     "modules/credstore/credstore",
+    "modules/credstore/plugins/static-credstore-plugin",
     "modules/file-parser",
     "modules/system/api-gateway",
     "modules/system/grpc-hub",
