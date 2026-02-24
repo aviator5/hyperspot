@@ -313,13 +313,13 @@ AuthN Resolver plugin is responsible for:
 
 ```rust
 SecurityContext {
-    subject_id: "user-123",
+    subject_id: "user123-uuid",                                  // required
     subject_type: Some("gts.x.core.security.subject_user.v1~"),  // optional
-    subject_tenant_id: "tenant-456",                             // required
+    subject_tenant_id: "tenant456-uuid",                         // required
     bearer_token: Some(Secret::new("eyJ...".into())),            // optional, Secret<String>
-    token_scopes: ["*"],  // first-party: full access
+    token_scopes: ["*"],                                         // first-party: full access
     // OR
-    token_scopes: ["read:events", "write:tasks"],  // third-party: limited
+    token_scopes: ["read:events", "write:tasks"],                // third-party: limited
 }
 ```
 
@@ -596,13 +596,13 @@ We extend AuthZEN's evaluation response with optional `context.constraints`. Ins
     "constraints": [
       {
         "predicates": [
-          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-123", "barrier_mode": "all" }
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant123-uuid", "barrier_mode": "all" }
         ]
       }
     ]
   }
 }
-// PEP compiles to: WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'tenant-123' AND barrier = 0)
+// PEP compiles to: WHERE owner_tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = 'tenant123-uuid' AND barrier = 0)
 // Result: SELECT * FROM events WHERE (constraints) LIMIT 10 — correct pagination!
 ```
 
@@ -739,6 +739,24 @@ PDP returns `decision` plus optional `constraints` for each evaluation.
 7. **Token passthrough** - Original bearer token optionally included in `context.bearer_token` for PDP validation and external service calls (MUST NOT be logged)
 8. **Property schema contract** - PEP declares supported properties; PDP validates constraints use only supported properties
 
+#### ID Conventions
+
+All **core entity identifiers** in the authorization API are **UUIDs**:
+
+| ID | Type | Description |
+|----|------|-------------|
+| `subject.id` | UUID | Subject (user or API client) identifier |
+| `subject.properties.tenant_id` | UUID | Subject's home tenant |
+| `resource.id` | UUID | Resource instance identifier |
+| `owner_tenant_id` | UUID | Tenant that owns a resource (resource property) |
+| `owner_id` | UUID | Subject that owns a resource (resource property, nullable) |
+| `group_id` | UUID | Resource group identifier |
+| `tenant_closure` keys | UUID | `ancestor_id`, `descendant_id` |
+| `resource_group_closure` keys | UUID | `ancestor_id`, `descendant_id` |
+| `resource_group_membership` keys | UUID | `resource_id`, `group_id` |
+
+**Domain-specific identifiers** (e.g., `topic_id`) are **exceptions** — they are structured string identifiers from the Global Type System (e.g., `gts.x.core.events.topic.v1~`), not UUIDs. How a domain module stores GTS IDs internally is up to the module: either as a string as-is, or as a deterministic UUIDv5 computed from the GTS ID string. PDP may return GTS IDs in constraint values (e.g., `topic_id`); PEP is responsible for mapping them to the storage format used by the module.
+
 #### Request / Response Example
 
 **Scenario:** Event Broker module handles `GET /events?topic=some_topic` request. The handler:
@@ -852,7 +870,7 @@ The response contains a `decision` and, when `decision: true`, optional `context
 }
 ```
 
-**Note on `bearer_token`:** The `context.bearer_token` field is optional. Include it when PDP needs to: (1) validate token independently (defense-in-depth in OoP deployments), (2) call external vendor APIs requiring authentication, or (3) extract token-embedded policies/scopes. Omit it if PDP fully trusts PEP's claim extraction. Security: `bearer_token` is a credential — PDP MUST NOT log it or persist it. In Rust code, use `Secret<String>` from the `secrecy` crate (serializes to plain string in JSON).
+**Note on `bearer_token`:** The `context.bearer_token` field is optional. Include it when PDP needs to: (1) validate token independently (defense-in-depth in OoP deployments), (2) call external vendor APIs requiring authentication, or (3) extract token-embedded policies/scopes. Omit it if PDP fully trusts PEP's claim extraction. Security: `bearer_token` is a credential — PDP MUST NOT log it or persist it. In Rust code, use `Secret<String>` from the `secrecy` crate. Note: `Secret<String>` (secrecy v0.10 / `SecretBox<T>`) does **not** implement `Serialize` by default — calling `serde_json::to_string()` on it will fail at compile time unless the inner type implements `SerializableSecret` (or a custom serializer is provided via `serde_secrecy`). When serialization is required (e.g., for PDP communication), explicitly call `expose_secret()` at the call site.
 
 **Note on `tenant_context`:** The `context.tenant_context` object is optional. It defines the tenant context for the operation:
 
@@ -885,7 +903,7 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
   "action": { "name": "create" },
   "resource": {
     "type": "gts.x.core.events.event.v1~",
-    "properties": { "owner_tenant_id": "tenant-B", "topic_id": "..." }
+    "properties": { "owner_tenant_id": "tenantB-uuid", "topic_id": "..." }
   },
   "context": { "require_constraints": true }
   // ... subject, tenant_context
@@ -896,7 +914,7 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
   "decision": true,
   "context": {
     "constraints": [
-      { "predicates": [{ "type": "eq", "resource_property": "owner_tenant_id", "value": "tenant-B" }] }
+      { "predicates": [{ "type": "eq", "resource_property": "owner_tenant_id", "value": "tenantB-uuid" }] }
     ]
   }
 }
@@ -921,7 +939,7 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
     "constraints": [
       {
         "predicates": [
-          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "barrier_mode": "all" }
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenantA-uuid", "barrier_mode": "all" }
         ]
       }
     ]
@@ -936,7 +954,7 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
 // PEP -> PDP
 {
   "action": { "name": "read" },
-  "resource": { "type": "gts.x.core.events.event.v1~", "id": "evt-123" }
+  "resource": { "type": "gts.x.core.events.event.v1~", "id": "evt123-uuid" }
   // ... subject, context
 }
 
@@ -947,7 +965,7 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
     "constraints": [
       {
         "predicates": [
-          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenant-A", "barrier_mode": "all" }
+          { "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", "root_tenant_id": "tenantA-uuid", "barrier_mode": "all" }
         ]
       }
     ]
@@ -971,14 +989,14 @@ The `barrier_mode` and `tenant_status` parameters apply to any scope source — 
             // Tenant subtree predicate
             "type": "in_tenant_subtree",
             "resource_property": "owner_tenant_id",
-            "root_tenant_id": "tenant-A",
+            "root_tenant_id": "tenantA-uuid",
             "barrier_mode": "all"  // default: "all"
           },
           {
             // Group subtree predicate - uses resource_group_membership + resource_group_closure tables
             "type": "in_group_subtree",
             "resource_property": "id",
-            "root_group_id": "project-root-group"
+            "root_group_id": "project-root-group-uuid"
           }
         ]
       }
@@ -1064,8 +1082,8 @@ Compares resource property to a single value.
 - `value` (required): Single value to compare
 
 ```jsonc
-{ "type": "eq", "resource_property": "topic_id", "value": "uuid-123" }
-// SQL: topic_id = 'uuid-123'
+{ "type": "eq", "resource_property": "topic_id", "value": "uuid123-uuid" }
+// SQL: topic_id = 'uuid123-uuid'
 ```
 
 #### 2. IN Predicate (`type: "in"`)
@@ -1078,8 +1096,8 @@ Compares resource property to a list of values.
 - `values` (required): Array of values
 
 ```jsonc
-{ "type": "in", "resource_property": "owner_tenant_id", "values": ["tenant-1", "tenant-2"] }
-// SQL: owner_tenant_id IN ('tenant-1', 'tenant-2')
+{ "type": "in", "resource_property": "owner_tenant_id", "values": ["tenant1-uuid", "tenant2-uuid"] }
+// SQL: owner_tenant_id IN ('tenant1-uuid', 'tenant2-uuid')
 
 { "type": "in", "resource_property": "status", "values": ["active", "pending"] }
 // SQL: status IN ('active', 'pending')
@@ -1100,13 +1118,13 @@ Filters resources by tenant subtree using the closure table. The `resource_prope
 {
   "type": "in_tenant_subtree",
   "resource_property": "owner_tenant_id",
-  "root_tenant_id": "tenant-A",
+  "root_tenant_id": "tenantA-uuid",
   "barrier_mode": "all",  // default: "all"
   "tenant_status": ["active", "suspended"]
 }
 // SQL: owner_tenant_id IN (
 //   SELECT descendant_id FROM tenant_closure
-//   WHERE ancestor_id = 'tenant-A'
+//   WHERE ancestor_id = 'tenantA-uuid'
 //     AND barrier = 0  -- barrier_mode: "all"
 //     AND descendant_status IN ('active', 'suspended')
 // )
@@ -1134,10 +1152,10 @@ Filters resources by explicit group membership. The `resource_property` specifie
 - `group_ids` (required): Array of group IDs
 
 ```jsonc
-{ "type": "in_group", "resource_property": "id", "group_ids": ["group-1", "group-2"] }
+{ "type": "in_group", "resource_property": "id", "group_ids": ["group1-uuid", "group2-uuid"] }
 // SQL: id IN (
 //   SELECT resource_id FROM resource_group_membership
-//   WHERE group_id IN ('group-1', 'group-2')
+//   WHERE group_id IN ('group1-uuid', 'group2-uuid')
 // )
 ```
 
@@ -1151,12 +1169,12 @@ Filters resources by group subtree using the closure table. The `resource_proper
 - `root_group_id` (required): Root of group subtree
 
 ```jsonc
-{ "type": "in_group_subtree", "resource_property": "id", "root_group_id": "root-group" }
+{ "type": "in_group_subtree", "resource_property": "id", "root_group_id": "rootgroup-uuid" }
 // SQL: id IN (
 //   SELECT resource_id FROM resource_group_membership
 //   WHERE group_id IN (
 //     SELECT descendant_id FROM resource_group_closure
-//     WHERE ancestor_id = 'root-group'
+//     WHERE ancestor_id = 'rootgroup-uuid'
 //   )
 // )
 ```
@@ -1214,15 +1232,11 @@ Modules may also declare custom properties via `pep_prop(property_name = "column
 | Predicate | SQL |
 |-----------|-----|
 | `{ "type": "eq", "resource_property": "topic_id", "value": "v" }` | `events.topic_id = 'v'` |
-| `{ "type": "eq", "resource_property": "owner_id", "value": "user-123" }` | `events.creator_id = 'user-123'` |
-| `{ "type": "in", "resource_property": "owner_tenant_id", "values": ["t1", "t2"] }` | `events.tenant_id IN ('t1', 't2')` |
+| `{ "type": "eq", "resource_property": "owner_id", "value": "user123-uuid" }` | `events.creator_id = 'user123-uuid'` |
+| `{ "type": "in", "resource_property": "owner_tenant_id", "values": ["t1-uuid", "t2-uuid"] }` | `events.tenant_id IN ('t1-uuid', 't2-uuid')` |
 | `{ "type": "in_tenant_subtree", "resource_property": "owner_tenant_id", ... }` | `events.tenant_id IN (SELECT descendant_id FROM tenant_closure WHERE ...)` |
-| `{ "type": "in_group", "resource_property": "id", "group_ids": ["g1", "g2"] }` | `events.id IN (SELECT resource_id FROM resource_group_membership WHERE ...)` |
-| `{ "type": "in_group_subtree", "resource_property": "id", "root_group_id": "g1" }` | `events.id IN (SELECT ... FROM resource_group_membership WHERE group_id IN (SELECT ... FROM resource_group_closure ...))` |
-
-**Conventions:**
-- All IDs are UUIDs
-- PDP may return GTS IDs (e.g., `gts.x.core.events.topic.v1~...`), PEP converts to UUIDv5
+| `{ "type": "in_group", "resource_property": "id", "group_ids": ["g1-uuid", "g2-uuid"] }` | `events.id IN (SELECT resource_id FROM resource_group_membership WHERE ...)` |
+| `{ "type": "in_group_subtree", "resource_property": "id", "root_group_id": "g1-uuid" }` | `events.id IN (SELECT ... FROM resource_group_membership WHERE group_id IN (SELECT ... FROM resource_group_closure ...))` |
 
 ---
 
