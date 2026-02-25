@@ -256,6 +256,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tokio-stream = { version = "0.1", features = ["sync", "net"] }
 futures = "0.3"
 async-trait = "0.1"
+async-stream = { version = "0.3" }
 
 # High-performance data structures
 dashmap = "6.1"
