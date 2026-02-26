@@ -19,7 +19,7 @@ path = "src/lib.rs"
 test-utils = ["axum/ws", "dep:async-stream", "dep:futures", "dep:tower", "tokio/net", "tokio/sync", "tokio/rt"]
 
 [dependencies]
-cf-oagw-sdk = { path = "../oagw-sdk", features = ["axum"] }
+oagw-sdk = { path = "../oagw-sdk", package="cf-oagw-sdk", version = "0.1.0", features = ["axum"] }
 modkit = { workspace = true }
 modkit-security = { workspace = true }
 modkit-macros = { workspace = true }
