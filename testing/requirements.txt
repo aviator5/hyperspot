@@ -1,6 +1,8 @@
 pytest
 pytest-asyncio
 httpx>=0.28.0
+requests>=2.31.0
 h11>=0.16.0 # not directly required, pinned by Snyk to avoid a vulnerability
 anyio>=4.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
 zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
+PyYAML>=6.0
