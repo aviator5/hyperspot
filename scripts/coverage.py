@@ -242,8 +242,11 @@ def categorize_file(rel_path):
             return 'lib', parts[1]
         return 'file', None
     elif rel_path.startswith('modules/'):
-        # Extract module name: modules/api_gateway/... -> api_gateway
+        # modules/system/ contains nested submodules (oagw, api-gateway, …).
+        # Use the submodule name so each one gets its own report row.
         parts = rel_path.split('/')
+        if len(parts) >= 3 and parts[1] == 'system':
+            return 'module', parts[2]
         if len(parts) >= 2:
             return 'module', parts[1]
         return 'file', None
@@ -888,7 +891,7 @@ def generate_reports(output_dir, mode, threshold=COVERAGE_THRESHOLD, use_color=F
     # Generate HTML report
     print("Generating HTML report...")
     html_dir = output_dir / "html"
-    base = ["cargo", "llvm-cov", "report"]
+    base = ["cargo", "llvm-cov", "report", "--workspace"]
     run_cmd(
         base
         + [
@@ -1045,7 +1048,7 @@ def cmd_coverage_e2e(args):
 
 
 def cmd_coverage_combined(args):
-    """Generate combined coverage from both unit and e2e tests."""
+    """Generate combined coverage from unit and e2e tests."""
     output_dir = COVERAGE_DIR / "combined"
     config_file = args.config if args.config else "config/e2e-local.yaml"
     threshold = args.threshold if hasattr(args, 'threshold') else COVERAGE_THRESHOLD

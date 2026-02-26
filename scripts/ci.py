@@ -781,7 +781,7 @@ def cmd_all(args):
     step("Building release (stable)")
     run_cmd(["cargo", "+stable", "build", "--release"])
     step("Running e2e-local")
-    cmd_e2e(argparse.Namespace(docker=False, pytest_args=[]))
+    cmd_e2e(argparse.Namespace(docker=False, smoke=False, pytest_args=[]))
     print("All (full pipeline) completed")
 
 
