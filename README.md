@@ -198,81 +198,30 @@ export HYPERSPOT_LOGGING_DEFAULT_CONSOLE_LEVEL="debug"
 ## Testing
 
 ```bash
-# Run all tests
-make test
-# or
-cargo test
-
-# Run specific module tests
-cargo test -p api_gateway
-cargo test -p modkit
-
-# Integration tests with database
-cargo test --test integration
-
-# Unit tests code coverage
-make coverage-unit
+make check           # full quality gate (fmt + clippy + test + security)
 ```
 
-### Fuzzing
-
-Cyber Fabric uses continuous fuzzing to find bugs and security issues:
+Other tests:
 
 ```bash
-# Run fuzzing smoke tests
-make fuzz
-
-# Fuzz specific component
-make fuzz-run FUZZ_TARGET=fuzz_odata_filter FUZZ_SECONDS=300
-
-# See all available targets
-make fuzz-list
+make test            # unit tests (workspace)
+make test-sqlite     # integration tests (SQLite, no external DB required)
+make e2e-local       # end-to-end tests (builds + starts server automatically)
+make e2e-docker      # end-to-end tests (builds + starts server in Docker)
+make coverage-unit   # unit test code coverage
+make fuzz            # fuzz smoke tests (30 s per target)
 ```
 
-Fuzzing runs automatically in CI via ClusterFuzzLite. See `fuzz/README.md` for details.
-
-### CI / Development Commands
-
-
-Cyber Fabric uses a unified, cross-platform Python CI script. Ensure you have Python 3.9+ installed.
+On **Windows** (no `make`), use the cross-platform CI script directly:
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd cyberfabric-core
-
-# All code must pass these checks before merging
-python scripts/ci.py all          # Build and run all the checks
-# Run individual checks
-python scripts/ci.py check        # Full CI suite: fmt, clippy, test, audit, deny
-python scripts/ci.py fmt          # Check formatting
-python scripts/ci.py fmt --fix    # Auto-format code
-python scripts/ci.py clippy       # Run linter
-python scripts/ci.py clippy --fix # Attempt to fix warnings
-python scripts/ci.py dylint       # runs custom project compliance lints on the workspace
-python scripts/ci.py audit        # Security audit
-python scripts/ci.py deny         # License & dependency checks
+python scripts/ci.py check          # full CI suite
+python scripts/ci.py e2e-local      # end-to-end tests
+python scripts/ci.py fuzz --seconds 60  # fuzz smoke run
 ```
 
-On Unix/Linux/macOS, the Makefile provides shortcuts:
-
-```bash
-# All code must pass these checks before merging
-make all    # Build and run all the checks
-# Run individual checks
-make check  # Full check suite as defined in Makefile
-make fmt    # formatting (cargo fmt --all -- --check)
-make dev-fmt # auto-format code (cargo fmt --all)
-make clippy # linting (cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::perf)
-make lint   # compilation with warnings denied (RUSTFLAGS="-D warnings" cargo check ...)
-make dylint # runs custom project compliance lints on the workspace
-make deny   # dependency license and policy checks (cargo deny check)
-make kani   # optional deep safety verification (Kani verifier)
-```
-
-### E2E Tests
-
-See [E2E Tests](testing/e2e/README.md) for details.
+For the complete test strategy, coverage policy, CI pipeline details, and all
+available commands see **[docs/TESTING.md](docs/TESTING.md)**.
 
 ## Contributing
 
