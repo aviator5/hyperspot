@@ -2992,6 +2992,126 @@ For each event it applies the same `policy_version_applied` and treats `actual_c
 
 Specific plugin implementations are defined in separate documents.
 
+#### 5.2.6 Policy Snapshot vs User Allocation (Normative Clarification)
+
+The policy snapshot and per-user limits are distinct artifacts with different ownership, mutability, and caching semantics. This section makes the separation normative.
+
+**PolicySnapshot** (shared, immutable configuration):
+
+A PolicySnapshot is a versioned, immutable configuration object published by CCM. It contains:
+
+- `policy_version` (monotonic identifier)
+- `model_catalog` (model entries with credit multipliers, capabilities, tier, display metadata)
+- `estimation_budgets` (fixed surcharge token budgets for preflight reserve estimation)
+- global kill switches (`disable_premium_tier`, `force_standard_tier`, `disable_web_search`)
+
+PolicySnapshot rules:
+
+- A PolicySnapshot MUST be identical for all users within the same tenant for a given `policy_version`.
+- A PolicySnapshot MUST be immutable once published. CCM MUST NOT mutate a snapshot after it has been delivered to any consumer.
+- A PolicySnapshot MUST be cached locally and persisted by `policy_version` (see section 5.2.8).
+
+**UserLimits** (per-user allocation):
+
+UserLimits are per-user credit allocation values that CCM derives from plan, balance, or other tenant-specific inputs. They include per-tier `limit_daily`, `limit_monthly` (and `limit_4h` reserved for P2+).
+
+UserLimits rules:
+
+- UserLimits MUST be keyed by `(tenant_id, user_id, policy_version)`.
+- UserLimits are NOT part of the immutable shared PolicySnapshot.
+- UserLimits MAY vary per user within the same tenant and `policy_version`.
+- UserLimits MUST be derived by CCM under a specific `policy_version`.
+- If allocation rules change such that UserLimits would differ for the same `policy_version`, CCM MUST bump `policy_version`.
+
+**Composite effective policy**:
+
+The "effective policy for a user" is defined as:
+
+```text
+effective_policy(tenant_id, user_id) =
+    PolicySnapshot(policy_version)           -- shared, immutable
+  + UserLimits(tenant_id, user_id, policy_version)  -- per-user allocation
+```
+
+Code MUST NOT conflate PolicySnapshot with UserLimits. References to "snapshot" in this document mean the shared PolicySnapshot unless explicitly qualified as "user limits" or "user allocation".
+
+#### 5.2.7 Policy Version Resolution and Bootstrap
+
+`policy_version` is generated and owned exclusively by CCM. Mini Chat MUST NOT generate, increment, or mutate `policy_version`.
+
+**Startup bootstrap**:
+
+1. On startup, Mini Chat MUST call `GetCurrentPolicyVersion(tenant_id)` via the `minichat-policy-plugin`.
+2. If a local PolicySnapshot for that version does not exist (neither in-memory nor in DB), Mini Chat MUST call `GetPolicySnapshot(policy_version)` and persist the result.
+3. Mini Chat MUST set `current_policy_version` in memory to the fetched version.
+
+**Push-based notification**:
+
+Mini Chat MUST support push-based policy notification via `POST /internal/policy:notify { policy_version }` (see section 5.2.3).
+
+On receiving a notify with a `policy_version` newer than `current_policy_version`:
+
+1. Mini Chat MUST fetch the PolicySnapshot for that version via `GetPolicySnapshot(policy_version)`.
+2. Mini Chat MUST persist the fetched snapshot in DB keyed by `policy_version`.
+3. Mini Chat MUST atomically switch `current_policy_version` in memory to the new version.
+
+**Hot-path invariant**:
+
+Mini Chat MUST NOT require synchronous CCM calls on the hot path (turn preflight → provider call → settlement). All policy data needed for a turn MUST be resolvable from local cache or local DB. CCM calls are restricted to bootstrap, notification handling, and background reconciliation.
+
+#### 5.2.8 Local Policy and Limits Caching (Normative)
+
+**Shared PolicySnapshot caching**:
+
+- PolicySnapshot MUST be cached in memory.
+- PolicySnapshot MUST be persisted in DB keyed by `policy_version`.
+- The in-memory cache MUST be bounded (LRU or equivalent eviction strategy).
+- Cache capacity MUST be configurable via module configuration.
+- Persisted snapshots MUST survive process restart (DB is the durable store).
+- On cache miss, Mini Chat MUST load the snapshot from DB before falling back to a CCM fetch.
+
+**UserLimits caching**:
+
+- UserLimits MAY be cached in memory for hot-path performance.
+- Cache key: `(tenant_id, user_id, policy_version)`.
+- The cache MUST be bounded (LRU or equivalent eviction strategy).
+- Cache capacity MUST be configurable via module configuration.
+- Cache entries SHOULD have a configurable TTL.
+- All cache entries for a previous `policy_version` MUST be invalidated when `current_policy_version` changes.
+- UserLimits MUST NOT be required to be persisted in DB for P1.
+
+**Quota enforcement data path (P1)**:
+
+Quota enforcement relies on:
+
+- persisted `quota_usage` rows (section 3.7) — source of truth for spend and reserves
+- `policy_version_applied` stored on `chat_turns` — deterministic settlement reference
+- shared PolicySnapshot credit multipliers — loaded from local cache or DB
+
+UserLimits are needed only at preflight (to resolve `limit_credits_micro` for budget checks). They are not needed at settlement time because settlement debits actual credits against `quota_usage` rows that were written during preflight.
+
+#### 5.2.9 Deterministic Quota and Settlement Invariant
+
+Quota settlement MUST be deterministic and reproducible from persisted data alone, without live CCM interaction.
+
+**Per-turn policy binding**:
+
+- Every `chat_turns` row MUST store `policy_version_applied` at insert time (preflight).
+- `policy_version_applied` is immutable after insert.
+
+**Settlement determinism**:
+
+- Settlement MUST use the PolicySnapshot corresponding to `policy_version_applied` on the turn being settled.
+- Settlement MUST NOT use `current_policy_version` or any other live/latest policy state.
+- Settlement MUST NOT depend on live CCM state or require CCM calls.
+- Credit multipliers used at settlement MUST be read from the PolicySnapshot identified by `policy_version_applied`.
+
+**Allocation change isolation**:
+
+- Changes to UserLimits MUST NOT affect settlement of already-completed or in-flight turns.
+- If CCM changes allocation rules, it MUST bump `policy_version`. New turns will bind to the new version; existing turns remain settled under their bound version.
+- The outbox usage event MUST include `policy_version_applied` so that downstream consumers (CCM) can reconstruct the exact multipliers and verify the debited credits.
+
 ### 5.3 Credit Arithmetic
 
 From here on we distinguish:
@@ -3436,6 +3556,18 @@ Where:
 - `tool_surcharge_tokens` — `estimation_budgets.tool_surcharge_tokens` from the policy snapshot (section 5.2.1). Policy-snapshot-versioned.
 - `web_search_surcharge_tokens` — `estimation_budgets.web_search_surcharge_tokens` from the policy snapshot (section 5.2.1). Policy-snapshot-versioned.
 
+##### Tool and Web Search Cost Model (P1 Scope Clarification)
+
+In P1, `tool_surcharge_tokens` and `web_search_surcharge_tokens` are **fixed per-turn budget additions**. They are applied once per request when the corresponding feature is enabled in the turn request. They DO NOT scale with the number of internal tool invocations, search calls, retrieval passes, reranks, or provider sub-requests. The number of backend search calls or tool iterations the provider performs internally is considered an implementation detail and MUST NOT influence credit computation in P1.
+
+The surcharge model is **deterministic and independent of provider runtime behavior**: given the same policy snapshot and the same set of enabled features, the surcharge contribution to reserve is identical regardless of what the provider does internally during execution.
+
+**P1 reserve model characterization (normative)**:
+
+- P1 uses a **worst-case deterministic reserve model**. Surcharges represent a conservative fixed budget for the _possibility_ of tool or search usage, not a metered cost of actual backend operations.
+- P1 does **NOT** implement proportional infrastructure cost modelling. There is no per-invocation, per-query, or per-retrieval-pass cost tracking.
+- Accurate backend cost accounting for tools, web search, and RAG operations is explicitly **out of scope** for P1. Future phases MAY introduce metered surcharges; any such change MUST be reflected via a new `policy_version`.
+
 #### 5.5.7 Reserved Credits Calculation
 
 After estimation (canonical form — identical to section 5.4.1):
@@ -3494,6 +3626,19 @@ Settlement (per bucket row — see section 5.4.4):
 - actual is charged to the same bucket rows
 - the difference is returned to available limits
 
+##### Source of Actual Usage (Normative Clarification)
+
+The authoritative source of actual token usage in P1 is the **provider-reported usage metadata** (`usage.input_tokens`, `usage.output_tokens`) returned by the provider in the terminal response event. If provider usage is present, MiniChat MUST use those values for credit computation. MiniChat MUST NOT attempt to recompute actual token usage independently (e.g., by re-tokenizing the response body or summing estimated component costs).
+
+**Scope of provider-reported usage**: the provider's `input_tokens` and `output_tokens` values reflect the provider's own accounting. Tools, web_search, or RAG internal operations (retrieval passes, reranks, sub-queries) are NOT included in provider token usage unless explicitly reported by the provider in those fields. P1 does NOT rely on provider-specific cost breakdown fields beyond `input_tokens` and `output_tokens`.
+
+**"Actual spend" in P1** refers strictly to **token-usage-based credits** computed via the canonical `credits_micro()` formula (section 5.3) applied to provider-reported token counts. No separate runtime billing signal is expected for tool execution, web search invocations, or RAG operations in P1. 
+Settlement in P1 is strictly based on provider-reported `input_tokens` and `output_tokens`. 
+Any internal provider overhead related to tool execution, web search, or retrieval that is not reflected
+in those token counts is not accounted for separately.
+This limitation is intentional and addressed by the deterministic fixed surcharges applied during reserve.
+This is an accepted P1 trade-off addressed by the conservative fixed surcharges applied at reserve time (section 5.5.6).
+
 #### 5.5.10 Policy Versioning
 
 Each turn stores:
@@ -3535,6 +3680,29 @@ Thus we achieve:
 7. **Replay is side-effect-free**: when a completed turn is replayed for the same `(chat_id, request_id)`, the system MUST NOT take a new quota reserve, MUST NOT update `quota_usage` or debit credits, MUST NOT insert a new outbox row, and MUST NOT emit audit or billing events. Replay is a pure read-and-relay operation.
 8. **Outbox emission is atomic with settlement**: the CAS-guarded finalization transaction MUST include the outbox row insert (`modkit_outbox_events`) in the same DB transaction as quota settlement. It MUST be impossible for quota to be debited without a corresponding outbox row.
 9. **Orphan watchdog is P1 mandatory**: a periodic background job MUST detect turns stuck in `running` state beyond a configurable timeout (default: 5 min) and finalize them with a bounded best-effort debit using the same CAS guard, quota settlement, and outbox emission as all other finalization paths. The watchdog ensures no turn can permanently evade billing. See `cpt-cf-mini-chat-component-orphan-watchdog`.
+
+#### 5.5.13 Deterministic Reserve and Settlement Model
+
+Reserve and settlement MUST be **deterministic** given:
+
+- `policy_version_applied` (immutable on the turn)
+- `effective_model` (resolved at preflight)
+- persisted `reserve_tokens` and `max_output_tokens_applied` on `chat_turns`
+- provider-reported `actual_input_tokens` and `actual_output_tokens` (if available)
+
+Credit computation MUST NOT depend on:
+
+- the number of internal search calls the provider performed
+- the number of tool iterations or function-call rounds
+- provider internal query refinement, reranking, or retrieval behavior
+- any runtime telemetry not captured in the four inputs above
+
+This constraint ensures:
+
+- **Reproducibility** — any observer can re-derive the exact credit amounts from persisted turn data and the referenced policy snapshot, without access to provider logs or runtime state.
+- **Auditability** — credit debits are fully explainable from DB-persisted columns.
+- **Crash-safe settlement** — the orphan watchdog and any recovery path can finalize a turn using only persisted data; no ephemeral runtime context is required.
+- **Consistent replay behavior** — re-running the settlement formula on the same inputs always produces the same `actual_credits_micro` value, satisfying the replay invariant (5.5.12 item 7).
 
 ### 5.6 Reliable Usage Event Publication (Outbox Pattern)
 
