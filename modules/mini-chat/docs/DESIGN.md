@@ -641,7 +641,6 @@ The Turn Status API `state: "error"` maps to internal `chat_turns.state = 'faile
 - `error_code: "provider_timeout"` → LLM provider request timed out (billing outcome: FAILED)
 - `error_code: "orphan_timeout"` → Turn stuck in `running` state beyond watchdog timeout; **stream ended without provider terminal event** (billing outcome: **ABORTED**, not FAILED)
 - `error_code: "context_length_exceeded"` → Context budget exceeded during preflight (billing outcome: FAILED, pre-provider)
-- `error_code: "quota_overshoot_exceeded"` → Actual usage exceeded overshoot tolerance (billing outcome: FAILED)
 
 **Support and analytics guidance:**
 - **Do NOT assume `state: "error"` means "provider failure"**. Check `error_code`.
@@ -651,6 +650,12 @@ The Turn Status API `state: "error"` maps to internal `chat_turns.state = 'faile
 
 **Similarly, `state: "cancelled"` can map to billing outcome ABORTED:**
 - Client disconnect → internal `cancelled` → billing outcome `ABORTED` (estimated settlement)
+
+**IMPORTANT: Overshoot tolerance violations do NOT change turn state to error:**
+- When actual usage exceeds overshoot tolerance (`quota_overshoot_exceeded` condition), the turn remains in `state: "done"` (internal `chat_turns.state = completed`)
+- Billing is capped at reserved credits, but the completed response is delivered to the user
+- The "completed remains completed" rule (see Reserve Overshoot Reconciliation Rule, section 5.8.1) is absolute: a COMPLETED turn MUST remain COMPLETED regardless of overshoot magnitude
+- This is logged via the `mini_chat_quota_overshoot_exceeded_total` metric for operator investigation, but does NOT result in `state: "error"` or any error_code visible to the client
 
 The Turn Status API deliberately hides billing outcomes to keep the client contract simple. Billing settlement details (outcome, settlement method, charged credits) are internal to the system and NOT exposed via this endpoint.
 
