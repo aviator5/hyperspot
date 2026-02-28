@@ -633,6 +633,27 @@ Turn Status is authoritative for lifecycle state resolution after disconnect. `e
 - API `error` corresponds to internal `chat_turns.state = failed` and terminal `event: error`
 - API `cancelled` corresponds to internal `chat_turns.state = cancelled` and indicates cancellation was processed; the UI should treat it as terminal and allow resend with a new `request_id`
 
+**CRITICAL: `error` state semantics for UX and support analytics (P1 normative)**
+
+The Turn Status API `state: "error"` maps to internal `chat_turns.state = 'failed'`, but this does NOT always mean "provider failed". The `error_code` field disambiguates the failure cause:
+
+- `error_code: "provider_error"` → LLM provider returned a terminal error (billing outcome: FAILED)
+- `error_code: "provider_timeout"` → LLM provider request timed out (billing outcome: FAILED)
+- `error_code: "orphan_timeout"` → Turn stuck in `running` state beyond watchdog timeout; **stream ended without provider terminal event** (billing outcome: **ABORTED**, not FAILED)
+- `error_code: "context_length_exceeded"` → Context budget exceeded during preflight (billing outcome: FAILED, pre-provider)
+- `error_code: "quota_overshoot_exceeded"` → Actual usage exceeded overshoot tolerance (billing outcome: FAILED)
+
+**Support and analytics guidance:**
+- **Do NOT assume `state: "error"` means "provider failure"**. Check `error_code`.
+- `orphan_timeout` indicates a **system timeout** (pod crash, network partition, orphan watchdog cleanup), not a provider-side error. The billing outcome for orphan timeout is `ABORTED` (estimated settlement), not `FAILED` (actual or released).
+- For UX error messages: `orphan_timeout` should display "Request timed out. Please try again." NOT "Provider error."
+- For operational dashboards: `orphan_timeout` metrics should be tracked separately from `provider_error` to distinguish infrastructure issues from LLM provider issues.
+
+**Similarly, `state: "cancelled"` can map to billing outcome ABORTED:**
+- Client disconnect → internal `cancelled` → billing outcome `ABORTED` (estimated settlement)
+
+The Turn Status API deliberately hides billing outcomes to keep the client contract simple. Billing settlement details (outcome, settlement method, charged credits) are internal to the system and NOT exposed via this endpoint.
+
 UI guidance: if the SSE stream disconnects before a terminal event, the UI SHOULD show a user-visible banner: "Message delivery uncertain due to connection loss. You can resend." Resend MUST use a new `request_id`.
 
 #### SSE Event Definitions
@@ -747,7 +768,23 @@ data: {"code": "quota_exceeded", "message": "Daily limit reached", "quota_scope"
 
 ##### `event: ping`
 
-Keepalive to prevent idle-timeout disconnects by proxies and browsers (especially when the model is "thinking" before producing tokens). Sent every 15-30 seconds during generation. Clients MUST ignore `ping` events.
+Keepalive to prevent idle-timeout disconnects by proxies and browsers (especially when the model is "thinking" before producing tokens). Clients MUST ignore `ping` events.
+
+**P1 Emission Rule (normative)**:
+
+The server MUST emit `event: ping` with the following cadence:
+
+- **During active streaming** (when `delta` or `tool` events are being produced): ping is OPTIONAL (not required when content is actively flowing).
+- **During idle periods** (no content events for N seconds): the server MUST emit a `ping` event every 15 seconds (±2 seconds jitter allowed for load balancing).
+- **After terminal event**: NO `ping` events are permitted after the terminal `done` or `error` event. The server MUST close the connection immediately after the terminal event (section "SSE stream close rules").
+
+**Configuration (P1)**:
+
+- `sse_ping_interval_seconds`: configurable via MiniChat ConfigMap. Default: `15` seconds.
+- Valid range: `5` (aggressive keepalive for strict proxies) to `60` (relaxed for stable networks). Values outside this range MUST be rejected at startup.
+- Jitter: up to ±2 seconds jitter MAY be applied to ping intervals to avoid thundering herd effects across concurrent streams.
+
+**Rationale**: A 15-second interval is aggressive enough to keep most HTTP/2 proxies and browsers from timing out idle streams (typical proxy idle timeouts: 30-60 seconds), while not overwhelming the network with unnecessary keepalive traffic.
 
 ```
 event: ping
@@ -2850,6 +2887,50 @@ Every user-initiated streaming turn creates a `chat_turns` row with four possibl
 
 Allowed transitions: `running` → `completed` | `failed` | `cancelled`. No transitions out of terminal states.
 
+**Turn Lifecycle State Machine:**
+
+```mermaid
+stateDiagram-v2
+    [*] --> running: POST /messages:stream<br/>(creates chat_turns row)
+
+    running --> completed: Provider terminal done event<br/>(CAS: WHERE state='running')
+    running --> failed: Provider terminal error<br/>(CAS: WHERE state='running')
+    running --> cancelled: Client disconnect<br/>(CAS: WHERE state='running')
+    running --> failed: Orphan watchdog timeout<br/>(error_code='orphan_timeout')<br/>(CAS: WHERE state='running')
+
+    completed --> [*]: Terminal state<br/>(immutable)
+    failed --> [*]: Terminal state<br/>(immutable)
+    cancelled --> [*]: Terminal state<br/>(immutable)
+
+    note right of running
+        CAS Guard ensures mutual exclusion:
+        UPDATE chat_turns
+        SET state = :terminal_state
+        WHERE id = :turn_id
+          AND state = 'running'
+
+        Exactly one finalizer wins.
+    end note
+
+    note right of completed
+        Billing outcome: COMPLETED
+        Settlement: actual provider usage
+    end note
+
+    note right of failed
+        Billing outcome: FAILED or ABORTED
+        - FAILED: provider error
+        - ABORTED: orphan timeout
+        Settlement: actual or estimated
+    end note
+
+    note right of cancelled
+        Billing outcome: ABORTED
+        Settlement: estimated
+        (min(reserve, est_input + floor))
+    end note
+```
+
 **Key invariants**:
 - `(chat_id, request_id)` is unique (enforced by DB constraint on `chat_turns`).
 - There is no separate `current_turn` pointer. The current execution is determined by querying `chat_turns` for `state='running'` within the chat.
@@ -2926,7 +3007,27 @@ P1 enforces **at most one running turn per chat**. When a new `POST /messages:st
 - The request is rejected with `409 Conflict`.
 - The client must wait for the existing turn to reach a terminal state (or disconnect to trigger cancellation) before sending a new message.
 
-Enforcement: the domain service checks for an existing `running` turn in `chat_turns` before inserting a new row. The `(chat_id, request_id)` unique constraint prevents duplicate inserts; the single-running-turn check prevents concurrent generations within the same chat.
+**Check Priority Order (Normative)**:
+
+The domain service MUST perform checks in the following order to correctly handle idempotency vs parallel turn conflicts:
+
+1. **Idempotency check (highest priority)**: Query for existing `(chat_id, request_id)` in `chat_turns`:
+   - If found with `state = 'completed'` → **replay immediately** (side-effect-free, no further checks)
+   - If found with `state = 'running'` → **reject with `409 request_id_conflict`** ("active generation in progress for this request_id")
+   - If found with `state = 'failed'` or `'cancelled'` → **reject with `409 request_id_conflict`** ("client MUST use a new request_id to retry")
+   - If not found → proceed to step 2
+
+2. **Parallel turn check (second priority)**: Query for ANY `running` turn in this chat (any `request_id`):
+   - If found → **reject with `409 generation_in_progress`** ("a generation is already running for this chat")
+   - If not found → proceed to step 3
+
+3. **Preflight and insert**: Perform quota reserve, preflight validations, and insert new `chat_turns` row
+
+**Rationale for ordering**: Idempotency MUST be checked first to enable client reconnect with the same `request_id` during a later concurrent turn. If parallel turn check ran first, clients could not replay completed turns when a different request is running, breaking crash recovery.
+
+**Implementation trap**: Reversing this order (checking "any running turn" before "same request_id completed") will cause incorrect 409 responses when clients attempt idempotent replay during concurrent activity, amplifying retry storms and breaking the side-effect-free replay guarantee.
+
+Enforcement: The `(chat_id, request_id)` unique constraint prevents duplicate inserts; the single-running-turn check prevents concurrent generations within the same chat.
 
 ##### 409 Recovery and UX Invariant (P1)
 
@@ -3540,7 +3641,41 @@ In the normal scheme you should not exceed limits, because:
 **What can realistically go wrong**:
 
 1. **Estimate below actual (overshoot)**: actual tokens exceeded max_output or input estimate.
-   Solution: hard cap max_output at the provider/request level. Then overshoot does not exist.
+
+   **Reserve Overshoot Reconciliation Rule (normative for COMPLETED turns)**:
+
+   When a COMPLETED turn reports actual usage that exceeds the reserve, the system MUST apply the following bounded overshoot reconciliation:
+
+   ```
+   IF actual_tokens > reserve_tokens AND outcome = COMPLETED:
+       // Compute overshoot factor
+       overshoot_factor = actual_tokens / reserve_tokens
+
+       // Check against tolerance threshold
+       IF overshoot_factor <= overshoot_tolerance_factor:
+           // Allow bounded overshoot: commit actual usage
+           committed_tokens = actual_tokens
+           committed_credits_micro = credits_micro(actual_input_tokens, actual_output_tokens, in_mult, out_mult)
+
+           // Log overshoot metric for monitoring
+           mini_chat_quota_overshoot_tokens.observe(actual_tokens - reserve_tokens)
+           mini_chat_quota_overshoot_total{period}.inc()
+       ELSE:
+           // Overshoot exceeds tolerance: treat as system error
+           // Finalize as FAILED with error_code='quota_overshoot_exceeded'
+           // Commit: reserve_tokens (cap at reserve; do not allow unbounded overshoot)
+           committed_tokens = reserve_tokens
+           committed_credits_micro = reserved_credits_micro
+   ```
+
+   **Configuration (P1)**:
+   - `overshoot_tolerance_factor`: configurable via MiniChat ConfigMap key `quota.overshoot_tolerance_factor` (float). Default: `1.10` (allow 10% overshoot).
+   - Valid range: `1.00` (no overshoot allowed) to `1.50` (allow 50% overshoot). Values outside this range MUST be rejected at startup.
+   - Rationale: Provider token counting is exact, but preflight estimates may underestimate due to tokenizer differences, model updates, or conservative surcharge budgets. A bounded tolerance prevents quota drift while accommodating reasonable estimation variance.
+
+   **P1 constraint**: `max_output_tokens` is a hard cap sent to the provider, so output token overshoot should not occur under normal operation. Overshoot typically occurs on the input side due to underestimation of multimodal surcharges (images, tools, web_search) or retrieved context. Operators SHOULD tune estimation budgets (section 5.5) to minimize overshoot occurrences.
+
+   **Monitoring**: If `mini_chat_quota_overshoot_total` exceeds 5% of completed turns, operators SHOULD review estimation budgets (image_token_budget, tool_surcharge_tokens, web_search_surcharge_tokens, safety_margin_pct) and consider increasing conservative margins.
 
 2. **Policy changes mid-turn**: not a problem because the turn records `policy_version_applied`. It is computed under that version.
 
@@ -4177,6 +4312,59 @@ When a provider request is issued (after preflight passes and before the first o
 
 Each turn MUST reach exactly one terminal billing state. Terminal states are immutable.
 
+**Billing State Machine:**
+
+```mermaid
+stateDiagram-v2
+    [*] --> IN_PROGRESS: Quota reserve taken<br/>(chat_turns.state = 'running')
+
+    IN_PROGRESS --> COMPLETED: Provider terminal done event<br/>(response.completed)
+    IN_PROGRESS --> FAILED: Provider terminal error<br/>OR pre-provider error after reserve
+    IN_PROGRESS --> ABORTED: No provider terminal event<br/>(client disconnect, pod crash,<br/>orphan timeout, internal abort)
+
+    COMPLETED --> [*]: Settlement: actual<br/>(provider-reported usage)
+    FAILED --> [*]: Settlement: actual/estimated/released<br/>(depends on provider call status)
+    ABORTED --> [*]: Settlement: estimated<br/>(min(reserve, est_input + floor))
+
+    note right of IN_PROGRESS
+        Preflight reserve persisted:
+        - reserve_tokens
+        - reserved_credits_micro
+        - policy_version_applied
+        - minimal_generation_floor_applied
+    end note
+
+    note right of COMPLETED
+        Outbox outcome: "completed"
+        Settlement method: "actual"
+        Charge: credits_micro(
+          actual_input_tokens,
+          actual_output_tokens,
+          multipliers)
+    end note
+
+    note right of FAILED
+        Outbox outcome: "failed"
+        Settlement method:
+        - "released" (pre-provider)
+        - "actual" (post-provider, usage known)
+        - "estimated" (post-provider, usage unknown)
+    end note
+
+    note right of ABORTED
+        Outbox outcome: "aborted"
+        Settlement method: "estimated"
+        Charged tokens = min(
+          reserve_tokens,
+          estimated_input_tokens +
+          minimal_generation_floor_applied)
+
+        Maps to internal state:
+        - cancelled (client disconnect)
+        - failed (orphan timeout)
+    end note
+```
+
 **Mapping to internal `chat_turns.state`**:
 
 | Billing State | Internal State | Notes |
@@ -4184,6 +4372,16 @@ Each turn MUST reach exactly one terminal billing state. Terminal states are imm
 | `COMPLETED` | `completed` | 1:1 mapping |
 | `FAILED` | `failed` | 1:1 mapping (includes `failed_pre_provider` and `failed_post_provider_start`) |
 | `ABORTED` | `cancelled` or `failed` (`error_code = 'orphan_timeout'`) | Unifies all non-terminal stream ends under one billing reconciliation rule |
+
+**Critical Distinction: Internal State vs Billing Outcome (Normative)**
+
+**Internal turn state** (`chat_turns.state`) is an implementation detail tracking the lifecycle transition. **Billing outcome** (outbox `outcome` field) is the semantic classification that determines settlement rules.
+
+The orphan watchdog demonstrates this separation:
+- Sets internal state: `failed` with `error_code = 'orphan_timeout'` (because timeout is an error condition)
+- Emits billing outcome: `"aborted"` with `settlement_method = "estimated"` (because stream ended without provider terminal event)
+
+**Implementation guard**: Any code that keys billing logic, settlement rules, or outbox emission off internal `chat_turns.state` instead of explicitly-set billing outcome is incorrect and will cause billing drift. Billing outcome MUST be determined by the finalization path based on terminal trigger classification (provider done/error vs client disconnect vs orphan timeout), NOT by reading `chat_turns.state`.
 
 **Watchdog determinism rule**: the orphan turn watchdog (section 3, `cpt-cf-mini-chat-component-orphan-watchdog`) MUST use the exact same deterministic charged token formula defined below for `ABORTED` streams — no separate estimation path. The watchdog MUST perform (1) quota settlement using the formula, (2) `chat_turns` state transition, and (3) `modkit_outbox_events` insertion in a single atomic DB transaction. It MUST be impossible for a turn to remain in `IN_PROGRESS` indefinitely; the watchdog timeout (default: 5 minutes) is the hard upper bound on turn duration without a terminal provider event.
 
