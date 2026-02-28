@@ -11,7 +11,7 @@ This folder contains the ModKit developer documentation, split by topic for focu
 
 | Task / Goal | Primary file(s) to read | Related external docs |
 |-------------|------------------------|----------------------|
-| Adding a new module | `02_module_layout_and_sdk_pattern.md` | `guidelines/NEW_MODULE.md` |
+| Adding a new module | `02_module_layout_and_sdk_pattern.md` | |
 | DB/persistence, SecureConn, AccessScope | `06_authn_authz_secure_orm.md` | |
 | REST endpoint wiring, OperationBuilder | `04_rest_operation_builder.md` | |
 | OData, $select, pagination, filtering | `07_odata_pagination_select_filter.md` | |
