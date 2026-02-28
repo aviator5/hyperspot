@@ -1452,12 +1452,12 @@
           "state": {
             "type": "string",
             "enum": ["running", "done", "error", "cancelled"],
-            "description": "Turn state. 'done', 'error', 'cancelled' are terminal and immutable. 'cancelled' indicates client disconnect or internal abort — no SSE error event was emitted. Use this endpoint to resolve state after disconnect."
+            "description": "Turn state. 'done', 'error', 'cancelled' are terminal and immutable. 'error' indicates the turn failed — check error_code to determine if it was a provider failure (provider_error, provider_timeout) or a system timeout (orphan_timeout). 'cancelled' indicates client disconnect or internal abort — no SSE error event was emitted. Use this endpoint to resolve state after disconnect. IMPORTANT: error_code='orphan_timeout' means stream ended without provider terminal event (system timeout, NOT provider error); display 'Request timed out' to users, NOT 'Provider error'."
           },
           "error_code": {
             "type": "string",
             "nullable": true,
-            "description": "Terminal error code when state is 'error' (e.g. 'provider_error', 'orphan_timeout', 'context_length_exceeded'). Null for non-error terminal states and while running. Mapped from internal chat_turns.error_code. Provider identifiers and billing outcome are not exposed."
+            "description": "Terminal error code when state is 'error'. Disambiguates failure cause. Common values: 'provider_error' (LLM provider returned terminal error), 'provider_timeout' (provider request timed out), 'orphan_timeout' (turn stuck beyond watchdog timeout — system timeout, NOT provider failure; stream ended without provider terminal event), 'context_length_exceeded' (preflight rejection), 'quota_overshoot_exceeded' (actual usage exceeded overshoot tolerance). Null for non-error terminal states and while running. CRITICAL: 'orphan_timeout' indicates a SYSTEM timeout (pod crash, network partition, orphan watchdog cleanup), not a provider-side error. UX SHOULD display 'Request timed out. Please try again.' for orphan_timeout, NOT 'Provider error.' Support and analytics: orphan_timeout metrics should be tracked separately from provider_error to distinguish infrastructure issues from LLM provider issues. Mapped from internal chat_turns.error_code. Provider identifiers and billing outcome are not exposed."
           },
           "assistant_message_id": {
             "type": "string",
