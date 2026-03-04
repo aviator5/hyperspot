@@ -189,7 +189,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static, CR: ChatRepo
         }
     }
 
-    /// The configured channel capacity for the provider→writer mpsc channel.
+    /// The configured channel capacity for the provider->writer mpsc channel.
     pub(crate) fn channel_capacity(&self) -> usize {
         usize::from(self.streaming_config.sse_channel_capacity)
     }

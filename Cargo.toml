@@ -78,6 +78,7 @@ members = [
     "modules/system/oagw/oagw-sdk",
     "modules/mini-chat/mini-chat-sdk",
     "modules/mini-chat/mini-chat",
+    "modules/mini-chat/plugins/static-model-policy-plugin",
 ]
 exclude = ["fuzz"]
 resolver = "3"

@@ -97,16 +97,13 @@
         "operationId": "listChats",
         "tags": ["chats"],
         "summary": "List chats for the current user",
-        "description": "Returns chats for the authenticated user ordered by most recent activity (updated_at DESC). Supports cursor-based pagination and OData `$select` field projection. This endpoint supports OData `$select` for sparse field projection. Field names are case-insensitive. Dot notation is supported for nested objects.",
+        "description": "Returns chats for the authenticated user ordered by most recent activity (`updated_at` DESC, `id` DESC tiebreaker). Supports cursor-based pagination via `limit` and `cursor` parameters.",
         "parameters": [
-          {
-            "$ref": "#/components/parameters/PaginationCursor"
-          },
           {
             "$ref": "#/components/parameters/PaginationLimit"
           },
           {
-            "$ref": "#/components/parameters/ODataSelect"
+            "$ref": "#/components/parameters/PaginationCursor"
           }
         ],
         "responses": {
@@ -115,19 +112,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "required": ["items", "page_info"],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Chat"
-                      }
-                    },
-                    "page_info": {
-                      "$ref": "#/components/schemas/PageInfo"
-                    }
-                  }
+                  "$ref": "#/components/schemas/ChatsPage"
                 }
               }
             }
@@ -1785,6 +1770,22 @@
           "prev_cursor": {
             "type": ["string", "null"],
             "description": "Opaque cursor for fetching the previous page. Null on the first page."
+          }
+        }
+      },
+      "ChatsPage": {
+        "type": "object",
+        "required": ["items", "page_info"],
+        "description": "Paginated list of chats following the platform Page + PageInfo convention. Default ordering: `updated_at desc`, `id desc` (tiebreaker).",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatDetail"
+            }
+          },
+          "page_info": {
+            "$ref": "#/components/schemas/PageInfo"
           }
         }
       },

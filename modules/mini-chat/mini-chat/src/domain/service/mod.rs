@@ -7,7 +7,7 @@ use modkit_macros::domain_model;
 
 use crate::config::StreamingConfig;
 use crate::domain::repos::{
-    AttachmentRepository, ChatRepository, MessageRepository, ModelPrefRepository,
+    AttachmentRepository, ChatRepository, MessageRepository, ModelPrefRepository, ModelResolver,
     QuotaUsageRepository, ReactionRepository, ThreadSummaryRepository, TurnRepository,
     VectorStoreRepository,
 };
@@ -19,6 +19,8 @@ mod model_service;
 mod quota_service;
 mod reaction_service;
 mod stream_service;
+#[cfg(test)]
+pub(crate) mod test_helpers;
 
 pub(crate) use attachment_service::AttachmentService;
 pub(crate) use chat_service::ChatService;
@@ -41,7 +43,11 @@ pub(crate) mod resources {
 
     pub const CHAT: ResourceType = ResourceType {
         name: "gts.cf.core.ai_chat.chat.v1~cf.core.mini_chat.chat.v1",
-        supported_properties: &[pep_properties::OWNER_TENANT_ID, pep_properties::RESOURCE_ID],
+        supported_properties: &[
+            pep_properties::OWNER_TENANT_ID,
+            pep_properties::OWNER_ID,
+            pep_properties::RESOURCE_ID,
+        ],
     };
 }
 
@@ -96,9 +102,9 @@ pub(crate) struct AppServices<
     QR: QuotaUsageRepository + 'static,
     CR: ChatRepository + 'static,
 > {
-    pub(crate) chats: ChatService<MR, CR>,
+    pub(crate) chats: ChatService<CR>,
     pub(crate) stream: StreamService<TR, MR, CR>,
-    pub(crate) reactions: ReactionService<MR, CR>,
+    pub(crate) reactions: ReactionService<CR>,
     pub(crate) attachments: AttachmentService<CR>,
     pub(crate) models: ModelService,
     pub(crate) quota: QuotaService<QR>,
@@ -115,6 +121,7 @@ impl<
         repos: &Repositories<TR, MR, QR, CR>,
         db: Arc<DbProvider>,
         authz: Arc<dyn AuthZResolverClient>,
+        model_resolver: Arc<dyn ModelResolver>,
         llm: Arc<dyn LlmProvider>,
         streaming_config: StreamingConfig,
     ) -> Self {
@@ -124,9 +131,9 @@ impl<
             chats: ChatService::new(
                 Arc::clone(&db),
                 Arc::clone(&repos.chat),
-                Arc::clone(&repos.message),
                 Arc::clone(&repos.thread_summary),
                 enforcer.clone(),
+                model_resolver,
             ),
             stream: StreamService::new(
                 Arc::clone(&db),
@@ -140,7 +147,6 @@ impl<
             reactions: ReactionService::new(
                 Arc::clone(&db),
                 Arc::clone(&repos.reaction),
-                Arc::clone(&repos.message),
                 Arc::clone(&repos.chat),
                 enforcer.clone(),
             ),

@@ -2,6 +2,7 @@ mod attachment_repo;
 mod chat_repo;
 mod message_repo;
 mod model_pref_repo;
+mod model_resolver;
 mod quota_usage_repo;
 mod reaction_repo;
 mod thread_summary_repo;
@@ -14,6 +15,7 @@ pub(crate) use message_repo::{
     InsertAssistantMessageParams, InsertUserMessageParams, MessageRepository,
 };
 pub(crate) use model_pref_repo::ModelPrefRepository;
+pub(crate) use model_resolver::ModelResolver;
 pub(crate) use quota_usage_repo::{IncrementReserveParams, QuotaUsageRepository, SettleParams};
 pub(crate) use reaction_repo::ReactionRepository;
 pub(crate) use thread_summary_repo::ThreadSummaryRepository;

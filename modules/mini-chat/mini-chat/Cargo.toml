@@ -14,7 +14,7 @@ name = "mini_chat"
 workspace = true
 
 [dependencies]
-# SDK - public API, models, and errors
+# Plugin SDK - policy plugin traits, models, and errors
 mini-chat-sdk = { package = "cf-mini-chat-sdk", path = "../mini-chat-sdk" }
 
 # AuthZ resolver for authorization (PEP flow)
@@ -22,6 +22,9 @@ authz-resolver-sdk = { package = "cf-authz-resolver-sdk", path = "../../system/a
 
 # OAGW SDK — proxy calls, SSE stream, gateway errors
 oagw-sdk = { package = "cf-oagw-sdk", path = "../../system/oagw/oagw-sdk" }
+
+# Types registry for plugin discovery
+types-registry-sdk = { package = "cf-types-registry-sdk", path = "../../system/types-registry/types-registry-sdk" }
 
 # Core dependencies
 anyhow = { workspace = true }
@@ -62,8 +65,8 @@ thiserror = { workspace = true }
 # Local dependencies
 modkit = { workspace = true }
 modkit-db = { workspace = true, features = ["sqlite", "pg"] }
+modkit-db-macros = { workspace = true }
 modkit-security = { workspace = true }
-modkit-errors = { workspace = true }
-modkit-errors-macro = { workspace = true }
 modkit-macros = { workspace = true }
+modkit-odata = { workspace = true, features = ["with-utoipa"] }
 

@@ -3,17 +3,71 @@
 //! All REST DTOs live here; SDK `models.rs` stays transport-agnostic.
 //! Provide `From` conversions between SDK models and DTOs in this file.
 
+use crate::domain::models::ChatDetail;
 use axum::response::sse::Event;
 use serde::Serialize;
+use time::OffsetDateTime;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::infra::llm::{Citation, ToolPhase, Usage};
+
+// ════════════════════════════════════════════════════════════════════════════
+// Chat CRUD DTOs
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Request DTO for creating a new chat.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(request)]
+pub struct CreateChatReq {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// Request DTO for updating a chat title.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(request)]
+pub struct UpdateChatReq {
+    pub title: String,
+}
+
+/// Response DTO for chat details.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(response)]
+pub struct ChatDetailDto {
+    pub id: Uuid,
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub is_temporary: bool,
+    pub message_count: i64,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+}
+
+impl From<ChatDetail> for ChatDetailDto {
+    fn from(d: ChatDetail) -> Self {
+        Self {
+            id: d.id,
+            model: d.model,
+            title: d.title,
+            is_temporary: d.is_temporary,
+            message_count: d.message_count,
+            created_at: d.created_at,
+            updated_at: d.updated_at,
+        }
+    }
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // StreamEvent — the SSE wire type
 // ════════════════════════════════════════════════════════════════════════════
 
-/// SSE event for the `messages:stream` endpoint.
+/// Server-sent event envelope for the `messages:stream` endpoint.
 ///
 /// Each variant maps to a distinct `event:` name and `data:` JSON payload.
 /// Ordering grammar: `ping* delta* tool* citations? (done | error)`.

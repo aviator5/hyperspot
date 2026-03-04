@@ -2,11 +2,13 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use authz_resolver_sdk::AuthZResolverClient;
+use mini_chat_sdk::MiniChatModelPolicyPluginSpecV1;
 use modkit::api::OpenApiRegistry;
 use modkit::{DatabaseCapability, Module, ModuleCtx, RestApiCapability};
 use oagw_sdk::ServiceGatewayClientV1;
 use sea_orm_migration::MigrationTrait;
 use tracing::info;
+use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
 use crate::api::rest::routes;
 use crate::domain::service::{AppServices as GenericAppServices, Repositories};
@@ -23,6 +25,7 @@ use crate::infra::db::repo::thread_summary_repo::ThreadSummaryRepository;
 use crate::infra::db::repo::turn_repo::TurnRepository;
 use crate::infra::db::repo::vector_store_repo::VectorStoreRepository;
 use crate::infra::llm::providers::{ProviderConfig, ProviderKind, create_provider};
+use crate::infra::model_policy::ModelPolicyGateway;
 
 /// Default URL prefix for all mini-chat REST routes.
 pub const DEFAULT_URL_PREFIX: &str = "/mini-chat";
@@ -30,7 +33,7 @@ pub const DEFAULT_URL_PREFIX: &str = "/mini-chat";
 /// The mini-chat module: multi-tenant AI chat with SSE streaming.
 #[modkit::module(
     name = "mini-chat",
-    deps = ["authz-resolver", "oagw"],
+    deps = ["types-registry", "authz-resolver", "oagw"],
     capabilities = [db, rest],
 )]
 pub struct MiniChatModule {
@@ -56,6 +59,31 @@ impl Module for MiniChatModule {
         cfg.streaming
             .validate()
             .map_err(|e| anyhow::anyhow!("streaming config: {e}"))?;
+
+        let vendor = cfg.vendor.trim().to_owned();
+        if vendor.is_empty() {
+            return Err(anyhow::anyhow!(
+                "{}: vendor must be a non-empty string",
+                Self::MODULE_NAME
+            ));
+        }
+
+        // Register model-policy plugin schema in types-registry
+        let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
+        let schema_str = MiniChatModelPolicyPluginSpecV1::gts_schema_with_refs_as_string();
+        let mut schema_json: serde_json::Value = serde_json::from_str(&schema_str)?;
+        if let Some(obj) = schema_json.as_object_mut() {
+            obj.insert(
+                "additionalProperties".to_owned(),
+                serde_json::Value::Bool(false),
+            );
+        }
+        let results = registry.register(vec![schema_json]).await?;
+        RegisterResult::ensure_all_ok(&results)?;
+        info!(
+            schema_id = %MiniChatModelPolicyPluginSpecV1::gts_schema_id(),
+            "Registered model-policy plugin schema in types-registry"
+        );
 
         self.url_prefix
             .set(cfg.url_prefix)
@@ -84,7 +112,10 @@ impl Module for MiniChatModule {
         );
 
         let repos = Repositories {
-            chat: Arc::new(ChatRepository),
+            chat: Arc::new(ChatRepository::new(modkit_db::odata::LimitCfg {
+                default: 20,
+                max: 100,
+            })),
             attachment: Arc::new(AttachmentRepository),
             message: Arc::new(MessageRepository),
             quota: Arc::new(QuotaUsageRepository),
@@ -95,7 +126,15 @@ impl Module for MiniChatModule {
             vector_store: Arc::new(VectorStoreRepository),
         };
 
-        let services = Arc::new(AppServices::new(&repos, db, authz, llm, cfg.streaming));
+        let model_policy_gw = Arc::new(ModelPolicyGateway::new(ctx.client_hub(), vendor));
+        let services = Arc::new(AppServices::new(
+            &repos,
+            db,
+            authz,
+            model_policy_gw,
+            llm,
+            cfg.streaming,
+        ));
 
         self.service
             .set(services)

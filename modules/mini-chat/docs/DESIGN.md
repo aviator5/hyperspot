@@ -547,6 +547,38 @@ Request body:
 
 Response includes the resolved `model` in chat metadata. `tenant_id` and `user_id` are NOT included in API response bodies — identity is derived from the authentication context. These fields exist in the database schema for internal use only.
 
+**List Chats** (`GET /v1/chats`):
+
+Returns paginated chats using cursor-based pagination. Default ordering is `updated_at desc` (most recently active first) with `id` as tiebreaker.
+
+Query parameters:
+- `limit` (integer, optional, default 20, max 100) — page size
+- `cursor` (string, optional) — opaque cursor for next/previous page
+
+Response:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "model": "gpt-5.2",
+      "title": "Q3 Financial Analysis",
+      "is_temporary": false,
+      "message_count": 12,
+      "created_at": "2025-06-15T10:30:00Z",
+      "updated_at": "2025-06-15T10:36:30Z"
+    }
+  ],
+  "page_info": {
+    "limit": 20,
+    "next_cursor": "opaque-cursor-string",
+    "prev_cursor": null
+  }
+}
+```
+
+Each item has the same shape as `GET /v1/chats/{id}` (`ChatDetail`). Only non-deleted chats are returned. No `$filter`, `$orderby`, or `$select` support in P1 — sort is fixed to `updated_at DESC`.
+
 **Get Chat** (`GET /v1/chats/{id}`):
 
 Returns chat metadata and `message_count`. Does NOT embed messages. The UI MUST call `GET /v1/chats/{id}/messages` to load conversation history with cursor pagination.

@@ -1,39 +1,36 @@
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-// ── Chat ──
-
-/// A chat conversation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Chat {
-    pub id: Uuid,
+/// Current policy version metadata for a tenant.
+#[derive(Debug, Clone)]
+pub struct PolicyVersionInfo {
     pub tenant_id: Uuid,
-    pub user_id: Uuid,
-    pub model: String,
-    pub title: Option<String>,
-    pub is_temporary: bool,
-    pub created_at: OffsetDateTime,
-    pub updated_at: OffsetDateTime,
+    pub policy_version: u64,
+    pub generated_at: OffsetDateTime,
 }
 
-/// Data for creating a new chat.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewChat {
-    pub model: String,
-    pub title: Option<String>,
-    pub is_temporary: bool,
+/// Full policy snapshot for a given version, including the model catalog.
+#[derive(Debug, Clone)]
+pub struct PolicySnapshot {
+    pub tenant_id: Uuid,
+    pub policy_version: u64,
+    pub model_catalog: Vec<ModelCatalogEntry>,
 }
 
-/// Partial update data for a chat.
-///
-/// Uses `Option<Option<String>>` for nullable fields to distinguish
-/// "not provided" (None) from "set to null" (Some(None)).
-///
-/// Note: `model` is immutable for the chat lifetime
-/// (`cpt-cf-mini-chat-constraint-model-locked-per-chat`).
-/// `is_temporary` toggling is a P2 feature (`:temporary` endpoint).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[allow(clippy::option_option)]
-pub struct ChatPatch {
-    pub title: Option<Option<String>>,
+/// A single model in the catalog.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCatalogEntry {
+    pub model_id: String,
+    pub display_name: String,
+    pub tier: ModelTier,
+    pub global_enabled: bool,
+    pub is_default: bool,
+}
+
+/// Model pricing/capability tier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModelTier {
+    Standard,
+    Premium,
 }

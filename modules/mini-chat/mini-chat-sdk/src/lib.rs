@@ -1,10 +1,9 @@
-#![forbid(unsafe_code)]
-#![deny(rust_2018_idioms)]
-
-pub mod client;
 pub mod error;
+pub mod gts;
 pub mod models;
+pub mod plugin_api;
 
-pub use client::MiniChatClientV1;
-pub use error::MiniChatError;
-pub use models::{Chat, ChatPatch, NewChat};
+pub use error::MiniChatModelPolicyPluginError;
+pub use gts::MiniChatModelPolicyPluginSpecV1;
+pub use models::{ModelCatalogEntry, ModelTier, PolicySnapshot, PolicyVersionInfo};
+pub use plugin_api::MiniChatModelPolicyPluginClientV1;

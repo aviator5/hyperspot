@@ -9,6 +9,8 @@ pub struct MiniChatConfig {
     pub url_prefix: String,
     #[serde(default)]
     pub streaming: StreamingConfig,
+    #[serde(default = "default_vendor")]
+    pub vendor: String,
 }
 
 /// SSE streaming tuning parameters.
@@ -68,12 +70,17 @@ impl Default for MiniChatConfig {
         Self {
             url_prefix: default_url_prefix(),
             streaming: StreamingConfig::default(),
+            vendor: default_vendor(),
         }
     }
 }
 
 fn default_url_prefix() -> String {
     DEFAULT_URL_PREFIX.to_owned()
+}
+
+fn default_vendor() -> String {
+    "hyperspot".to_owned()
 }
 
 #[cfg(test)]
