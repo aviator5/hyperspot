@@ -167,3 +167,7 @@ impl<MR: MessageRepository, CR: ChatRepository> ReactionService<MR, CR> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "reaction_service_test.rs"]
+mod tests;
