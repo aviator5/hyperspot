@@ -15,6 +15,7 @@ use crate::infra::llm::LlmProvider;
 
 mod attachment_service;
 mod chat_service;
+mod message_service;
 mod model_service;
 mod quota_service;
 mod reaction_service;
@@ -24,6 +25,7 @@ pub(crate) mod test_helpers;
 
 pub(crate) use attachment_service::AttachmentService;
 pub(crate) use chat_service::ChatService;
+pub(crate) use message_service::MessageService;
 pub(crate) use model_service::ModelService;
 pub(crate) use quota_service::QuotaService;
 pub(crate) use reaction_service::ReactionService;
@@ -103,6 +105,7 @@ pub(crate) struct AppServices<
     CR: ChatRepository + 'static,
 > {
     pub(crate) chats: ChatService<CR>,
+    pub(crate) messages: MessageService<MR, CR>,
     pub(crate) stream: StreamService<TR, MR, CR>,
     pub(crate) reactions: ReactionService<CR>,
     pub(crate) attachments: AttachmentService<CR>,
@@ -134,6 +137,12 @@ impl<
                 Arc::clone(&repos.thread_summary),
                 enforcer.clone(),
                 model_resolver,
+            ),
+            messages: MessageService::new(
+                Arc::clone(&db),
+                Arc::clone(&repos.message),
+                Arc::clone(&repos.chat),
+                enforcer.clone(),
             ),
             stream: StreamService::new(
                 Arc::clone(&db),
