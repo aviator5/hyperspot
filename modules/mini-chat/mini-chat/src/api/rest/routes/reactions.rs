@@ -23,11 +23,7 @@ pub(super) fn register_reaction_routes(
     .path_param("msg_id", "Message UUID")
     .json_request::<dto::SetReactionReq>(openapi, "Reaction data")
     .handler(handlers::reactions::put_reaction)
-    .json_response_with_schema::<dto::ReactionDto>(
-        openapi,
-        http::StatusCode::OK,
-        "Reaction set",
-    )
+    .json_response_with_schema::<dto::ReactionDto>(openapi, http::StatusCode::OK, "Reaction set")
     .standard_errors(openapi)
     .register(router, openapi);
 

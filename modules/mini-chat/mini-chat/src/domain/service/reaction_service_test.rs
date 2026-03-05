@@ -13,8 +13,7 @@ use crate::domain::error::DomainError;
 use crate::domain::models::NewChat;
 
 use crate::domain::repos::{
-    InsertAssistantMessageParams, InsertUserMessageParams,
-    MessageRepository as MessageRepoTrait,
+    InsertAssistantMessageParams, InsertUserMessageParams, MessageRepository as MessageRepoTrait,
 };
 use crate::domain::service::test_helpers::{
     inmem_db, mock_db_provider, mock_enforcer, mock_model_resolver, mock_thread_summary_repo,
@@ -62,9 +61,7 @@ impl AuthZResolverClient for TenantOnlyAuthZResolver {
                 context: EvaluationResponseContext {
                     deny_reason: Some(DenyReason {
                         error_code: "tenant_mismatch".to_owned(),
-                        details: Some(
-                            "subject tenant does not match resource tenant".to_owned(),
-                        ),
+                        details: Some("subject tenant does not match resource tenant".to_owned()),
                     }),
                     ..Default::default()
                 },
@@ -124,14 +121,12 @@ fn build_chat_service(
 fn build_reaction_service(
     db_provider: Arc<crate::domain::service::DbProvider>,
     chat_repo: Arc<OrmChatRepository>,
-) -> ReactionService<OrmMessageRepository, OrmChatRepository> {
-    let message_repo = Arc::new(OrmMessageRepository::new(limit_cfg()));
+) -> ReactionService<OrmChatRepository> {
     let reaction_repo: Arc<dyn crate::domain::repos::ReactionRepository> =
         Arc::new(OrmReactionRepository);
     ReactionService::new(
         db_provider,
         reaction_repo,
-        message_repo,
         chat_repo,
         tenant_only_enforcer(),
     )
@@ -225,7 +220,7 @@ async fn set_reaction_on_assistant_message() {
         .expect("set_reaction failed");
 
     assert_eq!(reaction.message_id, assistant_msg_id);
-    assert_eq!(reaction.reaction, "like");
+    assert_eq!(reaction.kind, "like");
 }
 
 #[tokio::test]
@@ -275,14 +270,14 @@ async fn set_reaction_upsert_replaces() {
         .set_reaction(&ctx, chat_id, assistant_msg_id, "like")
         .await
         .expect("set_reaction like failed");
-    assert_eq!(r1.reaction, "like");
+    assert_eq!(r1.kind, "like");
 
     // Second: set "dislike" — should replace
     let r2 = reaction_svc
         .set_reaction(&ctx, chat_id, assistant_msg_id, "dislike")
         .await
         .expect("set_reaction dislike failed");
-    assert_eq!(r2.reaction, "dislike");
+    assert_eq!(r2.kind, "dislike");
 }
 
 #[tokio::test]
@@ -361,7 +356,10 @@ async fn delete_reaction_idempotent() {
         .expect("delete_reaction should be idempotent");
 
     assert_eq!(result.message_id, assistant_msg_id);
-    assert!(result.deleted, "Expected deleted = true even without prior reaction");
+    assert!(
+        result.deleted,
+        "Expected deleted = true even without prior reaction"
+    );
 }
 
 #[tokio::test]

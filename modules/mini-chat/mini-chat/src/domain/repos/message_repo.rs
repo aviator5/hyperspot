@@ -61,8 +61,8 @@ pub trait MessageRepository: Send + Sync {
         request_id: Uuid,
     ) -> Result<Vec<MessageModel>, DomainError>;
 
-    /// List messages for a chat with cursor pagination + OData filter/sort.
-    /// Only returns messages with `request_id IS NOT NULL` and `deleted_at IS NULL`.
+    /// List messages for a chat with cursor pagination + `OData` filter/sort.
+    /// Only returns messages with `request_id` IS NOT NULL and `deleted_at` IS NULL.
     async fn list_by_chat<C: DBRunner>(
         &self,
         runner: &C,

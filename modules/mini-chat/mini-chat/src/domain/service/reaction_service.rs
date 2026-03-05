@@ -10,35 +10,30 @@ use uuid::Uuid;
 
 use crate::domain::error::DomainError;
 use crate::domain::models::{Reaction, ReactionDeleted};
-use crate::domain::repos::{ChatRepository, MessageRepository, ReactionRepository};
-use crate::infra::db::entity::message::{
-    Column as MsgCol, Entity as MsgEntity, MessageRole,
-};
+use crate::domain::repos::{ChatRepository, ReactionRepository, UpsertReactionParams};
+use crate::infra::db::entity::message::{Column as MsgCol, Entity as MsgEntity, MessageRole};
 
 use super::{DbProvider, actions, resources};
 
 /// Service handling message reaction operations.
 #[domain_model]
-pub struct ReactionService<MR: MessageRepository, CR: ChatRepository> {
+pub struct ReactionService<CR: ChatRepository> {
     db: Arc<DbProvider>,
     reaction_repo: Arc<dyn ReactionRepository>,
-    _message_repo: Arc<MR>,
     chat_repo: Arc<CR>,
     enforcer: PolicyEnforcer,
 }
 
-impl<MR: MessageRepository, CR: ChatRepository> ReactionService<MR, CR> {
+impl<CR: ChatRepository> ReactionService<CR> {
     pub(crate) fn new(
         db: Arc<DbProvider>,
         reaction_repo: Arc<dyn ReactionRepository>,
-        _message_repo: Arc<MR>,
         chat_repo: Arc<CR>,
         enforcer: PolicyEnforcer,
     ) -> Self {
         Self {
             db,
             reaction_repo,
-            _message_repo,
             chat_repo,
             enforcer,
         }
@@ -94,19 +89,20 @@ impl<MR: MessageRepository, CR: ChatRepository> ReactionService<MR, CR> {
             return Err(DomainError::invalid_reaction_target(msg_id));
         }
 
-        let id = Uuid::now_v7();
-        let tenant_id = ctx.subject_tenant_id();
-        let user_id = ctx.subject_id();
+        let params = UpsertReactionParams {
+            id: Uuid::now_v7(),
+            tenant_id: ctx.subject_tenant_id(),
+            message_id: msg_id,
+            user_id: ctx.subject_id(),
+            reaction: reaction.to_owned(),
+        };
 
-        let model = self
-            .reaction_repo
-            .upsert(&conn, &scope, id, tenant_id, msg_id, user_id, reaction)
-            .await?;
+        let model = self.reaction_repo.upsert(&conn, &scope, params).await?;
 
         tracing::debug!("Successfully set reaction");
         Ok(Reaction {
             message_id: model.message_id,
-            reaction: model.reaction,
+            kind: model.reaction,
             created_at: model.created_at,
         })
     }

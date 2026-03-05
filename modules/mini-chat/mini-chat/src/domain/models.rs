@@ -79,7 +79,7 @@ pub struct Message {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reaction {
     pub message_id: Uuid,
-    pub reaction: String,
+    pub kind: String,
     pub created_at: OffsetDateTime,
 }
 

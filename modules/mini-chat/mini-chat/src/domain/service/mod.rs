@@ -107,7 +107,7 @@ pub(crate) struct AppServices<
     pub(crate) chats: ChatService<CR>,
     pub(crate) messages: MessageService<MR, CR>,
     pub(crate) stream: StreamService<TR, MR, CR>,
-    pub(crate) reactions: ReactionService<MR, CR>,
+    pub(crate) reactions: ReactionService<CR>,
     pub(crate) attachments: AttachmentService<CR>,
     pub(crate) models: ModelService,
     pub(crate) quota: QuotaService<QR>,
@@ -156,7 +156,6 @@ impl<
             reactions: ReactionService::new(
                 Arc::clone(&db),
                 Arc::clone(&repos.reaction),
-                Arc::clone(&repos.message),
                 Arc::clone(&repos.chat),
                 enforcer.clone(),
             ),

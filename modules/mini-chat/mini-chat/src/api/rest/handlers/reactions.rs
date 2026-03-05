@@ -30,9 +30,6 @@ pub(crate) async fn delete_reaction(
     Extension(svc): Extension<Arc<AppServices>>,
     Path((chat_id, msg_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<JsonBody<ReactionDeletedDto>> {
-    let result = svc
-        .reactions
-        .delete_reaction(&ctx, chat_id, msg_id)
-        .await?;
+    let result = svc.reactions.delete_reaction(&ctx, chat_id, msg_id).await?;
     Ok(Json(ReactionDeletedDto::from(result)))
 }

@@ -14,8 +14,7 @@ use crate::domain::error::DomainError;
 use crate::domain::models::NewChat;
 
 use crate::domain::repos::{
-    InsertAssistantMessageParams, InsertUserMessageParams,
-    MessageRepository as MessageRepoTrait,
+    InsertAssistantMessageParams, InsertUserMessageParams, MessageRepository as MessageRepoTrait,
 };
 use crate::domain::service::test_helpers::{
     inmem_db, mock_db_provider, mock_enforcer, mock_model_resolver, mock_thread_summary_repo,
@@ -62,9 +61,7 @@ impl AuthZResolverClient for TenantOnlyAuthZResolver {
                 context: EvaluationResponseContext {
                     deny_reason: Some(DenyReason {
                         error_code: "tenant_mismatch".to_owned(),
-                        details: Some(
-                            "subject tenant does not match resource tenant".to_owned(),
-                        ),
+                        details: Some("subject tenant does not match resource tenant".to_owned()),
                     }),
                     ..Default::default()
                 },

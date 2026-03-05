@@ -127,7 +127,7 @@ impl From<crate::domain::models::Reaction> for ReactionDto {
     fn from(r: crate::domain::models::Reaction) -> Self {
         Self {
             message_id: r.message_id,
-            reaction: r.reaction,
+            reaction: r.kind,
             created_at: r.created_at,
         }
     }
