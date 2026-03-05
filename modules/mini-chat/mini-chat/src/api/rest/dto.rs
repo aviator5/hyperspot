@@ -64,6 +64,93 @@ impl From<ChatDetail> for ChatDetailDto {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Message DTOs
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Response DTO for a message in the list endpoint.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(response)]
+pub struct MessageDto {
+    pub id: Uuid,
+    pub request_id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub attachment_ids: Vec<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i64>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
+impl From<crate::domain::models::Message> for MessageDto {
+    fn from(m: crate::domain::models::Message) -> Self {
+        Self {
+            id: m.id,
+            request_id: m.request_id,
+            role: m.role,
+            content: m.content,
+            attachment_ids: m.attachment_ids,
+            model: m.model,
+            input_tokens: m.input_tokens,
+            output_tokens: m.output_tokens,
+            created_at: m.created_at,
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Reaction DTOs
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Request DTO for setting a reaction.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(request)]
+pub struct SetReactionReq {
+    pub reaction: String,
+}
+
+/// Response DTO for a reaction.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(response)]
+pub struct ReactionDto {
+    pub message_id: Uuid,
+    pub reaction: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
+impl From<crate::domain::models::Reaction> for ReactionDto {
+    fn from(r: crate::domain::models::Reaction) -> Self {
+        Self {
+            message_id: r.message_id,
+            reaction: r.reaction,
+            created_at: r.created_at,
+        }
+    }
+}
+
+/// Response DTO for reaction deletion.
+#[derive(Debug, Clone)]
+#[modkit_macros::api_dto(response)]
+pub struct ReactionDeletedDto {
+    pub message_id: Uuid,
+    pub deleted: bool,
+}
+
+impl From<crate::domain::models::ReactionDeleted> for ReactionDeletedDto {
+    fn from(r: crate::domain::models::ReactionDeleted) -> Self {
+        Self {
+            message_id: r.message_id,
+            deleted: r.deleted,
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // StreamEvent — the SSE wire type
 // ════════════════════════════════════════════════════════════════════════════
 
