@@ -117,7 +117,10 @@ impl Module for MiniChatModule {
                 max: 100,
             })),
             attachment: Arc::new(AttachmentRepository),
-            message: Arc::new(MessageRepository),
+            message: Arc::new(MessageRepository::new(modkit_db::odata::LimitCfg {
+                default: 20,
+                max: 100,
+            })),
             quota: Arc::new(QuotaUsageRepository),
             turn: Arc::new(TurnRepository),
             reaction: Arc::new(ReactionRepository),
