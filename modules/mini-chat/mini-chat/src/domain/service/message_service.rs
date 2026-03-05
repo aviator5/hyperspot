@@ -104,3 +104,7 @@ impl<MR: MessageRepository, CR: ChatRepository> MessageService<MR, CR> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "message_service_test.rs"]
+mod tests;
