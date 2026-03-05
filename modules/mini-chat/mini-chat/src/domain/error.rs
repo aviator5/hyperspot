@@ -30,6 +30,12 @@ pub enum DomainError {
     #[error("Access denied")]
     Forbidden,
 
+    #[error("Message not found: {id}")]
+    MessageNotFound { id: Uuid },
+
+    #[error("Invalid reaction target: message {id} is not an assistant message")]
+    InvalidReactionTarget { id: Uuid },
+
     #[error("Internal error: {message}")]
     InternalError { message: String },
 }
@@ -77,6 +83,16 @@ impl DomainError {
         Self::InternalError {
             message: message.into(),
         }
+    }
+
+    #[must_use]
+    pub fn message_not_found(id: Uuid) -> Self {
+        Self::MessageNotFound { id }
+    }
+
+    #[must_use]
+    pub fn invalid_reaction_target(id: Uuid) -> Self {
+        Self::InvalidReactionTarget { id }
     }
 
     #[must_use]

@@ -54,3 +54,39 @@ pub struct NewChat {
 pub struct ChatPatch {
     pub title: Option<Option<String>>,
 }
+
+// ── Message ──
+
+/// A chat message as returned by the list endpoint.
+#[domain_model]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Message {
+    pub id: Uuid,
+    pub request_id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub attachment_ids: Vec<Uuid>,
+    pub model: Option<String>,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub created_at: OffsetDateTime,
+}
+
+// ── Reaction ──
+
+/// A reaction on an assistant message.
+#[domain_model]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reaction {
+    pub message_id: Uuid,
+    pub reaction: String,
+    pub created_at: OffsetDateTime,
+}
+
+/// Result of a reaction deletion.
+#[domain_model]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReactionDeleted {
+    pub message_id: Uuid,
+    pub deleted: bool,
+}

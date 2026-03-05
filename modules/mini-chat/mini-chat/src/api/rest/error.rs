@@ -47,6 +47,20 @@ impl From<DomainError> for Problem {
             )
             .with_trace_id(trace_id.unwrap_or_default()),
 
+            DomainError::MessageNotFound { id } => Problem::new(
+                StatusCode::NOT_FOUND,
+                "Message Not Found",
+                format!("Message with id {id} was not found"),
+            )
+            .with_trace_id(trace_id.unwrap_or_default()),
+
+            DomainError::InvalidReactionTarget { id } => Problem::new(
+                StatusCode::BAD_REQUEST,
+                "Invalid Reaction Target",
+                format!("Message {id} is not an assistant message"),
+            )
+            .with_trace_id(trace_id.unwrap_or_default()),
+
             DomainError::Database { .. } | DomainError::InternalError { .. } => {
                 tracing::error!(error = ?e, "Internal error occurred");
                 Problem::new(
