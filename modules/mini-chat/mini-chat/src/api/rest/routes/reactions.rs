@@ -3,7 +3,7 @@ use modkit::api::OpenApiRegistry;
 use modkit::api::operation_builder::OperationBuilder;
 
 use super::AiChatLicense;
-use crate::api::rest::handlers;
+use crate::api::rest::{dto, handlers};
 
 pub(super) fn register_reaction_routes(
     mut router: Router,
@@ -21,8 +21,13 @@ pub(super) fn register_reaction_routes(
     .require_license_features([&AiChatLicense])
     .path_param("id", "Chat UUID")
     .path_param("msg_id", "Message UUID")
+    .json_request::<dto::SetReactionReq>(openapi, "Reaction data")
     .handler(handlers::reactions::put_reaction)
-    .json_response(http::StatusCode::OK, "Reaction set")
+    .json_response_with_schema::<dto::ReactionDto>(
+        openapi,
+        http::StatusCode::OK,
+        "Reaction set",
+    )
     .standard_errors(openapi)
     .register(router, openapi);
 
@@ -38,7 +43,11 @@ pub(super) fn register_reaction_routes(
     .path_param("id", "Chat UUID")
     .path_param("msg_id", "Message UUID")
     .handler(handlers::reactions::delete_reaction)
-    .json_response(http::StatusCode::NO_CONTENT, "Reaction removed")
+    .json_response_with_schema::<dto::ReactionDeletedDto>(
+        openapi,
+        http::StatusCode::OK,
+        "Reaction removed",
+    )
     .standard_errors(openapi)
     .register(router, openapi);
 

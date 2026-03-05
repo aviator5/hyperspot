@@ -18,8 +18,19 @@ pub(super) fn register_message_routes(
         .authenticated()
         .require_license_features([&AiChatLicense])
         .path_param("id", "Chat UUID")
+        .query_param_typed(
+            "limit",
+            false,
+            "Maximum number of messages to return",
+            "integer",
+        )
+        .query_param("cursor", false, "Cursor for pagination")
         .handler(handlers::messages::list_messages)
-        .json_response(http::StatusCode::OK, "List of messages")
+        .json_response_with_schema::<modkit_odata::Page<dto::MessageDto>>(
+            openapi,
+            http::StatusCode::OK,
+            "Paginated list of messages",
+        )
         .standard_errors(openapi)
         .register(router, openapi);
 

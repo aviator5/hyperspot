@@ -9,6 +9,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use futures::Stream;
+use modkit::api::odata::OData;
 use modkit::api::prelude::*;
 use modkit_security::SecurityContext;
 use tokio::sync::mpsc;
@@ -16,19 +17,23 @@ use tokio::time::{Interval, interval};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use crate::api::rest::dto::{StreamEvent, StreamEventKind, StreamMessageRequest, StreamPhase};
+use crate::api::rest::dto::{
+    MessageDto, StreamEvent, StreamEventKind, StreamMessageRequest, StreamPhase,
+};
 use crate::domain::service::StreamError;
 use crate::module::AppServices;
 
-use super::not_implemented;
-
 /// GET /mini-chat/v1/chats/{id}/messages
+#[tracing::instrument(skip(svc, ctx, query))]
 pub(crate) async fn list_messages(
-    Extension(_ctx): Extension<SecurityContext>,
-    Extension(_svc): Extension<Arc<AppServices>>,
-    Path(_chat_id): Path<uuid::Uuid>,
-) -> ApiResult<StatusCode> {
-    Err(not_implemented())
+    Extension(ctx): Extension<SecurityContext>,
+    Extension(svc): Extension<Arc<AppServices>>,
+    Path(chat_id): Path<uuid::Uuid>,
+    OData(query): OData,
+) -> ApiResult<JsonPage<MessageDto>> {
+    let page = svc.messages.list_messages(&ctx, chat_id, &query).await?;
+    let page = page.map_items(MessageDto::from);
+    Ok(Json(page))
 }
 
 /// POST /mini-chat/v1/chats/{id}/messages/stream
