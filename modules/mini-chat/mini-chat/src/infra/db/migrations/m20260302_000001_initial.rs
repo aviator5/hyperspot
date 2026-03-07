@@ -31,7 +31,6 @@ impl MigrationTrait for Migration {
 
 const DOWN: &str = r"
 DROP TABLE IF EXISTS message_reactions;
-DROP TABLE IF EXISTS user_model_prefs;
 DROP TABLE IF EXISTS quota_usage;
 DROP TABLE IF EXISTS chat_vector_stores;
 DROP TABLE IF EXISTS thread_summaries;
@@ -223,20 +222,7 @@ CREATE TABLE IF NOT EXISTS quota_usage (
     UNIQUE (tenant_id, user_id, period_type, period_start, bucket)
 );
 
--- 8. user_model_prefs
-CREATE TABLE IF NOT EXISTS user_model_prefs (
-    tenant_id   UUID NOT NULL,
-    user_id     UUID NOT NULL,
-    model_id    VARCHAR(64) NOT NULL,
-    is_enabled  BOOLEAN NOT NULL DEFAULT TRUE,
-    overrides   JSONB NOT NULL DEFAULT '{}',
-    updated_at  TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (tenant_id, user_id, model_id)
-);
-CREATE INDEX IF NOT EXISTS idx_user_model_prefs_tenant_user
-    ON user_model_prefs (tenant_id, user_id);
-
--- 9. message_reactions
+-- 8. message_reactions
 CREATE TABLE IF NOT EXISTS message_reactions (
     id          UUID PRIMARY KEY NOT NULL,
     tenant_id   UUID NOT NULL,
@@ -430,20 +416,7 @@ CREATE TABLE IF NOT EXISTS quota_usage (
     UNIQUE (tenant_id, user_id, period_type, period_start, bucket)
 );
 
--- 8. user_model_prefs
-CREATE TABLE IF NOT EXISTS user_model_prefs (
-    tenant_id   TEXT NOT NULL,
-    user_id     TEXT NOT NULL,
-    model_id    TEXT NOT NULL,
-    is_enabled  INTEGER NOT NULL DEFAULT 1,
-    overrides   TEXT NOT NULL DEFAULT '{}',
-    updated_at  TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, user_id, model_id)
-);
-CREATE INDEX IF NOT EXISTS idx_user_model_prefs_tenant_user
-    ON user_model_prefs (tenant_id, user_id);
-
--- 9. message_reactions
+-- 8. message_reactions
 CREATE TABLE IF NOT EXISTS message_reactions (
     id          TEXT PRIMARY KEY NOT NULL,
     tenant_id   TEXT NOT NULL,
