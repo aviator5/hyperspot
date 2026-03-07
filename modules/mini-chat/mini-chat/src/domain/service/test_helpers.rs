@@ -130,6 +130,7 @@ impl ModelResolver for MockModelResolver {
         match model {
             None => Ok(ResolvedModel {
                 model_id: "gpt-5.2".to_owned(),
+                provider_model_id: "gpt-5.2".to_owned(),
                 provider_id: "openai".to_owned(),
             }),
             Some(m) if m.is_empty() => Err(DomainError::invalid_model("model must not be empty")),
@@ -138,7 +139,8 @@ impl ModelResolver for MockModelResolver {
                     catalog.iter().find(|(id, _, enabled)| *id == m && *enabled)
                 {
                     Ok(ResolvedModel {
-                        model_id: m,
+                        model_id: m.clone(),
+                        provider_model_id: m,
                         provider_id: provider_id.to_string(),
                     })
                 } else {

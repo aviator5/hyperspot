@@ -9,6 +9,8 @@ use crate::domain::error::DomainError;
 #[domain_model]
 pub struct ResolvedModel {
     pub model_id: String,
+    /// Provider-side model ID (e.g. `"gpt-5.2"`, `"claude-opus-4-6"`). Sent in LLM API requests.
+    pub provider_model_id: String,
     /// Maps to a key in `MiniChatConfig.providers` (e.g. `"openai"`, `"azure_openai"`).
     pub provider_id: String,
 }

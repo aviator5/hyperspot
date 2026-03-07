@@ -301,6 +301,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static, CR: ChatRepo
         tx: mpsc::Sender<StreamEvent>,
     ) -> Result<tokio::task::JoinHandle<StreamOutcome>, StreamError> {
         let model = resolved_model.model_id;
+        let provider_model_id = resolved_model.provider_model_id;
         let provider_id = resolved_model.provider_id;
 
         let tenant_id = ctx.subject_tenant_id();
@@ -457,7 +458,10 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static, CR: ChatRepo
             }
         })?;
         // Build the full OAGW proxy path: {alias}{api_path} with {model} substituted.
-        let api_path = resolved_provider.api_path.replace("{model}", &model);
+        // Use provider_model_id (the actual provider-facing model name) for the LLM request.
+        let api_path = resolved_provider
+            .api_path
+            .replace("{model}", &provider_model_id);
         let proxy_path = format!("{}{api_path}", resolved_provider.upstream_alias);
 
         Ok(spawn_provider_task(
@@ -465,7 +469,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static, CR: ChatRepo
             proxy_path,
             ctx,
             content,
-            model,
+            provider_model_id,
             cancel,
             tx,
             Some(finalization_ctx),
@@ -1397,6 +1401,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel,
@@ -1462,6 +1467,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel,
@@ -1500,6 +1506,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel,
@@ -1554,6 +1561,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel1,
@@ -1582,6 +1590,7 @@ mod tests {
                 "hello again".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel2,
@@ -1668,6 +1677,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel.clone(),
@@ -1736,6 +1746,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel,
@@ -1776,6 +1787,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5.2".into(),
+                    provider_model_id: "gpt-5.2".into(),
                     provider_id: "openai".into(),
                 },
                 cancel,

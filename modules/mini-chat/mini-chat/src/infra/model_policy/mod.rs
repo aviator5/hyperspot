@@ -101,6 +101,7 @@ impl ModelResolver for ModelPolicyGateway {
                 match default {
                     Some(entry) => Ok(ResolvedModel {
                         model_id: entry.model_id.clone(),
+                        provider_model_id: entry.provider_model_id.clone(),
                         provider_id: entry.provider_id.clone(),
                     }),
                     None => Err(DomainError::invalid_model("no models available in catalog")),
@@ -119,6 +120,7 @@ impl ModelResolver for ModelPolicyGateway {
                 match entry {
                     Some(e) => Ok(ResolvedModel {
                         model_id: e.model_id.clone(),
+                        provider_model_id: e.provider_model_id.clone(),
                         provider_id: e.provider_id.clone(),
                     }),
                     None => Err(DomainError::invalid_model(&model)),

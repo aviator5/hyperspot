@@ -1090,7 +1090,7 @@ Response fields per item:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model_id` | string | Stable internal model identifier (e.g., `"gpt-5.2"`). Same value used in `POST /v1/chats` and `chats.model`. |
+| `model_id` | string | Stable internal model identifier (e.g., a UUID or any opaque string). Same value used in `POST /v1/chats` and `chats.model`. Format is not prescribed — may be a UUID, slug, or any unique string. |
 | `display_name` | string | User-facing name for the model selector UI. |
 | `provider` | string | User-facing display name of the provider (e.g., `"OpenAI"`, `"Azure OpenAI"`). MUST NOT be a deployment handle, routing identifier, or internal provider key. |
 | `tier` | `"standard"` \| `"premium"` | Rate-limit tier. |
@@ -1124,9 +1124,9 @@ The domain service computes model visibility as follows:
 
 ##### Non-Exposure Rules (Models API)
 
-- Response MUST NOT include: provider deployment IDs, routing metadata, credit multipliers (`input_tokens_credit_multiplier`, `output_tokens_credit_multiplier`, `credits_micro`), `policy_version`, `max_output`, or `is_default`.
+- Response MUST NOT include: `provider_model_id`, provider deployment IDs, routing metadata, credit multipliers (`input_tokens_credit_multiplier`, `output_tokens_credit_multiplier`, `credits_micro`), `policy_version`, `max_output`, or `is_default`.
 - `provider` MUST be the user-facing display name (e.g., `"OpenAI"`, `"Azure OpenAI"`), not a deployment handle, OAGW routing identifier, or internal provider key.
-- `model_id` is the stable internal identifier used by the API (e.g., `"gpt-5.2"`), never a provider deployment handle.
+- `model_id` is the stable internal identifier used by the API (e.g., a UUID or opaque slug), never a provider model name or deployment handle.
 
 #### Message Reaction API
 
@@ -1556,7 +1556,7 @@ sequenceDiagram
 | id | UUID | Chat identifier |
 | tenant_id | UUID | Owning tenant |
 | user_id | UUID | Owning user |
-| model | VARCHAR(64) | **selected_model**: model chosen at chat creation, immutable for the chat lifetime. Must reference a valid entry in the model catalog. Resolved via the `is_default` premium model algorithm if not specified at creation (see Model Catalog Configuration). |
+| model | TEXT | **selected_model**: model chosen at chat creation, immutable for the chat lifetime. Must reference a valid entry in the model catalog. Resolved via the `is_default` premium model algorithm if not specified at creation (see Model Catalog Configuration). |
 | title | VARCHAR(255) | Chat title (user-set or auto-generated) |
 | is_temporary | BOOLEAN | If true, auto-deleted after 24h (P2; default false at P1) |
 | created_at | TIMESTAMPTZ | Creation time |
@@ -1589,7 +1589,7 @@ sequenceDiagram
 | features_used | JSONB | Feature flags and counters (nullable) |
 | input_tokens | BIGINT | Actual input tokens for assistant messages (nullable) |
 | output_tokens | BIGINT | Actual output tokens for assistant messages (nullable) |
-| model | VARCHAR(64) | **effective_model**: actual model used for this turn after quota/policy evaluation (nullable; set for assistant messages). May differ from `chats.model` (selected_model) when a downgrade occurred. Derived from `chat_turns.effective_model`. |
+| model | TEXT | **effective_model**: actual model used for this turn after quota/policy evaluation (nullable; set for assistant messages). May differ from `chats.model` (selected_model) when a downgrade occurred. Derived from `chat_turns.effective_model`. |
 | is_compressed | BOOLEAN | True if included in a thread summary |
 | created_at | TIMESTAMPTZ | Creation time |
 | deleted_at | TIMESTAMPTZ | Soft-delete timestamp (nullable). List queries exclude deleted rows. |
@@ -1624,7 +1624,7 @@ Tracks idempotency and in-progress generation state for `request_id`. This avoid
 | max_output_tokens_applied | INTEGER | The `max_output_tokens` value used at preflight for this turn. Persisted at preflight (same time as `reserve_tokens`). Nullable — NULL only for pre-reserve failures. Immutable after insert. Required for deterministic derivation of `estimated_input_tokens` at settlement time: `estimated_input_tokens = reserve_tokens - max_output_tokens_applied` (sections 5.8, 5.9). |
 | reserved_credits_micro | BIGINT | Worst-case credit reserve computed at preflight: `credits_micro(estimated_input_tokens, max_output_tokens_applied, in_mult, out_mult)` where `estimated_input_tokens = reserve_tokens - max_output_tokens_applied` (section 5.4.1), using multipliers from the policy snapshot identified by `policy_version_applied`. Persisted at preflight. Nullable — NULL only for pre-reserve failures. Immutable after insert. Used for reserve release/reconciliation at settlement (section 5.4.4). |
 | policy_version_applied | BIGINT | Monotonic version of the policy snapshot (section 5.2.1) used for this turn's preflight reserve, tier selection, and settlement. Persisted at preflight. Nullable — NULL only for pre-reserve failures. Immutable after insert. Required for deterministic credit computation at settlement and for CCM billing reconciliation. |
-| effective_model | VARCHAR(64) | Model resolved at preflight after quota downgrade cascade. Persisted at preflight. Nullable — NULL only for pre-reserve failures. Immutable after insert. **Single source of truth** for the model used in this turn. Also recorded on `messages.model` for the assistant message. |
+| effective_model | TEXT | Model resolved at preflight after quota downgrade cascade. Persisted at preflight. Nullable — NULL only for pre-reserve failures. Immutable after insert. **Single source of truth** for the model used in this turn. Also recorded on `messages.model` for the assistant message. |
 | minimal_generation_floor_applied | INTEGER | The `minimal_generation_floor` value from MiniChat config (NOT from CCM policy snapshot) captured at preflight. Persisted at preflight (same time as `reserve_tokens` and `policy_version_applied`). Nullable — NULL only for pre-reserve failures. Immutable after insert. Required for deterministic estimated settlement (sections 5.8, 5.9) when provider-reported usage is unavailable (aborted/failed/orphan outcomes). This is the ONLY estimation budget parameter that influences settlement; all other estimation budgets (bytes_per_token_conservative, safety_margin_pct, etc.) are preflight-only and MUST NOT affect settlement. |
 | error_detail | TEXT | Non-sensitive diagnostic information for failed turns (nullable). Not exposed in public API. |
 | deleted_at | TIMESTAMPTZ | Soft-delete timestamp for turn mutations (nullable). Set when a turn is replaced by retry or edit, or explicitly deleted. |
@@ -1682,7 +1682,7 @@ Soft-delete rules:
 | img_thumbnail | BYTEA | Server-generated preview thumbnail raw bytes (nullable; always NULL for `attachment_kind=document`). Stored as WebP. Maximum decoded size: `thumbnail_max_bytes` (default 131072 / 128 KiB). Stored only in this database; never uploaded to provider. |
 | img_thumbnail_width | INTEGER | Thumbnail width in pixels (nullable) |
 | img_thumbnail_height | INTEGER | Thumbnail height in pixels (nullable) |
-| summary_model | VARCHAR(64) | Model used to generate the summary (nullable) |
+| summary_model | TEXT | Model used to generate the summary (nullable) |
 | summary_updated_at | TIMESTAMPTZ | When the summary was last generated (nullable) |
 | cleanup_status | VARCHAR(16) | `pending`, `in_progress`, `done`, `failed` (nullable) |
 | cleanup_attempts | INTEGER | Cleanup retry attempts (default 0) |
@@ -2638,6 +2638,7 @@ Each entry specifies the model identifier, provider, tier, capability flags, and
 ```yaml
 model_catalog:
   - model_id: "gpt-5.2"
+    provider_model_id: "gpt-5.2"
     display_name: "GPT-5.2"
     provider: "openai"
     tier: premium
@@ -2648,6 +2649,7 @@ model_catalog:
     max_output: 4096
     is_default: true
   - model_id: "gpt-5-mini"
+    provider_model_id: "gpt-5-mini"
     display_name: "GPT-5 Mini"
     provider: "openai"
     tier: standard
@@ -2663,7 +2665,8 @@ model_catalog:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `model_id` | string | yes | Internal model identifier passed to the provider (e.g., `gpt-5.2`). |
+| `model_id` | string | yes | Stable internal model identifier used in the REST API, stored in the database, and referenced in billing/quota. Format is not prescribed — may be a UUID, slug, or any unique string. |
+| `provider_model_id` | string | yes | The name that identifies the model on the provider side (e.g., `"gpt-5.2"` for OpenAI, `"claude-opus-4-6"` for Anthropic). This is the value sent in LLM API requests. |
 | `display_name` | string | yes | User-facing name shown in model selector UI (e.g., "GPT-5.2"). |
 | `provider` | string | yes | Internal provider routing identifier. P1 values: `"openai"`, `"azure_openai"`. |
 | `tier` | `premium` \| `standard` | yes | Determines rate limiting behavior and downgrade cascade order. |
@@ -2692,6 +2695,7 @@ Operational configuration of rate limits, quota allocations, and model catalog i
 | Property | Rule |
 |----------|------|
 | `model_id` | Non-empty string, unique across catalog |
+| `provider_model_id` | Non-empty string |
 | `display_name` | Non-empty string |
 | `provider` | One of: `"openai"`, `"azure_openai"` |
 | `tier` | One of: `premium`, `standard` |
@@ -3517,6 +3521,7 @@ Contents (logically):
 - `model_catalog`:
 
   - `model_id`
+  - `provider_model_id` (the name that identifies the model on the provider side, e.g. `"gpt-5.2"`, `"claude-opus-4-6"`; sent in LLM API requests)
   - `display_name` (user-facing name; used by Models API)
   - `provider_display_name` (user-facing display name, e.g. `"OpenAI"`, `"Azure OpenAI"`; used by Models API — MUST NOT be a deployment handle, routing identifier, or internal provider key)
   - `tier` (premium/standard)
@@ -6088,6 +6093,7 @@ All fields below are per-model entries inside the catalog.
 | Parameter | Type | Source | CCM API field |
 |-----------|------|--------|---------------|
 | `model_id` | `string` | **CCM API**: `GET /policies/{v}` | `snapshot.model_catalog[].model_id` |
+| `provider_model_id` | `string` | **CCM API**: `GET /policies/{v}` | `snapshot.model_catalog[].provider_model_id` |
 | `display_name` | `string` | **CCM API**: `GET /policies/{v}` | `snapshot.model_catalog[].display_name` |
 | `provider` | `string` | **CCM API**: `GET /policies/{v}` | `snapshot.model_catalog[].provider_id` + `provider_display_name` |
 | `tier` | `string` | **CCM API**: `GET /policies/{v}` | `snapshot.model_catalog[].tier` |
