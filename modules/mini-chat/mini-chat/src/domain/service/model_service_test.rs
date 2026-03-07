@@ -16,7 +16,7 @@ fn mock_catalog() -> Vec<ModelCatalogEntry> {
     vec![
         ModelCatalogEntry {
             model_id: "gpt-5.2".to_owned(),
-            provider_model_id: "azure-gpt-5.2-2025-03".to_owned(),
+            provider_model_id: "gpt-5.2-2025-03-26".to_owned(),
             display_name: "GPT-5.2".to_owned(),
             tier: ModelTier::Premium,
             global_enabled: true,
@@ -33,7 +33,7 @@ fn mock_catalog() -> Vec<ModelCatalogEntry> {
         },
         ModelCatalogEntry {
             model_id: "gpt-5-mini".to_owned(),
-            provider_model_id: "azure-gpt-5-mini-2025-03".to_owned(),
+            provider_model_id: "gpt-5-mini-2025-03-26".to_owned(),
             display_name: "GPT-5 Mini".to_owned(),
             tier: ModelTier::Standard,
             global_enabled: true,
@@ -50,7 +50,7 @@ fn mock_catalog() -> Vec<ModelCatalogEntry> {
         },
         ModelCatalogEntry {
             model_id: "disabled-model".to_owned(),
-            provider_model_id: "azure-disabled-2025-03".to_owned(),
+            provider_model_id: "disabled-model-2025-03-26".to_owned(),
             display_name: "Disabled Model".to_owned(),
             tier: ModelTier::Standard,
             global_enabled: false,

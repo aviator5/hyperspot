@@ -1497,7 +1497,7 @@ mod tests {
                     policy_version: 1,
                     model_catalog: vec![mini_chat_sdk::ModelCatalogEntry {
                         model_id: "gpt-5.2".to_owned(),
-                        provider_model_id: "azure-gpt-5.2-2025-03".to_owned(),
+                        provider_model_id: "gpt-5.2-2025-03-26".to_owned(),
                         display_name: "GPT 5.2".to_owned(),
                         tier: mini_chat_sdk::ModelTier::Standard,
                         global_enabled: true,
@@ -1577,7 +1577,7 @@ mod tests {
     fn test_resolved_model() -> ResolvedModel {
         ResolvedModel {
             model_id: "gpt-5.2".into(),
-            provider_model_id: "azure-gpt-5.2-2025-03".into(),
+            provider_model_id: "gpt-5.2-2025-03-26".into(),
             provider_id: "openai".into(),
             display_name: "GPT 5.2".into(),
             tier: "standard".into(),
@@ -2661,7 +2661,7 @@ mod tests {
                 "hello".into(),
                 ResolvedModel {
                     model_id: "gpt-5".into(),
-                    provider_model_id: "azure-gpt-5-2025-03".into(),
+                    provider_model_id: "gpt-5-2025-03-26".into(),
                     provider_id: "openai".into(),
                     display_name: "GPT 5".into(),
                     tier: "premium".into(),
