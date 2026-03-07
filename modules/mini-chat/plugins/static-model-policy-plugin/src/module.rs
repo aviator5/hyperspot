@@ -35,11 +35,6 @@ impl Default for StaticMiniChatModelPolicyPlugin {
 impl Module for StaticMiniChatModelPolicyPlugin {
     async fn init(&self, ctx: &ModuleCtx) -> anyhow::Result<()> {
         let cfg: StaticMiniChatPolicyPluginConfig = ctx.config()?;
-        anyhow::ensure!(
-            !cfg.model_catalog.is_empty(),
-            "static-mini-chat-model-policy-plugin: model_catalog must not be empty — \
-             provide at least one model entry in the config file"
-        );
         info!(
             vendor = %cfg.vendor,
             priority = cfg.priority,

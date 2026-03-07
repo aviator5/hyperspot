@@ -33,7 +33,7 @@ pub struct KillSwitches {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCatalogEntry {
     pub model_id: String,
-    /// The model ID on the provider side (e.g., `"gpt-5.2"` for `OpenAI``,
+    /// The model ID on the provider side (e.g., `"gpt-5.2"` for `OpenAI`,
     /// `"claude-opus-4-6"` for Anthropic). Sent in LLM API requests.
     pub provider_model_id: String,
     pub display_name: String,

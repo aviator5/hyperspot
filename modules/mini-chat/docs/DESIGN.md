@@ -1075,7 +1075,6 @@ Returns all models that are globally enabled in the policy catalog (see Visibili
     {
       "model_id": "gpt-5.2",
       "display_name": "GPT-5.2",
-      "provider": "OpenAI",
       "tier": "premium",
       "multiplier_display": "1x",
       "description": "Best for complex reasoning tasks",
@@ -1092,7 +1091,6 @@ Response fields per item:
 |-------|------|-------------|
 | `model_id` | string | Stable internal model identifier (e.g., a UUID or any opaque string). Same value used in `POST /v1/chats` and `chats.model`. Format is not prescribed — may be a UUID, slug, or any unique string. |
 | `display_name` | string | User-facing name for the model selector UI. |
-| `provider` | string | User-facing display name of the provider (e.g., `"OpenAI"`, `"Azure OpenAI"`). MUST NOT be a deployment handle, routing identifier, or internal provider key. |
 | `tier` | `"standard"` \| `"premium"` | Rate-limit tier. |
 | `multiplier_display` | string | Human-readable credit multiplier (e.g., `"1x"`, `"2x"`). Informational only — MUST NOT expose `credits_micro` or numeric multiplier internals. |
 | `description` | string (optional) | User-facing help text. May be absent if no description is configured for the model. |
@@ -1124,8 +1122,7 @@ The domain service computes model visibility as follows:
 
 ##### Non-Exposure Rules (Models API)
 
-- Response MUST NOT include: `provider_model_id`, provider deployment IDs, routing metadata, credit multipliers (`input_tokens_credit_multiplier`, `output_tokens_credit_multiplier`, `credits_micro`), `policy_version`, `max_output`, or `is_default`.
-- `provider` MUST be the user-facing display name (e.g., `"OpenAI"`, `"Azure OpenAI"`), not a deployment handle, OAGW routing identifier, or internal provider key.
+- Response MUST NOT include: `provider`, `provider_model_id`, provider deployment IDs, routing metadata, credit multipliers (`input_tokens_credit_multiplier`, `output_tokens_credit_multiplier`, `credits_micro`), `policy_version`, `max_output`, or `is_default`.
 - `model_id` is the stable internal identifier used by the API (e.g., a UUID or opaque slug), never a provider model name or deployment handle.
 
 #### Message Reaction API
@@ -1968,9 +1965,19 @@ The authorized resource is **Chat**. Sub-resources (Message, Attachment, ThreadS
 
 | Attribute | Value                              |
 |-----------|------------------------------------|
-| GTS Type ID | `gts.cf.mini_chat._.chat.v1~`      |
+| GTS Type ID | `gts.cf.core.ai_chat.chat.v1~cf.core.mini_chat.chat.v1`      |
 | Primary table | `chats`                            |
 | Authorization granularity | Chat-level (sub-resources inherit) |
+
+##### Model Resource Type
+
+The authorized resource for the Models API is **Model**. This is a read-only, catalog-sourced resource — it has no database table and no tenant/user scoping columns. Authorization is a pure permission check (`require_constraints=false`).
+
+| Attribute | Value |
+|-----------|-------|
+| GTS Type ID | `gts.cf.core.ai_chat.model.v1~cf.core.mini_chat.model.v1` |
+| Primary table | — (sourced from policy catalog) |
+| Authorization granularity | Permission-only (no constraint scoping) |
 
 #### PEP Configuration
 
@@ -2010,12 +2017,15 @@ The authorized resource is **Chat**. Sub-resources (Message, Attachment, ThreadS
 | `DELETE /v1/chats/{id}/turns/{request_id}` | `delete_turn` | present (chat_id) | `true` | `eq(owner_tenant_id)` + `eq(user_id)` |
 | `PUT /v1/chats/{id}/messages/{msg_id}/reaction` | `set_reaction` | present (chat_id) | `true` | `eq(owner_tenant_id)` + `eq(user_id)` |
 | `DELETE /v1/chats/{id}/messages/{msg_id}/reaction` | `delete_reaction` | present (chat_id) | `true` | `eq(owner_tenant_id)` + `eq(user_id)` |
+| `GET /v1/models` | `list` | absent | `false` | decision only (no constraints) |
+| `GET /v1/models/{model_id}` | `read` | absent | `false` | decision only (no constraints) |
 
 **Notes**:
 - `list_messages`, `send_message`, `upload_attachment`, `read_attachment`, `retry_turn`, `edit_turn`, `delete_turn`, `set_reaction`, and `delete_reaction` are actions on the Chat resource, not on Message or Turn sub-resources. The `resource.id` is the chat's ID.
 - For streaming (`send_message`, `retry_turn`, `edit_turn`), authorization is evaluated once at SSE connection establishment. The entire streaming session operates under the initial authorization decision. No per-message re-authorization.
 - For `create`, the PEP passes `resource.properties.owner_tenant_id` and `resource.properties.user_id` from the SecurityContext. The PDP validates permission without returning constraints.
 - Turn mutation endpoints (`retry_turn`, `edit_turn`, `delete_turn`) additionally enforce latest-turn and terminal-state checks in the domain service after authorization succeeds (see section 3.9).
+- Model endpoints (`GET /v1/models`, `GET /v1/models/{model_id}`) use the `gts.cf.core.ai_chat.model.v1~cf.core.mini_chat.model.v1` resource type. All other endpoints above use the Chat resource type.
 
 #### Evaluation Request/Response Examples
 
@@ -2030,7 +2040,7 @@ PEP -> PDP Request:
     "properties": { "tenant_id": "tenant-xyz-789" }
   },
   "action": { "name": "list" },
-  "resource": { "type": "gts.cf.mini_chat._.chat.v1~" },
+  "resource": { "type": "gts.cf.core.ai_chat.chat.v1~cf.core.mini_chat.chat.v1" },
   "context": {
     "tenant_context": {
       "mode": "root_only",
@@ -2090,7 +2100,7 @@ PEP -> PDP Request:
   },
   "action": { "name": "read" },
   "resource": {
-    "type": "gts.cf.mini_chat._.chat.v1~",
+    "type": "gts.cf.core.ai_chat.chat.v1~cf.core.mini_chat.chat.v1",
     "id": "chat-456"
   },
   "context": {
@@ -2154,7 +2164,7 @@ PEP -> PDP Request:
   },
   "action": { "name": "create" },
   "resource": {
-    "type": "gts.cf.mini_chat._.chat.v1~",
+    "type": "gts.cf.core.ai_chat.chat.v1~cf.core.mini_chat.chat.v1",
     "properties": {
       "owner_tenant_id": "tenant-xyz-789",
       "user_id": "user-abc-123"
@@ -5866,10 +5876,13 @@ A monotonic, strictly increasing integer that identifies a specific immutable po
     "model_catalog": [
       {
         "model_id": "gpt-5.2",
+        "provider_model_id": "gpt-5.2",
         "display_name": "GPT-5.2",
         "provider_display_name": "Azure OpenAI",
+        "provider_id": "azure_openai",
         "tier": "premium",
         "global_enabled": true,
+        "is_default": false,
         "description": "Best for complex reasoning tasks",
         "multimodal_capabilities": [
           "VISION_INPUT",

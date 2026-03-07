@@ -11,9 +11,9 @@ use uuid::Uuid;
 
 use crate::config::StreamingConfig;
 use crate::domain::error::DomainError;
+use crate::domain::models::ResolvedModel;
 use crate::domain::repos::{
     ChatRepository, CreateTurnParams, InsertUserMessageParams, MessageRepository, TurnRepository,
-    model_resolver::ResolvedModel,
 };
 use crate::domain::stream_events::{DoneData, ErrorData, StreamEvent};
 use crate::infra::db::entity::chat_turn::{Model as TurnModel, TurnState};
@@ -469,6 +469,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static, CR: ChatRepo
             proxy_path,
             ctx,
             content,
+            model,
             provider_model_id,
             cancel,
             tx,
@@ -498,6 +499,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
     ctx: SecurityContext,
     content: String,
     model: String,
+    provider_model_id: String,
     cancel: CancellationToken,
     tx: mpsc::Sender<StreamEvent>,
     fin_ctx: Option<FinalizationCtx<TR, MR>>,
@@ -507,8 +509,8 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
         let mut first_token_time: Option<std::time::Duration> = None;
         let msg_id_str = fin_ctx.as_ref().map(|p| p.message_id.to_string());
 
-        // Build the LLM request
-        let request = LlmRequestBuilder::new(&model)
+        // Build the LLM request using provider_model_id (the actual provider-facing name)
+        let request = LlmRequestBuilder::new(&provider_model_id)
             .message(LlmMessage::user(&content))
             .build_streaming();
 
@@ -1104,6 +1106,7 @@ mod tests {
             mock_ctx(),
             "hi".into(),
             "test-model".into(),
+            "test-model".into(),
             cancel,
             tx,
             None,
@@ -1147,6 +1150,7 @@ mod tests {
             "test-alias".to_owned(),
             mock_ctx(),
             "hi".into(),
+            "test-model".into(),
             "test-model".into(),
             cancel,
             tx,
@@ -1224,6 +1228,7 @@ mod tests {
             "test-alias".to_owned(),
             mock_ctx(),
             "hi".into(),
+            "test-model".into(),
             "test-model".into(),
             cancel.clone(),
             tx,
@@ -1333,6 +1338,20 @@ mod tests {
             .expect("insert chat");
     }
 
+    fn test_resolved_model() -> ResolvedModel {
+        ResolvedModel {
+            model_id: "gpt-5.2".into(),
+            provider_model_id: "gpt-5.2".into(),
+            provider_id: "openai".into(),
+            display_name: "GPT 5.2".into(),
+            tier: "standard".into(),
+            multiplier_display: "1x".into(),
+            description: None,
+            multimodal_capabilities: vec![],
+            context_window: 128_000,
+        }
+    }
+
     /// 7.6: Idempotency check — returns Replay when a completed turn exists.
     #[tokio::test]
     async fn prestream_idempotency_returns_replay_for_existing_turn() {
@@ -1399,11 +1418,7 @@ mod tests {
                 chat_id,
                 request_id,
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel,
                 tx,
             )
@@ -1465,11 +1480,7 @@ mod tests {
                 chat_id,
                 Uuid::new_v4(),
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel,
                 tx,
             )
@@ -1504,11 +1515,7 @@ mod tests {
                 chat_id,
                 Uuid::new_v4(),
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel,
                 tx,
             )
@@ -1559,11 +1566,7 @@ mod tests {
                 chat_id,
                 request_id,
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel1,
                 tx1,
             )
@@ -1588,11 +1591,7 @@ mod tests {
                 chat_id,
                 request_id,
                 "hello again".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel2,
                 tx2,
             )
@@ -1675,11 +1674,7 @@ mod tests {
                 chat_id,
                 request_id,
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel.clone(),
                 tx,
             )
@@ -1744,11 +1739,7 @@ mod tests {
                 chat_id,
                 Uuid::new_v4(),
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel,
                 tx,
             )
@@ -1785,11 +1776,7 @@ mod tests {
                 bogus_chat_id,
                 Uuid::new_v4(),
                 "hello".into(),
-                ResolvedModel {
-                    model_id: "gpt-5.2".into(),
-                    provider_model_id: "gpt-5.2".into(),
-                    provider_id: "openai".into(),
-                },
+                test_resolved_model(),
                 cancel,
                 tx,
             )
