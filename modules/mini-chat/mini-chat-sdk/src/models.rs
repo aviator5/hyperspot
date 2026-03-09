@@ -200,6 +200,7 @@ pub struct ModelGeneralConfig {
     pub config_type: String,
     /// Model tier CTI identifier.
     pub tier: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub available_from: OffsetDateTime,
     pub max_file_size_mb: u32,
     pub api_params: ModelApiParams,
@@ -275,6 +276,7 @@ pub struct UsageEvent {
     pub actual_credits_micro: i64,
     pub settlement_method: String,
     pub policy_version_applied: i64,
+    #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
 }
 
