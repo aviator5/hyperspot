@@ -1675,8 +1675,8 @@ mod tests {
     // ── Pre-stream check tests (7.6) ──
 
     use crate::domain::service::test_helpers::{
-        MockPolicySnapshotProvider, MockUserLimitsProvider, inmem_db, mock_db_provider,
-        mock_enforcer, test_security_ctx_with_id,
+        MockPolicySnapshotProvider, MockUserLimitsProvider, TestCatalogEntryParams, inmem_db,
+        mock_db_provider, mock_enforcer, test_catalog_entry, test_security_ctx_with_id,
     };
     use crate::infra::db::repo::quota_usage_repo::QuotaUsageRepository as OrmQuotaUsageRepo;
 
@@ -1734,12 +1734,12 @@ mod tests {
                 mini_chat_sdk::PolicySnapshot {
                     user_id: Uuid::nil(),
                     policy_version: 1,
-                    model_catalog: vec![mini_chat_sdk::ModelCatalogEntry {
+                    model_catalog: vec![test_catalog_entry(TestCatalogEntryParams {
                         model_id: "gpt-5.2".to_owned(),
                         provider_model_id: "gpt-5.2-2025-03-26".to_owned(),
                         display_name: "GPT 5.2".to_owned(),
                         tier: mini_chat_sdk::ModelTier::Standard,
-                        global_enabled: true,
+                        enabled: true,
                         is_default: true,
                         input_tokens_credit_multiplier_micro: 1_000_000,
                         output_tokens_credit_multiplier_micro: 1_000_000,
@@ -1750,7 +1750,7 @@ mod tests {
                         provider_display_name: String::new(),
                         multiplier_display: "1x".to_owned(),
                         provider_id: "openai".to_owned(),
-                    }],
+                    })],
                     kill_switches: mini_chat_sdk::KillSwitches::default(),
                 },
             )),
@@ -2609,12 +2609,12 @@ mod tests {
         id: &str,
         tier: mini_chat_sdk::ModelTier,
     ) -> mini_chat_sdk::ModelCatalogEntry {
-        mini_chat_sdk::ModelCatalogEntry {
+        test_catalog_entry(TestCatalogEntryParams {
             model_id: id.to_owned(),
             provider_model_id: format!("provider-{id}"),
             display_name: id.to_owned(),
             tier,
-            global_enabled: true,
+            enabled: true,
             is_default: tier == mini_chat_sdk::ModelTier::Standard,
             input_tokens_credit_multiplier_micro: 1_000_000,
             output_tokens_credit_multiplier_micro: 1_000_000,
@@ -2625,7 +2625,7 @@ mod tests {
             provider_display_name: String::new(),
             multiplier_display: "1x".to_owned(),
             provider_id: "openai".to_owned(),
-        }
+        })
     }
 
     fn build_stream_service_with_catalog(
