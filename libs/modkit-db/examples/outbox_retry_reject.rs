@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
 
     let items = handle
         .outbox()
-        .dead_letter_list(&db, &DeadLetterFilter::default())
+        .dead_letter_list(&db.conn()?, &DeadLetterFilter::default())
         .await?;
     for dl in &items {
         println!(

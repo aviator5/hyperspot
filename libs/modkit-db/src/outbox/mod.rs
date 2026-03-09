@@ -55,34 +55,34 @@
 //! Dead letter operations are available as methods on [`Outbox`]:
 //! [`dead_letter_list`](Outbox::dead_letter_list),
 //! [`dead_letter_count`](Outbox::dead_letter_count),
-//! [`dead_letter_replay`](Outbox::dead_letter_replay), and
-//! [`dead_letter_purge`](Outbox::dead_letter_purge).
+//! [`dead_letter_replay`](Outbox::dead_letter_replay),
+//! [`dead_letter_resolve`](Outbox::dead_letter_resolve),
+//! [`dead_letter_reject`](Outbox::dead_letter_reject),
+//! [`dead_letter_discard`](Outbox::dead_letter_discard), and
+//! [`dead_letter_cleanup`](Outbox::dead_letter_cleanup).
 //!
-//! ## Consumption patterns
+//! Dead letters have a status lifecycle: `pending → reprocessing → resolved`
+//! (or `pending → discarded`). The [`DeadLetterStatus`] enum tracks this.
 //!
-//! 1. **Scheduled background worker** — poll on a timer, replay if count > 0:
+//! ## Example: application-level consumption
 //!
-//!    ```ignore
-//!    loop {
-//!        let count = outbox.dead_letter_count(&db, &DeadLetterFilter::default()).await?;
-//!        if count > 0 {
-//!            tracing::warn!(count, "dead letters detected — replaying");
-//!            outbox.dead_letter_replay(&db, &DeadLetterFilter::default()).await?;
-//!        }
-//!        tokio::time::sleep(Duration::from_secs(300)).await;
-//!    }
-//!    ```
+//! The library provides the building blocks; the application decides **when**
+//! and **how** to use them. `dead_letter_replay` claims messages (sets them
+//! to `reprocessing` with a deadline) and returns them — the application
+//! then processes and calls `resolve` or `reject`.
 //!
-//! 2. **Admin REST endpoint** — expose list/replay/purge via HTTP for manual
-//!    investigation and recovery.
+//! ```ignore
+//! use std::time::Duration;
 //!
-//! 3. **On-demand CLI** — a maintenance command that replays or purges with
-//!    filters (by queue, partition, time range).
-//!
-//! Replayed messages go through the full pipeline (incoming → sequencer →
-//! outgoing → processor). Handlers must be idempotent — a replayed message
-//! may be delivered more than once if the handler previously produced
-//! side-effects before rejecting.
+//! let scope = DeadLetterScope::default().payload_type("order.created");
+//! let msgs = outbox.dead_letter_replay(&conn, &scope, Duration::from_secs(60)).await?;
+//! for msg in &msgs {
+//!     match my_handler(&msg.payload).await {
+//!         Ok(_)  => outbox.dead_letter_resolve(&conn, &[msg.id]).await?,
+//!         Err(e) => outbox.dead_letter_reject(&conn, &[msg.id], &e.to_string()).await?,
+//!     };
+//! }
+//! ```
 
 mod builder;
 mod core;
@@ -103,7 +103,7 @@ mod integration_tests;
 
 pub use builder::QueueBuilder;
 pub use core::Outbox;
-pub use dead_letter::{DeadLetterFilter, DeadLetterMessage};
+pub use dead_letter::{DeadLetterFilter, DeadLetterMessage, DeadLetterScope, DeadLetterStatus};
 pub use handler::{
     Handler, HandlerResult, MessageHandler, OutboxMessage, PerMessageAdapter, TransactionalHandler,
     TransactionalMessageHandler,

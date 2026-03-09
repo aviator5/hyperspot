@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::use_debug)]
 
-//! Dead letter lifecycle: reject -> list -> replay -> process -> purge.
+//! Dead letter lifecycle: reject -> list -> replay -> resolve -> cleanup.
 //!
 //! Run:
 //!   cargo run -p cf-modkit-db --example `outbox_dead_letters` --features sqlite,preview-outbox
@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use modkit_db::outbox::{
-    DeadLetterFilter, HandlerResult, MessageHandler, Outbox, OutboxMessage, Partitions,
-    outbox_migrations,
+    DeadLetterFilter, DeadLetterScope, HandlerResult, MessageHandler, Outbox, OutboxMessage,
+    Partitions, outbox_migrations,
 };
 use modkit_db::{ConnectOpts, connect_db, migration_runner::run_migrations_for_testing};
 
@@ -25,20 +25,6 @@ impl MessageHandler for RejectAll {
         HandlerResult::Reject {
             reason: "bad format".into(),
         }
-    }
-}
-
-struct SucceedAll;
-
-#[async_trait::async_trait]
-impl MessageHandler for SucceedAll {
-    async fn handle(
-        &self,
-        msg: &OutboxMessage,
-        _cancel: tokio_util::sync::CancellationToken,
-    ) -> HandlerResult {
-        println!("  replayed seq={} processed OK", msg.seq);
-        HandlerResult::Success
     }
 }
 
@@ -80,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
     // List
     let items = outbox
-        .dead_letter_list(&db, &DeadLetterFilter::default())
+        .dead_letter_list(&db.conn()?, &DeadLetterFilter::default())
         .await?;
     println!("Dead letters: {}", items.len());
     for dl in &items {
@@ -91,37 +77,35 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Replay 1 entry back into the pipeline
+    // Replay 1 entry — claims it for reprocessing
     let replayed = outbox
         .dead_letter_replay(
-            &db,
-            &DeadLetterFilter {
-                limit: Some(1),
-                ..Default::default()
-            },
+            &db.conn()?,
+            &DeadLetterScope::default().limit(1),
+            Duration::from_secs(60),
         )
         .await?;
-    println!("Replayed: {replayed}");
+    println!("Replayed: {}", replayed.len());
 
-    // Process the replayed message with a success handler
-    let h2 = Outbox::builder(db.clone())
-        .poll_interval(Duration::from_millis(50))
-        .queue("events", Partitions::of(1))
-        .decoupled(SucceedAll)
-        .start()
-        .await?;
-    h2.outbox().flush();
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    h2.stop().await;
+    // Resolve the replayed messages (mark as successfully handled)
+    let ids: Vec<i64> = replayed.iter().map(|m| m.id).collect();
+    let resolved = outbox.dead_letter_resolve(&db.conn()?, &ids).await?;
+    println!("Resolved: {resolved}");
 
-    // Purge all (force=true deletes even non-replayed entries)
-    let purged = outbox
-        .dead_letter_purge(&db, &DeadLetterFilter::default(), true)
+    // Discard remaining pending dead letters
+    let discarded = outbox
+        .dead_letter_discard(&db.conn()?, &DeadLetterScope::default())
         .await?;
-    println!("Purged: {purged}");
+    println!("Discarded: {discarded}");
+
+    // Cleanup terminal-state entries (resolved + discarded)
+    let cleaned = outbox
+        .dead_letter_cleanup(&db.conn()?, &DeadLetterScope::default())
+        .await?;
+    println!("Cleaned up: {cleaned}");
 
     let remaining = outbox
-        .dead_letter_count(&db, &DeadLetterFilter::default())
+        .dead_letter_count(&db.conn()?, &DeadLetterFilter::default())
         .await?;
     println!("Remaining: {remaining}");
     assert_eq!(remaining, 0);

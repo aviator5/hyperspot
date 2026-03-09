@@ -1,10 +1,23 @@
 use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 use sea_orm_migration::prelude::*;
 
-/// Single migration that creates the entire outbox schema.
+/// Single migration that creates the entire outbox schema from scratch.
 ///
 /// Tables are created in FK dependency order:
 /// body → partitions → incoming → outgoing → dead-letters → processor
+///
+/// # Idempotency
+///
+/// All `CREATE TABLE` statements use `IF NOT EXISTS` so the migration is safe
+/// to re-run (e.g., after a partial failure).  `CREATE INDEX` statements do
+/// **not** — `MySQL` has no `IF NOT EXISTS` syntax for indexes, and keeping the
+/// Pg/SQLite paths consistent avoids a false sense of safety on only some
+/// backends.  Because each index immediately follows its `CREATE TABLE IF NOT
+/// EXISTS`, the index can only pre-exist if the migration crashed between the
+/// two statements *and* the migration runner retries without rolling back.
+/// The sea-orm migration framework tracks completed migrations, so this edge
+/// case requires a crash mid-transaction — acceptable for a `preview-outbox`
+/// alpha feature with no production deployments.
 struct CreateOutboxSchema;
 
 impl MigrationName for CreateOutboxSchema {
@@ -165,11 +178,7 @@ async fn create_incoming(
     conn.execute(Statement::from_string(
         backend,
         match backend {
-            DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-                "CREATE INDEX IF NOT EXISTS idx_modkit_outbox_incoming_partition \
-             ON modkit_outbox_incoming (partition_id, id)"
-            }
-            DatabaseBackend::MySql => {
+            DatabaseBackend::Postgres | DatabaseBackend::Sqlite | DatabaseBackend::MySql => {
                 "CREATE INDEX idx_modkit_outbox_incoming_partition \
              ON modkit_outbox_incoming (partition_id, id)"
             }
@@ -225,11 +234,7 @@ async fn create_outgoing(
     conn.execute(Statement::from_string(
         backend,
         match backend {
-            DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_modkit_outbox_outgoing_partition_seq \
-             ON modkit_outbox_outgoing (partition_id, seq)"
-            }
-            DatabaseBackend::MySql => {
+            DatabaseBackend::Postgres | DatabaseBackend::Sqlite | DatabaseBackend::MySql => {
                 "CREATE UNIQUE INDEX idx_modkit_outbox_outgoing_partition_seq \
              ON modkit_outbox_outgoing (partition_id, seq)"
             }
@@ -257,7 +262,9 @@ async fn create_dead_letters(
                 failed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
                 last_error   TEXT,
                 attempts     SMALLINT NOT NULL,
-                replayed_at  TIMESTAMPTZ
+                status       TEXT NOT NULL DEFAULT 'pending',
+                completed_at TIMESTAMPTZ,
+                deadline     TIMESTAMPTZ
             )"
             }
             DatabaseBackend::Sqlite => {
@@ -271,7 +278,9 @@ async fn create_dead_letters(
                 failed_at    TEXT    NOT NULL DEFAULT (datetime('now')),
                 last_error   TEXT,
                 attempts     INTEGER NOT NULL,
-                replayed_at  TEXT
+                status       TEXT    NOT NULL DEFAULT 'pending',
+                completed_at TEXT,
+                deadline     TEXT
             )"
             }
             DatabaseBackend::MySql => {
@@ -285,7 +294,9 @@ async fn create_dead_letters(
                 failed_at    TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
                 last_error   TEXT,
                 attempts     SMALLINT NOT NULL,
-                replayed_at  TIMESTAMP(6) NULL,
+                status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+                completed_at TIMESTAMP(6) NULL,
+                deadline     TIMESTAMP(6) NULL,
                 FOREIGN KEY (partition_id) REFERENCES modkit_outbox_partitions(id)
             )"
             }
@@ -293,17 +304,34 @@ async fn create_dead_letters(
     ))
     .await?;
 
+    // Index for replay query (status = 'pending' OR (status = 'reprocessing' AND deadline < now()))
     conn.execute(Statement::from_string(
         backend,
         match backend {
-            DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-                "CREATE INDEX IF NOT EXISTS idx_modkit_outbox_dead_letters_pending \
-             ON modkit_outbox_dead_letters (failed_at) \
-             WHERE replayed_at IS NULL"
+            DatabaseBackend::Postgres => {
+                "CREATE INDEX idx_modkit_outbox_dl_replayable \
+             ON modkit_outbox_dead_letters (status, deadline) \
+             WHERE status IN ('pending', 'reprocessing')"
             }
-            DatabaseBackend::MySql => {
-                "CREATE INDEX idx_modkit_outbox_dead_letters_pending \
-             ON modkit_outbox_dead_letters (failed_at, replayed_at)"
+            DatabaseBackend::Sqlite | DatabaseBackend::MySql => {
+                "CREATE INDEX idx_modkit_outbox_dl_status_deadline \
+             ON modkit_outbox_dead_letters (status, deadline)"
+            }
+        },
+    ))
+    .await?;
+
+    // Index for list queries with status filter + ORDER BY failed_at DESC
+    conn.execute(Statement::from_string(
+        backend,
+        match backend {
+            DatabaseBackend::Postgres => {
+                "CREATE INDEX idx_modkit_outbox_dl_status_failed \
+             ON modkit_outbox_dead_letters (status, failed_at DESC)"
+            }
+            DatabaseBackend::Sqlite | DatabaseBackend::MySql => {
+                "CREATE INDEX idx_modkit_outbox_dl_status_failed \
+             ON modkit_outbox_dead_letters (status, failed_at)"
             }
         },
     ))

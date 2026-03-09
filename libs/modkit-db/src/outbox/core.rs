@@ -318,18 +318,21 @@ impl Outbox {
         Ok(incoming_id)
     }
 
-    // -- Dead letter operations --
-
     /// List dead-lettered messages with optional filtering.
+    ///
+    /// Dead letters are an **exceptional recovery mechanism** for messages that
+    /// handlers explicitly rejected. They are operator-level tools, not part of
+    /// the normal processing pipeline. If dead letter replay is a regular part
+    /// of your workflow, consider fixing the handler instead.
     ///
     /// # Errors
     /// Returns error if the database operation fails.
     pub async fn dead_letter_list(
         &self,
-        db: &Db,
+        db: &(impl crate::secure::DBRunner + Sync),
         filter: &super::dead_letter::DeadLetterFilter,
     ) -> Result<Vec<super::dead_letter::DeadLetterMessage>, OutboxError> {
-        super::dead_letter::dead_letter_list(db, filter).await
+        super::dead_letter::dead_letter_list(db.as_seaorm(), filter).await
     }
 
     /// Count dead-lettered messages matching the filter.
@@ -338,36 +341,75 @@ impl Outbox {
     /// Returns error if the database operation fails.
     pub async fn dead_letter_count(
         &self,
-        db: &Db,
+        db: &(impl crate::secure::DBRunner + Sync),
         filter: &super::dead_letter::DeadLetterFilter,
     ) -> Result<u64, OutboxError> {
-        super::dead_letter::dead_letter_count(db, filter).await
+        super::dead_letter::dead_letter_count(db.as_seaorm(), filter).await
     }
 
-    /// Replay dead-lettered messages: re-insert into incoming, set `replayed_at`.
+    /// Claim dead letters for reprocessing. Returns the claimed messages.
+    ///
+    /// The caller decides what to do — process inline, re-enqueue, etc.
+    /// Call `dead_letter_resolve()` on success or `dead_letter_reject()` on failure.
     ///
     /// # Errors
     /// Returns error if the database operation fails.
     pub async fn dead_letter_replay(
         &self,
-        db: &Db,
-        filter: &super::dead_letter::DeadLetterFilter,
-    ) -> Result<u64, OutboxError> {
-        super::dead_letter::dead_letter_replay(db, filter).await
+        db: &(impl crate::secure::DBRunner + Sync),
+        scope: &super::dead_letter::DeadLetterScope,
+        timeout: std::time::Duration,
+    ) -> Result<Vec<super::dead_letter::DeadLetterMessage>, OutboxError> {
+        super::dead_letter::dead_letter_replay(db.as_seaorm(), scope, timeout).await
     }
 
-    /// Permanently delete dead-lettered messages.
-    /// Only purges already-replayed messages unless `force = true`.
+    /// Transition claimed dead letters to `resolved`.
     ///
     /// # Errors
     /// Returns error if the database operation fails.
-    pub async fn dead_letter_purge(
+    pub async fn dead_letter_resolve(
         &self,
-        db: &Db,
-        filter: &super::dead_letter::DeadLetterFilter,
-        force: bool,
+        db: &(impl crate::secure::DBRunner + Sync),
+        ids: &[i64],
     ) -> Result<u64, OutboxError> {
-        super::dead_letter::dead_letter_purge(db, filter, force).await
+        super::dead_letter::dead_letter_resolve(db.as_seaorm(), ids).await
+    }
+
+    /// Transition claimed dead letters back to `pending` with attempts++.
+    ///
+    /// # Errors
+    /// Returns error if the database operation fails.
+    pub async fn dead_letter_reject(
+        &self,
+        db: &(impl crate::secure::DBRunner + Sync),
+        ids: &[i64],
+        reason: &str,
+    ) -> Result<u64, OutboxError> {
+        super::dead_letter::dead_letter_reject(db.as_seaorm(), ids, reason).await
+    }
+
+    /// Discard pending dead letters — transitions to `discarded`.
+    ///
+    /// # Errors
+    /// Returns error if the database operation fails.
+    pub async fn dead_letter_discard(
+        &self,
+        db: &(impl crate::secure::DBRunner + Sync),
+        scope: &super::dead_letter::DeadLetterScope,
+    ) -> Result<u64, OutboxError> {
+        super::dead_letter::dead_letter_discard(db.as_seaorm(), scope).await
+    }
+
+    /// Delete terminal-state dead letters (`resolved` + `discarded`).
+    ///
+    /// # Errors
+    /// Returns error if the database operation fails.
+    pub async fn dead_letter_cleanup(
+        &self,
+        db: &(impl crate::secure::DBRunner + Sync),
+        scope: &super::dead_letter::DeadLetterScope,
+    ) -> Result<u64, OutboxError> {
+        super::dead_letter::dead_letter_cleanup(db.as_seaorm(), scope).await
     }
 
     /// Notify the sequencer that new items are available.

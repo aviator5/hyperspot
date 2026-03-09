@@ -19,7 +19,7 @@ use std::time::Duration;
 use sea_orm::{ConnectionTrait, DbBackend, FromQueryResult, Statement, TransactionTrait};
 use tokio_util::sync::CancellationToken;
 
-use super::dead_letter::DeadLetterFilter;
+use super::dead_letter::{DeadLetterFilter, DeadLetterScope};
 use super::dialect::Dialect;
 use super::handler::{
     Handler, HandlerResult, MessageHandler, OutboxMessage, PerMessageAdapter, TransactionalHandler,
@@ -70,7 +70,9 @@ struct DeadLetterSnapshot {
     payload_type: String,
     last_error: Option<String>,
     attempts: i16,
-    replayed_at: Option<String>,
+    status: String,
+    completed_at: Option<String>,
+    deadline: Option<String>,
 }
 
 // ======================================================================
@@ -273,13 +275,16 @@ async fn read_dead_letters(db: &Db) -> Vec<DeadLetterSnapshot> {
         payload_type: String,
         last_error: Option<String>,
         attempts: i16,
-        replayed_at: Option<String>,
+        status: String,
+        completed_at: Option<String>,
+        deadline: Option<String>,
     }
     let conn = db.sea_internal();
     Row::find_by_statement(Statement::from_string(
         DbBackend::Sqlite,
         "SELECT id, partition_id, seq, payload, payload_type, last_error, \
-         attempts, CAST(replayed_at AS TEXT) AS replayed_at \
+         attempts, status, CAST(completed_at AS TEXT) AS completed_at, \
+         CAST(deadline AS TEXT) AS deadline \
          FROM modkit_outbox_dead_letters ORDER BY seq",
     ))
     .all(&conn)
@@ -294,7 +299,9 @@ async fn read_dead_letters(db: &Db) -> Vec<DeadLetterSnapshot> {
         payload_type: r.payload_type,
         last_error: r.last_error,
         attempts: r.attempts,
-        replayed_at: r.replayed_at,
+        status: r.status,
+        completed_at: r.completed_at,
+        deadline: r.deadline,
     })
     .collect()
 }
@@ -1145,7 +1152,7 @@ async fn transactional_reject_creates_dead_letter_and_advances() {
     assert_eq!(dls[0].payload, b"poison");
     assert_eq!(dls[0].payload_type, "text/plain");
     assert_eq!(dls[0].attempts, 0);
-    assert!(dls[0].replayed_at.is_none());
+    assert_eq!(dls[0].status, "pending");
 }
 
 #[tokio::test]
@@ -1760,14 +1767,15 @@ async fn dead_letter_list_returns_correct_fields() {
 
     let items = t
         .outbox
-        .dead_letter_list(&db, &DeadLetterFilter::default())
+        .dead_letter_list(&db.conn().unwrap(), &DeadLetterFilter::default())
         .await
         .unwrap();
     assert_eq!(items.len(), 3);
     for item in &items {
         assert_eq!(item.partition_id, pid);
         assert_eq!(item.last_error.as_deref(), Some("permanently bad"));
-        assert!(item.replayed_at.is_none());
+        assert_eq!(item.status, super::dead_letter::DeadLetterStatus::Pending);
+        assert!(item.completed_at.is_none());
     }
 }
 
@@ -1781,14 +1789,14 @@ async fn dead_letter_count_matches_list() {
 
     let count = t
         .outbox
-        .dead_letter_count(&db, &DeadLetterFilter::default())
+        .dead_letter_count(&db.conn().unwrap(), &DeadLetterFilter::default())
         .await
         .unwrap();
     assert_eq!(count, 3);
 }
 
 #[tokio::test]
-async fn dead_letter_replay_reinserts_and_sets_replayed_at() {
+async fn dead_letter_replay_claims_and_sets_reprocessing() {
     let db = setup_db("ch9_dl_replay").await;
     let t = make_default_test_outbox();
     t.outbox.register_queue(&db, "q", 1).await.unwrap();
@@ -1797,18 +1805,20 @@ async fn dead_letter_replay_reinserts_and_sets_replayed_at() {
 
     let replayed = t
         .outbox
-        .dead_letter_replay(&db, &DeadLetterFilter::default())
+        .dead_letter_replay(
+            &db.conn().unwrap(),
+            &DeadLetterScope::default(),
+            Duration::from_secs(60),
+        )
         .await
         .unwrap();
-    assert_eq!(replayed, 1);
+    assert_eq!(replayed.len(), 1);
 
-    // New incoming row created
-    assert_eq!(count_rows(&db, "modkit_outbox_incoming").await, 1);
-
-    // Dead letter now has replayed_at set
+    // Dead letter now has status=reprocessing and a deadline
     let dls = read_dead_letters(&db).await;
     assert_eq!(dls.len(), 1);
-    assert!(dls[0].replayed_at.is_some());
+    assert_eq!(dls[0].status, "reprocessing");
+    assert!(dls[0].deadline.is_some());
 }
 
 #[tokio::test]
@@ -1816,62 +1826,63 @@ async fn dead_letter_full_replay_roundtrip() {
     let db = setup_db("ch9_dl_roundtrip").await;
     let t = make_default_test_outbox();
     t.outbox.register_queue(&db, "q", 1).await.unwrap();
-    let pid = t.outbox.all_partition_ids()[0];
 
     // Reject
     create_dead_letters(&t, &db, "q", 0, &["msg"]).await;
 
-    // Replay → re-sequence → process with success handler
-    t.outbox
-        .dead_letter_replay(&db, &DeadLetterFilter::default())
+    // Replay (claim) → resolve
+    let replayed = t
+        .outbox
+        .dead_letter_replay(
+            &db.conn().unwrap(),
+            &DeadLetterScope::default(),
+            Duration::from_secs(60),
+        )
         .await
         .unwrap();
-    run_sequencer_once(&t, &db).await;
+    assert_eq!(replayed.len(), 1);
 
-    let count = Arc::new(AtomicU32::new(0));
-    let config = QueueConfig::default();
-    run_decoupled(
-        &db,
-        pid,
-        CountingSuccessHandler {
-            count: count.clone(),
-        },
-        &config,
-    )
-    .await;
+    let ids: Vec<i64> = replayed.iter().map(|m| m.id).collect();
+    let resolved = t
+        .outbox
+        .dead_letter_resolve(&db.conn().unwrap(), &ids)
+        .await
+        .unwrap();
+    assert_eq!(resolved, 1);
 
-    assert_eq!(count.load(Ordering::Relaxed), 1);
-    let snap = read_processor_state(&db, pid).await;
-    assert_eq!(snap.processed_seq, 2); // seq 1 was rejected, seq 2 is the replay
+    // Dead letter is now resolved
+    let dls = read_dead_letters(&db).await;
+    assert_eq!(dls.len(), 1);
+    assert_eq!(dls[0].status, "resolved");
+    assert!(dls[0].completed_at.is_some());
 }
 
 #[tokio::test]
-async fn dead_letter_purge_non_force_only_replayed() {
-    let db = setup_db("ch9_dl_purge_soft").await;
+async fn dead_letter_cleanup_only_terminal() {
+    let db = setup_db("ch9_dl_cleanup_soft").await;
     let t = make_default_test_outbox();
     t.outbox.register_queue(&db, "q", 1).await.unwrap();
 
     // Create 2 dead letters
     create_dead_letters(&t, &db, "q", 0, &["a", "b"]).await;
 
-    // Replay only 1 (by limit)
-    let filter_one = DeadLetterFilter {
-        limit: Some(1),
-        ..Default::default()
-    };
-    t.outbox.dead_letter_replay(&db, &filter_one).await.unwrap();
+    // Replay only 1 (by limit), then resolve it
+    let scope_one = DeadLetterScope::default().limit(1);
+    let replayed = t
+        .outbox
+        .dead_letter_replay(&db.conn().unwrap(), &scope_one, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let ids: Vec<i64> = replayed.iter().map(|m| m.id).collect();
+    t.outbox
+        .dead_letter_resolve(&db.conn().unwrap(), &ids)
+        .await
+        .unwrap();
 
-    // Purge non-force — should only delete the replayed one
+    // Cleanup — should only delete the resolved one
     let deleted = t
         .outbox
-        .dead_letter_purge(
-            &db,
-            &DeadLetterFilter {
-                only_pending: false,
-                ..Default::default()
-            },
-            false,
-        )
+        .dead_letter_cleanup(&db.conn().unwrap(), &DeadLetterScope::default())
         .await
         .unwrap();
     assert_eq!(deleted, 1);
@@ -1879,42 +1890,41 @@ async fn dead_letter_purge_non_force_only_replayed() {
     // 1 pending dead letter remains
     let remaining = t
         .outbox
-        .dead_letter_count(&db, &DeadLetterFilter::default())
+        .dead_letter_count(&db.conn().unwrap(), &DeadLetterFilter::default())
         .await
         .unwrap();
     assert_eq!(remaining, 1);
 }
 
 #[tokio::test]
-async fn dead_letter_purge_force_deletes_all() {
-    let db = setup_db("ch9_dl_purge_force").await;
+async fn dead_letter_discard_then_cleanup_deletes_all() {
+    let db = setup_db("ch9_dl_discard_cleanup").await;
     let t = make_default_test_outbox();
     t.outbox.register_queue(&db, "q", 1).await.unwrap();
 
     create_dead_letters(&t, &db, "q", 0, &["a", "b", "c"]).await;
 
-    let deleted = t
+    // Discard all pending
+    let discarded = t
         .outbox
-        .dead_letter_purge(
-            &db,
-            &DeadLetterFilter {
-                only_pending: false,
-                ..Default::default()
-            },
-            true,
-        )
+        .dead_letter_discard(&db.conn().unwrap(), &DeadLetterScope::default())
         .await
         .unwrap();
-    assert_eq!(deleted, 3);
+    assert_eq!(discarded, 3);
+
+    // Cleanup terminal entries
+    let cleaned = t
+        .outbox
+        .dead_letter_cleanup(&db.conn().unwrap(), &DeadLetterScope::default())
+        .await
+        .unwrap();
+    assert_eq!(cleaned, 3);
 
     let remaining = t
         .outbox
         .dead_letter_count(
-            &db,
-            &DeadLetterFilter {
-                only_pending: false,
-                ..Default::default()
-            },
+            &db.conn().unwrap(),
+            &DeadLetterFilter::default().any_status(),
         )
         .await
         .unwrap();
@@ -1932,18 +1942,20 @@ async fn dead_letter_filter_by_partition() {
     create_dead_letters(&t, &db, "q", 0, &["a0"]).await;
     create_dead_letters(&t, &db, "q", 1, &["b1", "b2"]).await;
 
-    let filter_p0 = DeadLetterFilter {
-        partition_id: Some(ids[0]),
-        ..Default::default()
-    };
-    let items = t.outbox.dead_letter_list(&db, &filter_p0).await.unwrap();
+    let filter_p0 = DeadLetterFilter::default().partition(ids[0]);
+    let items = t
+        .outbox
+        .dead_letter_list(&db.conn().unwrap(), &filter_p0)
+        .await
+        .unwrap();
     assert_eq!(items.len(), 1);
 
-    let filter_p1 = DeadLetterFilter {
-        partition_id: Some(ids[1]),
-        ..Default::default()
-    };
-    let items = t.outbox.dead_letter_list(&db, &filter_p1).await.unwrap();
+    let filter_p1 = DeadLetterFilter::default().partition(ids[1]);
+    let items = t
+        .outbox
+        .dead_letter_list(&db.conn().unwrap(), &filter_p1)
+        .await
+        .unwrap();
     assert_eq!(items.len(), 2);
 }
 
@@ -1955,11 +1967,12 @@ async fn dead_letter_filter_with_limit() {
 
     create_dead_letters(&t, &db, "q", 0, &["a", "b", "c", "d", "e"]).await;
 
-    let filter = DeadLetterFilter {
-        limit: Some(2),
-        ..Default::default()
-    };
-    let items = t.outbox.dead_letter_list(&db, &filter).await.unwrap();
+    let filter = DeadLetterFilter::default().limit(2);
+    let items = t
+        .outbox
+        .dead_letter_list(&db.conn().unwrap(), &filter)
+        .await
+        .unwrap();
     assert_eq!(items.len(), 2);
 }
 
@@ -2143,45 +2156,33 @@ async fn e2e_reject_replay_success() {
     let db = setup_db("ch11_reject_replay").await;
     let t = make_default_test_outbox();
     t.outbox.register_queue(&db, "q", 1).await.unwrap();
-    let pid = t.outbox.all_partition_ids()[0];
 
     // Reject
     create_dead_letters(&t, &db, "q", 0, &["msg"]).await;
 
-    // Replay → re-sequence → process with success
-    t.outbox
-        .dead_letter_replay(&db, &DeadLetterFilter::default())
+    // Replay (claim) → resolve
+    let replayed = t
+        .outbox
+        .dead_letter_replay(
+            &db.conn().unwrap(),
+            &DeadLetterScope::default(),
+            Duration::from_secs(60),
+        )
         .await
         .unwrap();
-    run_sequencer_once(&t, &db).await;
+    assert_eq!(replayed.len(), 1);
 
-    let count = Arc::new(AtomicU32::new(0));
-    let config = QueueConfig::default();
-    run_decoupled(
-        &db,
-        pid,
-        CountingSuccessHandler {
-            count: count.clone(),
-        },
-        &config,
-    )
-    .await;
+    let ids: Vec<i64> = replayed.iter().map(|m| m.id).collect();
+    t.outbox
+        .dead_letter_resolve(&db.conn().unwrap(), &ids)
+        .await
+        .unwrap();
 
-    // Reap
-    run_reaper(&db, pid).await;
-
-    assert_eq!(count.load(Ordering::Relaxed), 1);
-    let snap = read_processor_state(&db, pid).await;
-    assert_eq!(snap.processed_seq, 2);
-
-    // Dead letter has replayed_at set
+    // Dead letter has status=resolved and completed_at set
     let dls = read_dead_letters(&db).await;
     assert_eq!(dls.len(), 1);
-    assert!(dls[0].replayed_at.is_some());
-
-    // Body and outgoing cleaned up
-    assert_eq!(count_rows(&db, "modkit_outbox_outgoing").await, 0);
-    assert_eq!(count_rows(&db, "modkit_outbox_body").await, 0);
+    assert_eq!(dls[0].status, "resolved");
+    assert!(dls[0].completed_at.is_some());
 }
 
 #[tokio::test]
