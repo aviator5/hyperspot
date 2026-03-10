@@ -12,6 +12,8 @@ use uuid::Uuid;
 use crate::config::{ContextConfig, StreamingConfig};
 use crate::domain::error::DomainError;
 use crate::domain::models::ResolvedModel;
+use crate::domain::ports::MiniChatMetricsPort;
+use crate::domain::ports::metric_labels::{decision, period, stage, trigger};
 use crate::domain::repos::{
     ChatRepository, CreateTurnParams, InsertUserMessageParams, MessageRepository,
     QuotaUsageRepository, SnapshotBoundary, ThreadSummaryRepository, TurnRepository,
@@ -153,6 +155,10 @@ struct FinalizationCtx<TR: TurnRepository + 'static, MR: MessageRepository + 'st
         crate::infra::db::entity::quota_usage::PeriodType,
         time::Date,
     )>,
+    /// Provider ID for metrics labels.
+    provider_id: String,
+    /// Metrics port for recording stream metrics in the spawned task.
+    metrics: Arc<dyn MiniChatMetricsPort>,
 }
 
 impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> FinalizationCtx<TR, MR> {
@@ -340,6 +346,7 @@ pub struct StreamService<
     quota: Arc<crate::domain::service::QuotaService<QR>>,
     thread_summary_repo: Arc<TSR>,
     context_config: ContextConfig,
+    metrics: Arc<dyn MiniChatMetricsPort>,
 }
 
 impl<
@@ -365,6 +372,7 @@ impl<
         quota: Arc<crate::domain::service::QuotaService<QR>>,
         thread_summary_repo: Arc<TSR>,
         context_config: ContextConfig,
+        metrics: Arc<dyn MiniChatMetricsPort>,
     ) -> Self {
         Self {
             db,
@@ -378,6 +386,7 @@ impl<
             quota,
             thread_summary_repo,
             context_config,
+            metrics,
         }
     }
 
@@ -503,9 +512,40 @@ impl<
                 other => StreamError::TurnCreationFailed { source: other },
             })?;
 
+        // Metrics: quota preflight decision (before flatten so rejects are counted)
+        {
+            use crate::domain::model::quota::PreflightDecision;
+            let tier = computed.effective_tier();
+            match &computed.decision {
+                PreflightDecision::Allow {
+                    effective_model, ..
+                } => {
+                    self.metrics
+                        .record_quota_preflight(decision::ALLOW, effective_model, tier);
+                }
+                PreflightDecision::Downgrade {
+                    effective_model, ..
+                } => {
+                    self.metrics
+                        .record_quota_preflight(decision::DOWNGRADE, effective_model, tier);
+                }
+                PreflightDecision::Reject { .. } => {
+                    self.metrics
+                        .record_quota_preflight(decision::REJECT, &selected_model, tier);
+                }
+            }
+        }
+
         let pf = flatten_preflight(computed.decision.clone())?;
+
+        // Metrics: estimated tokens (only on allow/downgrade)
+        #[allow(clippy::cast_precision_loss)]
+        self.metrics
+            .record_quota_estimated_tokens(pf.reserve_tokens as f64);
+
         // Period boundaries from the computed preflight (used by finalization for settlement)
         let period_starts = computed.periods.clone();
+        let has_reserve_buckets = !computed.buckets.is_empty();
 
         // ── Single transaction: reserve + user message + turn ──
         let requester_type = ctx.subject_type().unwrap_or("user").to_owned();
@@ -522,6 +562,17 @@ impl<
                 content.clone(),
             )
             .await?;
+
+        // Metrics: quota reserve committed (one per period)
+        if has_reserve_buckets {
+            for (period_type, _) in &period_starts {
+                let label = match period_type {
+                    crate::infra::db::entity::quota_usage::PeriodType::Daily => period::DAILY,
+                    crate::infra::db::entity::quota_usage::PeriodType::Monthly => period::MONTHLY,
+                };
+                self.metrics.record_quota_reserve(label);
+            }
+        }
 
         // Pre-generate assistant message ID (sent in DoneData and used in CAS)
         let message_id = Uuid::new_v4();
@@ -546,6 +597,8 @@ impl<
             downgrade_from: pf.downgrade_from,
             downgrade_reason: pf.downgrade_reason,
             period_starts,
+            provider_id: provider_id.clone(),
+            metrics: Arc::clone(&self.metrics),
         };
 
         // ── Context assembly ──
@@ -843,7 +896,37 @@ impl<
                 other => StreamError::TurnCreationFailed { source: other },
             })?;
 
+        // Metrics: quota preflight decision (before flatten so rejects are counted)
+        {
+            use crate::domain::model::quota::PreflightDecision;
+            let tier = computed.effective_tier();
+            match &computed.decision {
+                PreflightDecision::Allow {
+                    effective_model, ..
+                } => {
+                    self.metrics
+                        .record_quota_preflight(decision::ALLOW, effective_model, tier);
+                }
+                PreflightDecision::Downgrade {
+                    effective_model, ..
+                } => {
+                    self.metrics
+                        .record_quota_preflight(decision::DOWNGRADE, effective_model, tier);
+                }
+                PreflightDecision::Reject { .. } => {
+                    self.metrics
+                        .record_quota_preflight(decision::REJECT, &selected_model, tier);
+                }
+            }
+        }
+
         let pf = flatten_preflight(computed.decision.clone())?;
+
+        // Metrics: estimated tokens (only on allow/downgrade)
+        #[allow(clippy::cast_precision_loss)]
+        self.metrics
+            .record_quota_estimated_tokens(pf.reserve_tokens as f64);
+
         let period_starts = computed.periods.clone();
 
         // ── Write quota reserves ────────────────────────────────────────
@@ -884,6 +967,15 @@ impl<
                 .map_err(|e| StreamError::TurnCreationFailed {
                     source: DomainError::database(e.to_string()),
                 })?;
+
+            // Metrics: quota reserve committed (one per period)
+            for (period_type, _) in &period_starts {
+                let label = match period_type {
+                    crate::infra::db::entity::quota_usage::PeriodType::Daily => period::DAILY,
+                    crate::infra::db::entity::quota_usage::PeriodType::Monthly => period::MONTHLY,
+                };
+                self.metrics.record_quota_reserve(label);
+            }
         }
 
         // ── Build finalization context + resolve provider + spawn ────────
@@ -909,6 +1001,8 @@ impl<
             downgrade_from: pf.downgrade_from,
             downgrade_reason: pf.downgrade_reason,
             period_starts,
+            provider_id: provider_id.clone(),
+            metrics: Arc::clone(&self.metrics),
         };
 
         // ── Context assembly ──
@@ -1000,6 +1094,13 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
         let mut first_token_time: Option<std::time::Duration> = None;
         let msg_id_str = fin_ctx.as_ref().map(|p| p.message_id.to_string());
 
+        // ── Metrics: stream started + active gauge ──
+        if let Some(ref fctx) = fin_ctx {
+            fctx.metrics
+                .record_stream_started(&fctx.provider_id, &fctx.effective_model);
+            fctx.metrics.increment_active_streams();
+        }
+
         // Build the LLM request using provider_model_id (the actual provider-facing name)
         let mut builder = LlmRequestBuilder::new(&provider_model_id)
             .messages(messages)
@@ -1068,6 +1169,14 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         .await;
                 }
 
+                // Metrics: pre-stream failure
+                if let Some(ref fctx) = fin_ctx {
+                    let ms = stream_start.elapsed().as_secs_f64() * 1000.0;
+                    fctx.metrics.record_stream_failed(&fctx.provider_id, &fctx.effective_model, &code);
+                    fctx.metrics.record_stream_total_latency_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                    fctx.metrics.decrement_active_streams();
+                }
+
                 return StreamOutcome {
                     terminal: StreamTerminal::Failed,
                     accumulated_text: String::new(),
@@ -1097,6 +1206,15 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
 
                 () = cancel.cancelled() => {
                     debug!("stream cancelled, aborting provider");
+                    if let Some(ref fctx) = fin_ctx {
+                        fctx.metrics.record_cancel_requested(trigger::DISCONNECT);
+                        let disconnect_stage = if first_token_time.is_none() {
+                            stage::BEFORE_FIRST_TOKEN
+                        } else {
+                            stage::MID_STREAM
+                        };
+                        fctx.metrics.record_stream_disconnected(disconnect_stage);
+                    }
                     provider_stream.cancel();
                     cancelled = true;
                     break;
@@ -1113,6 +1231,10 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                                         time_to_first_token_ms = ttft.as_millis() as u64,
                                         "first token received"
                                     );
+                                    if let Some(ref fctx) = fin_ctx {
+                                        let ms = ttft.as_secs_f64() * 1000.0;
+                                        fctx.metrics.record_ttft_provider_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                                    }
                                 }
                                 accumulated_text.push_str(content);
                             }
@@ -1168,6 +1290,23 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                                             }
 
                                             provider_stream.cancel();
+
+                                            // Metrics: web search limit exceeded
+                                            if let Some(ref fctx) = fin_ctx {
+                                                let ms = stream_start.elapsed().as_secs_f64() * 1000.0;
+                                                fctx.metrics.record_stream_failed(
+                                                    &fctx.provider_id,
+                                                    &fctx.effective_model,
+                                                    &code,
+                                                );
+                                                fctx.metrics.record_stream_total_latency_ms(
+                                                    &fctx.provider_id,
+                                                    &fctx.effective_model,
+                                                    ms,
+                                                );
+                                                fctx.metrics.decrement_active_streams();
+                                            }
+
                                             let has_partial = !accumulated_text.is_empty();
                                             return StreamOutcome {
                                                 terminal: StreamTerminal::Failed,
@@ -1238,6 +1377,14 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                                     .await;
                             }
 
+                            // Metrics: mid-stream failure
+                            if let Some(ref fctx) = fin_ctx {
+                                let ms = stream_start.elapsed().as_secs_f64() * 1000.0;
+                                fctx.metrics.record_stream_failed(&fctx.provider_id, &fctx.effective_model, &code);
+                                fctx.metrics.record_stream_total_latency_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                                fctx.metrics.decrement_active_streams();
+                            }
+
                             provider_stream.cancel();
                             let has_partial = !accumulated_text.is_empty();
                             return StreamOutcome {
@@ -1281,6 +1428,13 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                 if let Err(e) = fctx.finalization_svc.finalize_turn_cas(input).await {
                     warn!(error = %e, "finalization failed on cancelled stream");
                 }
+
+                // Metrics: cancelled stream
+                let ms = elapsed.as_secs_f64() * 1000.0;
+                fctx.metrics.record_cancel_effective(trigger::DISCONNECT);
+                fctx.metrics.record_time_to_abort_ms(trigger::DISCONNECT, ms);
+                fctx.metrics.record_stream_total_latency_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                fctx.metrics.decrement_active_streams();
             }
 
             return StreamOutcome {
@@ -1387,6 +1541,14 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         .await;
                 }
 
+                // Metrics: completed stream
+                if let Some(ref fctx) = fin_ctx {
+                    let ms = stream_start.elapsed().as_secs_f64() * 1000.0;
+                    fctx.metrics.record_stream_completed(&fctx.provider_id, &fctx.effective_model);
+                    fctx.metrics.record_stream_total_latency_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                    fctx.metrics.decrement_active_streams();
+                }
+
                 StreamOutcome {
                     terminal: StreamTerminal::Completed,
                     accumulated_text,
@@ -1463,6 +1625,15 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         .await;
                 }
 
+                // Metrics: incomplete stream
+                if let Some(ref fctx) = fin_ctx {
+                    let ms = stream_start.elapsed().as_secs_f64() * 1000.0;
+                    fctx.metrics.record_stream_incomplete(&fctx.provider_id, &fctx.effective_model, &reason);
+                    fctx.metrics.record_stream_completed(&fctx.provider_id, &fctx.effective_model);
+                    fctx.metrics.record_stream_total_latency_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                    fctx.metrics.decrement_active_streams();
+                }
+
                 StreamOutcome {
                     terminal: StreamTerminal::Incomplete,
                     accumulated_text,
@@ -1523,6 +1694,14 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                             message,
                         }))
                         .await;
+                }
+
+                // Metrics: failed stream (post-provider)
+                if let Some(ref fctx) = fin_ctx {
+                    let ms = stream_start.elapsed().as_secs_f64() * 1000.0;
+                    fctx.metrics.record_stream_failed(&fctx.provider_id, &fctx.effective_model, &code);
+                    fctx.metrics.record_stream_total_latency_ms(&fctx.provider_id, &fctx.effective_model, ms);
+                    fctx.metrics.decrement_active_streams();
                 }
 
                 StreamOutcome {
@@ -2070,6 +2249,7 @@ mod tests {
             Arc::clone(&message_repo),
             Arc::new(MockQuotaSettler) as Arc<dyn QuotaSettler>,
             Arc::new(NoopOutboxEnqueuer) as Arc<dyn crate::domain::repos::OutboxEnqueuer>,
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         ));
 
         // QuotaService with permissive defaults — model catalog includes
@@ -2135,6 +2315,7 @@ mod tests {
             quota_svc,
             mock_thread_summary_repo(),
             crate::config::ContextConfig::default(),
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         )
     }
 
@@ -2889,6 +3070,7 @@ mod tests {
             Arc::clone(&message_repo_arc),
             Arc::new(NoopSettler) as Arc<dyn QuotaSettler>,
             Arc::new(NoopOutboxEnqueuer) as Arc<dyn crate::domain::repos::OutboxEnqueuer>,
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         ));
 
         let fctx = FinalizationCtx {
@@ -2911,6 +3093,8 @@ mod tests {
             downgrade_from: Some("gpt-4o".to_owned()),
             downgrade_reason: Some("premium_exhausted".to_owned()),
             period_starts: Vec::new(),
+            provider_id: "openai".to_owned(),
+            metrics: Arc::new(crate::domain::ports::metrics::NoopMetrics),
         };
 
         let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::completed(&["Hello"]));
@@ -3036,6 +3220,7 @@ mod tests {
             Arc::clone(&message_repo),
             Arc::new(MockQuotaSettler) as Arc<dyn QuotaSettler>,
             Arc::new(NoopOutboxEnqueuer) as Arc<dyn crate::domain::repos::OutboxEnqueuer>,
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         ));
 
         let quota_svc = Arc::new(crate::domain::service::QuotaService::new(
@@ -3072,6 +3257,7 @@ mod tests {
             quota_svc,
             mock_thread_summary_repo(),
             crate::config::ContextConfig::default(),
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         )
     }
 

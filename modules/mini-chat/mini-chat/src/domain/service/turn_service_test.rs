@@ -71,6 +71,7 @@ async fn setup() -> (
         message_repo,
         chat_repo,
         mock_enforcer(),
+        Arc::new(crate::domain::ports::metrics::NoopMetrics),
     );
 
     (svc, ctx, chat_id, tenant_id)

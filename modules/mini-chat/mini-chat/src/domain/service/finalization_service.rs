@@ -20,6 +20,9 @@ use crate::domain::repos::{
 use crate::domain::service::quota_settler::QuotaSettler;
 use crate::infra::db::entity::chat_turn::TurnState;
 
+use crate::domain::ports::MiniChatMetricsPort;
+use crate::domain::ports::metric_labels::{period, result as result_label, trigger};
+
 use super::DbProvider;
 
 fn to_db(e: DomainError) -> modkit_db::DbError {
@@ -41,6 +44,7 @@ pub struct FinalizationService<TR: TurnRepository + 'static, MR: MessageReposito
     message_repo: Arc<MR>,
     quota_settler: Arc<dyn QuotaSettler>,
     outbox_enqueuer: Arc<dyn OutboxEnqueuer>,
+    metrics: Arc<dyn MiniChatMetricsPort>,
 }
 
 impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> FinalizationService<TR, MR> {
@@ -50,6 +54,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
         message_repo: Arc<MR>,
         quota_settler: Arc<dyn QuotaSettler>,
         outbox_enqueuer: Arc<dyn OutboxEnqueuer>,
+        metrics: Arc<dyn MiniChatMetricsPort>,
     ) -> Self {
         Self {
             db,
@@ -57,6 +62,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
             message_repo,
             quota_settler,
             outbox_enqueuer,
+            metrics,
         }
     }
 
@@ -84,7 +90,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
                     self.outbox_enqueuer.flush();
                 }
                 if let Some(billing) = outcome.billing_outcome {
-                    Self::emit_post_commit_side_effects(&input, billing);
+                    Self::emit_post_commit_side_effects(&input, billing, &*self.metrics);
                 }
                 Ok(outcome)
             }
@@ -114,7 +120,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
                     self.outbox_enqueuer.flush();
                 }
                 if let Some(billing) = retry_outcome.billing_outcome {
-                    Self::emit_post_commit_side_effects(&retry_input, billing);
+                    Self::emit_post_commit_side_effects(&retry_input, billing, &*self.metrics);
                 }
                 Ok(retry_outcome)
             }
@@ -270,30 +276,65 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
 
     /// Emit metrics and logs after the transaction commits.
     /// These MUST NOT run inside the transaction.
-    fn emit_post_commit_side_effects(input: &FinalizationInput, billing: BillingDerivation) {
-        // Unknown error code → critical log + metric
+    fn emit_post_commit_side_effects(
+        input: &FinalizationInput,
+        billing: BillingDerivation,
+        metrics: &dyn MiniChatMetricsPort,
+    ) {
+        metrics.record_audit_emit(result_label::OK);
+        Self::emit_quota_metrics(input, billing, metrics);
+        Self::emit_billing_side_effects(input, billing, metrics);
+    }
+
+    fn emit_quota_metrics(
+        input: &FinalizationInput,
+        billing: BillingDerivation,
+        metrics: &dyn MiniChatMetricsPort,
+    ) {
+        match billing.settlement_method {
+            SettlementMethod::Actual => {
+                metrics.record_quota_commit(period::DAILY);
+                metrics.record_quota_commit(period::MONTHLY);
+                if let Some(usage) = input.usage {
+                    #[allow(clippy::cast_precision_loss)]
+                    let actual = (usage.input_tokens + usage.output_tokens) as f64;
+                    metrics.record_quota_actual_tokens(actual);
+                }
+            }
+            SettlementMethod::Estimated | SettlementMethod::Released => {
+                // No overshoot metric here: overshoot measures actual > reserved,
+                // but estimated settlement has no actual usage data to compare.
+                // The reserved estimate simply stays as-is until a future
+                // reconciliation pass settles it with real numbers.
+            }
+        }
+    }
+
+    fn emit_billing_side_effects(
+        input: &FinalizationInput,
+        billing: BillingDerivation,
+        metrics: &dyn MiniChatMetricsPort,
+    ) {
         if billing.unknown_error_code {
             error!(
                 error_code = ?input.error_code,
                 turn_id = %input.turn_id,
                 "CRITICAL: unknown error code in billing derivation"
             );
-            // TODO(P4): increment mini_chat_unknown_error_code_total{code} (task 8.4)
         }
 
-        // Aborted billing outcome → streams_aborted metric
         if billing.outcome == BillingOutcome::Aborted {
-            let trigger = match input.error_code.as_deref() {
-                Some("orphan_timeout") => "orphan_timeout",
-                _ if input.terminal_state == TurnState::Cancelled => "client_disconnect",
-                _ => "internal_abort",
+            let abort_trigger = match input.error_code.as_deref() {
+                Some("orphan_timeout") => trigger::ORPHAN_TIMEOUT,
+                _ if input.terminal_state == TurnState::Cancelled => trigger::CLIENT_DISCONNECT,
+                _ => trigger::INTERNAL_ABORT,
             };
             warn!(
                 turn_id = %input.turn_id,
-                trigger = trigger,
+                trigger = abort_trigger,
                 "stream aborted"
             );
-            // TODO(P4): increment mini_chat_streams_aborted_total{trigger} (task 8.3)
+            metrics.record_streams_aborted(abort_trigger);
         }
     }
 }
@@ -432,6 +473,7 @@ mod tests {
             })),
             Arc::new(MockQuotaSettler),
             outbox.clone(),
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         );
         (svc, outbox)
     }
@@ -675,6 +717,7 @@ mod tests {
             })),
             Arc::new(FailingQuotaSettler),
             Arc::new(NoopOutboxEnqueuer::new()),
+            Arc::new(crate::domain::ports::metrics::NoopMetrics),
         );
 
         let tenant_id = Uuid::new_v4();

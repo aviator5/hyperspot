@@ -252,10 +252,20 @@ fn to_db(e: DomainError) -> modkit_db::DbError {
 pub struct PreflightComputed {
     pub decision: PreflightDecision,
     pub(crate) buckets: Vec<String>,
+    /// Tier label for metrics, set at construction so reject paths (which have
+    /// empty `buckets`) still report the correct tier.
+    pub(crate) metrics_tier: &'static str,
     pub(crate) reserved_credits_micro: i64,
     pub(crate) periods: Vec<(PeriodType, time::Date)>,
     pub(crate) tenant_id: uuid::Uuid,
     pub(crate) user_id: uuid::Uuid,
+}
+
+impl PreflightComputed {
+    /// Tier label for metrics recording.
+    pub(crate) fn effective_tier(&self) -> &'static str {
+        self.metrics_tier
+    }
 }
 
 // ── preflight_evaluate + preflight_write_reserve ──
@@ -313,6 +323,14 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                 )
             },
         );
+
+        // Tier label for metrics — derived from the selected model's catalog
+        // entry so that reject paths (which have empty buckets) still report
+        // the correct tier.
+        let selected_metrics_tier: &'static str = match catalog_entry.map(|e| e.tier) {
+            Some(ModelTier::Premium) => "premium",
+            _ => "standard",
+        };
 
         // 4. Conservative initial reserve using config cap (pre-cascade)
         let initial_reserved = credits_micro_checked(
@@ -382,6 +400,7 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                                     quota_scope: "web_search".to_owned(),
                                 },
                                 buckets: vec![],
+                                metrics_tier: selected_metrics_tier,
                                 reserved_credits_micro: 0,
                                 periods: periods.clone(),
                                 tenant_id,
@@ -408,6 +427,8 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                                 quota_scope: "tokens".to_owned(),
                             },
                             buckets: vec![],
+                            // Cascade exhausted to standard before rejecting.
+                            metrics_tier: "standard",
                             reserved_credits_micro: 0,
                             periods: periods.clone(),
                             tenant_id,
@@ -492,9 +513,15 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                                 CascadeDecision::Reject => unreachable!(),
                             };
 
+                            let metrics_tier = match tier {
+                                ModelTier::Premium => "premium",
+                                ModelTier::Standard => "standard",
+                            };
+
                             Ok(PreflightComputed {
                                 decision: preflight_decision,
                                 buckets,
+                                metrics_tier,
                                 reserved_credits_micro: final_reserved,
                                 periods: periods.clone(),
                                 tenant_id,

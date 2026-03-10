@@ -6,6 +6,7 @@ use modkit_db::DBProvider;
 use modkit_macros::domain_model;
 
 use crate::config::{ContextConfig, EstimationBudgets, QuotaConfig, StreamingConfig};
+use crate::domain::ports::MiniChatMetricsPort;
 use crate::domain::repos::{
     AttachmentRepository, ChatRepository, MessageRepository, ModelResolver, OutboxEnqueuer,
     PolicySnapshotProvider, QuotaUsageRepository, ReactionRepository, ThreadSummaryRepository,
@@ -135,6 +136,7 @@ pub(crate) struct AppServices<
     pub(crate) message_repo: Arc<MR>,
     pub(crate) turn_repo: Arc<TR>,
     pub(crate) enforcer: PolicyEnforcer,
+    pub(crate) metrics: Arc<dyn MiniChatMetricsPort>,
 }
 
 impl<
@@ -160,6 +162,7 @@ impl<
         quota_config: QuotaConfig,
         outbox_enqueuer: Arc<dyn OutboxEnqueuer>,
         context_config: ContextConfig,
+        metrics: Arc<dyn MiniChatMetricsPort>,
     ) -> Self {
         let enforcer = PolicyEnforcer::new(authz);
 
@@ -180,6 +183,7 @@ impl<
             Arc::clone(&repos.message),
             Arc::clone(&quota_svc) as Arc<dyn QuotaSettler>,
             outbox_enqueuer,
+            Arc::clone(&metrics),
         ));
 
         let turns = TurnService::new(
@@ -188,6 +192,7 @@ impl<
             Arc::clone(&repos.message),
             Arc::clone(&repos.chat),
             enforcer.clone(),
+            Arc::clone(&metrics),
         );
 
         Self {
@@ -216,6 +221,7 @@ impl<
                 Arc::clone(&quota_svc),
                 Arc::clone(&repos.thread_summary),
                 context_config,
+                Arc::clone(&metrics),
             ),
             turns,
             reactions: ReactionService::new(
@@ -243,6 +249,7 @@ impl<
             message_repo: Arc::clone(&repos.message),
             turn_repo: Arc::clone(&repos.turn),
             enforcer,
+            metrics,
         }
     }
 }

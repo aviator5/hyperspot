@@ -16,7 +16,9 @@ use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
 use crate::api::rest::routes;
 use crate::config::ProviderEntry;
+use crate::domain::ports::MiniChatMetricsPort;
 use crate::domain::service::{AppServices as GenericAppServices, Repositories};
+use crate::infra::metrics::MiniChatMetricsMeter;
 use crate::infra::outbox::{InfraOutboxEnqueuer, UsageEventHandler};
 
 pub(crate) type AppServices = GenericAppServices<
@@ -248,6 +250,14 @@ impl Module for MiniChatModule {
             vector_store: Arc::new(VectorStoreRepository),
         };
 
+        // Create metrics adapter
+        let metrics_prefix = cfg.metrics.effective_prefix(Self::MODULE_NAME);
+        let scope =
+            opentelemetry::InstrumentationScope::builder(Self::MODULE_NAME.to_owned()).build();
+        let metrics: Arc<dyn MiniChatMetricsPort> = Arc::new(MiniChatMetricsMeter::new(
+            &opentelemetry::global::meter_with_scope(scope),
+            &metrics_prefix,
+        ));
         let services = Arc::new(AppServices::new(
             &repos,
             db,
@@ -261,6 +271,7 @@ impl Module for MiniChatModule {
             cfg.quota,
             outbox_enqueuer,
             cfg.context,
+            metrics,
         ));
 
         self.service
