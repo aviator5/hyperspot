@@ -6,7 +6,7 @@
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use utoipa::openapi::{
     OpenApi, OpenApiBuilder, Ref, RefOr, Required,
@@ -314,10 +314,13 @@ impl OpenApiRegistryImpl {
         }
 
         // 2) Components (from our registry)
+        let reg = self.components_registry.load();
         let mut components = ComponentsBuilder::new();
-        for (name, schema) in self.components_registry.load().iter() {
+        for (name, schema) in reg.iter() {
             components = components.schema(name.clone(), schema.clone());
         }
+
+        warn_dangling_refs(&reg);
 
         // Add bearer auth security scheme
         components = components.security_scheme(
@@ -393,6 +396,65 @@ impl OpenApiRegistry for OpenApiRegistryImpl {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+/// Walk all finalized schemas and warn about dangling `$ref` targets.
+///
+/// Run after all modules have registered their schemas so that only genuinely
+/// missing references are reported.
+fn warn_dangling_refs(registry: &HashMap<String, RefOr<Schema>>) {
+    for ref_name in &collect_all_dangling_refs(registry) {
+        tracing::warn!(
+            schema = %ref_name,
+            "Dangling $ref: schema '{}' is referenced but not registered. \
+             Add an explicit `ensure_schema::<T>(registry)` call.",
+            ref_name,
+        );
+    }
+}
+
+/// Walk all registered schemas and return names referenced via `$ref` but
+/// not present in the registry.
+fn collect_all_dangling_refs(registry: &HashMap<String, RefOr<Schema>>) -> Vec<String> {
+    let mut all_refs = HashSet::new();
+    for (name, schema) in registry {
+        match serde_json::to_value(schema) {
+            Ok(value) => collect_refs_from_json(&value, &mut all_refs),
+            Err(err) => {
+                tracing::debug!(
+                    schema = %name,
+                    error = %err,
+                    "Failed to serialize schema for dangling $ref check"
+                );
+            }
+        }
+    }
+    all_refs
+        .into_iter()
+        .filter(|name| !registry.contains_key(name))
+        .collect()
+}
+
+/// Recursively extract `#/components/schemas/{name}` targets from a JSON value.
+fn collect_refs_from_json(value: &serde_json::Value, refs: &mut HashSet<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::String(ref_str)) = map.get("$ref")
+                && let Some(name) = ref_str.strip_prefix("#/components/schemas/")
+            {
+                refs.insert(name.to_owned());
+            }
+            for v in map.values() {
+                collect_refs_from_json(v, refs);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                collect_refs_from_json(v, refs);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -666,5 +728,46 @@ mod tests {
         let allowed_order = order_ext.get("allowedFields").unwrap().as_array().unwrap();
         assert!(allowed_order.iter().any(|v| v.as_str() == Some("name asc")));
         assert!(allowed_order.iter().any(|v| v.as_str() == Some("age desc")));
+    }
+
+    #[test]
+    fn test_collect_all_dangling_refs_detects_missing() {
+        let mut registry: HashMap<String, RefOr<Schema>> = HashMap::new();
+        // Register "Foo" with a $ref to "Bar" which is NOT registered
+        let foo_schema = serde_json::from_value::<Schema>(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "bar": { "$ref": "#/components/schemas/Bar" }
+            }
+        }))
+        .unwrap();
+        registry.insert("Foo".to_owned(), RefOr::T(foo_schema));
+
+        let dangling = collect_all_dangling_refs(&registry);
+        assert_eq!(dangling, vec!["Bar".to_owned()]);
+    }
+
+    #[test]
+    fn test_collect_all_dangling_refs_no_false_positives() {
+        let mut registry: HashMap<String, RefOr<Schema>> = HashMap::new();
+        // Register "Bar"
+        let bar_schema = Schema::Object(ObjectBuilder::new().build());
+        registry.insert("Bar".to_owned(), RefOr::T(bar_schema));
+
+        // Register "Foo" referencing "Bar"
+        let foo_schema = serde_json::from_value::<Schema>(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "bar": { "$ref": "#/components/schemas/Bar" }
+            }
+        }))
+        .unwrap();
+        registry.insert("Foo".to_owned(), RefOr::T(foo_schema));
+
+        let dangling = collect_all_dangling_refs(&registry);
+        assert!(
+            dangling.is_empty(),
+            "Expected no dangling refs but got: {dangling:?}"
+        );
     }
 }
