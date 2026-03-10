@@ -1,6 +1,5 @@
 use axum::Router;
 use modkit::api::OpenApiRegistry;
-use modkit::api::ensure_schema;
 use modkit::api::operation_builder::OperationBuilder;
 
 use super::AiChatLicense;
@@ -13,14 +12,6 @@ pub(super) fn register_message_routes(
     openapi: &dyn OpenApiRegistry,
     prefix: &str,
 ) -> Router {
-    // TODO(modkit): `ensure_schema` should resolve dangling `$ref` targets
-    //  automatically. utoipa's derived `Page<T>::schemas()` omits `T` from
-    //  its dependency list, so `Page<MessageDto>` creates a `$ref` to
-    //  `MessageDto` without registering it.  Remove this workaround once
-    //  `ensure_schema_raw` learns to walk `$ref` pointers and pull missing
-    //  schemas into the registry.
-    ensure_schema::<dto::MessageDto>(openapi);
-
     // GET {prefix}/v1/chats/{id}/messages
     router = OperationBuilder::get(format!("{prefix}/v1/chats/{{id}}/messages"))
         .operation_id("mini_chat.list_messages")
