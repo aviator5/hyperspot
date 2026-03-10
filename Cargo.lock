@@ -1253,6 +1253,8 @@ dependencies = [
  "futures",
  "http",
  "inventory",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "pin-project-lite",
  "regex",
  "sea-orm",

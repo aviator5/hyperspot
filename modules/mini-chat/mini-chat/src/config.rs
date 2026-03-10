@@ -20,10 +20,33 @@ pub struct MiniChatConfig {
     pub quota: QuotaConfig,
     #[serde(default)]
     pub outbox: OutboxConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
     /// Provider registry. Key = `provider_id` (matches [`ModelCatalogEntry::provider_id`]).
     #[expand_vars]
     #[serde(default = "default_providers")]
     pub providers: HashMap<String, ProviderEntry>,
+}
+
+/// Metrics configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsConfig {
+    /// Metric name prefix (default: `"mini_chat"`).
+    #[serde(default = "default_metrics_prefix")]
+    pub prefix: String,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            prefix: default_metrics_prefix(),
+        }
+    }
+}
+
+fn default_metrics_prefix() -> String {
+    "mini_chat".to_owned()
 }
 
 /// Configuration for a single LLM provider.
@@ -172,6 +195,7 @@ impl Default for MiniChatConfig {
             estimation_budgets: EstimationBudgets::default(),
             quota: QuotaConfig::default(),
             outbox: OutboxConfig::default(),
+            metrics: MetricsConfig::default(),
             providers: default_providers(),
         }
     }
