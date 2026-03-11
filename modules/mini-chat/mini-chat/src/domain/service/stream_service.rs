@@ -20,7 +20,7 @@ use crate::domain::stream_events::{DoneData, ErrorData, StreamEvent};
 use crate::infra::db::entity::chat_turn::{Model as TurnModel, TurnState};
 use crate::infra::llm::{
     ClientSseEvent, LlmMessage, LlmProvider, LlmProviderError, LlmRequestBuilder, LlmTool,
-    TerminalOutcome, Usage, provider_resolver::ProviderResolver,
+    TerminalOutcome, ToolPhase, Usage, provider_resolver::ProviderResolver,
 };
 
 use super::{DbProvider, actions, resources};
@@ -97,7 +97,10 @@ pub enum StreamError {
     QuotaExhausted {
         error_code: String,
         http_status: u16,
+        quota_scope: String,
     },
+    /// Web search is disabled via kill switch but was requested.
+    WebSearchDisabled,
 }
 
 impl From<authz_resolver_sdk::EnforcerError> for StreamError {
@@ -154,6 +157,7 @@ struct FinalizationCtx<TR: TurnRepository + 'static, MR: MessageRepository + 'st
 
 impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> FinalizationCtx<TR, MR> {
     /// Build a [`FinalizationInput`] from this context and stream outcome data.
+    #[allow(clippy::too_many_arguments)]
     fn to_finalization_input(
         &self,
         terminal_state: TurnState,
@@ -162,6 +166,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
         error_code: Option<String>,
         error_detail: Option<String>,
         provider_response_id: Option<String>,
+        web_search_calls: u32,
     ) -> crate::domain::model::finalization::FinalizationInput {
         crate::domain::model::finalization::FinalizationInput {
             turn_id: self.turn_id,
@@ -188,6 +193,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
             downgrade_from: self.downgrade_from.clone(),
             downgrade_reason: self.downgrade_reason.clone(),
             period_starts: self.period_starts.clone(),
+            web_search_calls,
         }
     }
 }
@@ -296,10 +302,11 @@ fn flatten_preflight(
         PreflightDecision::Reject {
             error_code,
             http_status,
-            ..
+            quota_scope,
         } => Err(StreamError::QuotaExhausted {
             error_code,
             http_status,
+            quota_scope,
         }),
     }
 }
@@ -397,6 +404,7 @@ impl<
         request_id: Uuid,
         content: String,
         resolved_model: ResolvedModel,
+        web_search_enabled: bool,
         cancel: CancellationToken,
         tx: mpsc::Sender<StreamEvent>,
     ) -> Result<tokio::task::JoinHandle<StreamOutcome>, StreamError> {
@@ -486,11 +494,14 @@ impl<
                 utf8_bytes: content.len() as u64,
                 num_images: 0,
                 tools_enabled: false,
-                web_search_enabled: false,
+                web_search_enabled,
                 max_output_tokens_cap: self.streaming_config.max_output_tokens,
             })
             .await
-            .map_err(|e| StreamError::TurnCreationFailed { source: e })?;
+            .map_err(|e| match e {
+                DomainError::WebSearchDisabled => StreamError::WebSearchDisabled,
+                other => StreamError::TurnCreationFailed { source: other },
+            })?;
 
         let pf = flatten_preflight(computed.decision.clone())?;
         // Period boundaries from the computed preflight (used by finalization for settlement)
@@ -545,6 +556,7 @@ impl<
                 snapshot_boundary,
                 &pf.system_prompt,
                 &content,
+                web_search_enabled,
             )
             .await?;
 
@@ -572,6 +584,7 @@ impl<
             model,
             provider_model_id,
             pf.max_output_tokens_applied.cast_unsigned(),
+            self.quota.web_search_max_calls_per_message(),
             cancel,
             tx,
             Some(finalization_ctx),
@@ -704,6 +717,7 @@ impl<
         snapshot_boundary: Option<SnapshotBoundary>,
         system_prompt: &str,
         user_message: &str,
+        web_search_enabled: bool,
     ) -> Result<super::context_assembly::AssembledContext, StreamError> {
         let conn = self
             .db
@@ -774,7 +788,7 @@ impl<
                 thread_summary: thread_summary.as_ref().map(|ts| ts.content.as_str()),
                 recent_messages: &context_messages,
                 user_message,
-                web_search_enabled: false, // P1: not yet wired from request
+                web_search_enabled,
                 file_search_enabled: false, // P1: not yet wired from request
                 vector_store_ids: &[],
             },
@@ -797,6 +811,7 @@ impl<
         turn_id: Uuid,
         content: String,
         resolved_model: ResolvedModel,
+        web_search_enabled: bool,
         snapshot_boundary: Option<SnapshotBoundary>,
         cancel: CancellationToken,
         tx: mpsc::Sender<StreamEvent>,
@@ -819,11 +834,14 @@ impl<
                 utf8_bytes: content.len() as u64,
                 num_images: 0,
                 tools_enabled: false,
-                web_search_enabled: false,
+                web_search_enabled,
                 max_output_tokens_cap: self.streaming_config.max_output_tokens,
             })
             .await
-            .map_err(|e| StreamError::TurnCreationFailed { source: e })?;
+            .map_err(|e| match e {
+                DomainError::WebSearchDisabled => StreamError::WebSearchDisabled,
+                other => StreamError::TurnCreationFailed { source: other },
+            })?;
 
         let pf = flatten_preflight(computed.decision.clone())?;
         let period_starts = computed.periods.clone();
@@ -901,6 +919,7 @@ impl<
                 snapshot_boundary,
                 &pf.system_prompt,
                 &content,
+                web_search_enabled,
             )
             .await?;
 
@@ -926,6 +945,7 @@ impl<
             pf.effective_model,
             provider_model_id,
             pf.max_output_tokens_applied.cast_unsigned(),
+            self.quota.web_search_max_calls_per_message(),
             cancel,
             tx,
             Some(finalization_ctx),
@@ -958,6 +978,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
     model: String,
     provider_model_id: String,
     max_output_tokens: u32,
+    web_search_max_calls: u32,
     cancel: CancellationToken,
     tx: mpsc::Sender<StreamEvent>,
     fin_ctx: Option<FinalizationCtx<TR, MR>>,
@@ -1015,6 +1036,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         Some(code.clone()),
                         None,
                         None,
+                        0,
                     );
                     match fctx.finalization_svc.finalize_turn_cas(input).await {
                         Ok(outcome) if outcome.won_cas => {
@@ -1061,6 +1083,13 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
         // Read events from provider, translate and forward through channel
         let mut accumulated_text = String::new();
         let mut cancelled = false;
+        let mut web_search_call_count: u32 = 0;
+        // TODO(P2): web_search_call_count (Start) is used for enforcement,
+        // web_search_completed_count (Done) is used for settlement. If a search
+        // starts but never completes (provider error between Start/Done), the
+        // daily quota under-counts by one. Acceptable for P1 since OpenAI always
+        // pairs searching→completed; revisit if we add providers that don't.
+        let mut web_search_completed_count: u32 = 0;
 
         loop {
             tokio::select! {
@@ -1087,6 +1116,76 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                                 }
                                 accumulated_text.push_str(content);
                             }
+
+                            // Track web search tool calls for per-message limit
+                            if let ClientSseEvent::Tool { ref phase, name, .. } = client_event
+                                && name == "web_search"
+                            {
+                                match phase {
+                                    ToolPhase::Start => {
+                                        web_search_call_count += 1;
+                                        if web_search_call_count > web_search_max_calls {
+                                            warn!(
+                                                web_search_call_count,
+                                                limit = web_search_max_calls,
+                                                "web search per-message limit exceeded"
+                                            );
+                                            let code = "web_search_calls_exceeded".to_owned();
+                                            let message = "Web search calls exceeded for this message".to_owned();
+
+                                            // Finalize as failed, then emit error (D3)
+                                            if let Some(ref fctx) = fin_ctx {
+                                                let input = fctx.to_finalization_input(
+                                                    TurnState::Failed,
+                                                    &accumulated_text,
+                                                    None,
+                                                    Some(code.clone()),
+                                                    None,
+                                                    None,
+                                                    web_search_completed_count,
+                                                );
+                                                match fctx.finalization_svc.finalize_turn_cas(input).await {
+                                                    Ok(outcome) if outcome.won_cas => {
+                                                        let _ = tx.send(StreamEvent::Error(ErrorData {
+                                                            code: code.clone(),
+                                                            message,
+                                                        })).await;
+                                                    }
+                                                    Ok(_) => {}
+                                                    Err(fe) => {
+                                                        warn!(error = %fe, "finalization failed on ws limit exceeded");
+                                                        let _ = tx.send(StreamEvent::Error(ErrorData {
+                                                            code: code.clone(),
+                                                            message,
+                                                        })).await;
+                                                    }
+                                                }
+                                            } else {
+                                                let _ = tx.send(StreamEvent::Error(ErrorData {
+                                                    code: code.clone(),
+                                                    message,
+                                                })).await;
+                                            }
+
+                                            provider_stream.cancel();
+                                            let has_partial = !accumulated_text.is_empty();
+                                            return StreamOutcome {
+                                                terminal: StreamTerminal::Failed,
+                                                accumulated_text,
+                                                usage: None,
+                                                effective_model: model,
+                                                error_code: Some(code),
+                                                provider_response_id: None,
+                                                provider_partial_usage: has_partial,
+                                            };
+                                        }
+                                    }
+                                    ToolPhase::Done => {
+                                        web_search_completed_count += 1;
+                                    }
+                                }
+                            }
+
                             let stream_event = StreamEvent::from(client_event);
                             if tx.send(stream_event).await.is_err() {
                                 // Receiver dropped (client disconnect handled by relay)
@@ -1108,6 +1207,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                                     Some(code.clone()),
                                     None,
                                     None,
+                                    web_search_completed_count,
                                 );
                                 match fctx.finalization_svc.finalize_turn_cas(input).await {
                                     Ok(outcome) if outcome.won_cas => {
@@ -1138,6 +1238,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                                     .await;
                             }
 
+                            provider_stream.cancel();
                             let has_partial = !accumulated_text.is_empty();
                             return StreamOutcome {
                                 terminal: StreamTerminal::Failed,
@@ -1175,6 +1276,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                     None,
                     None,
                     None,
+                    web_search_completed_count,
                 );
                 if let Err(e) = fctx.finalization_svc.finalize_turn_cas(input).await {
                     warn!(error = %e, "finalization failed on cancelled stream");
@@ -1221,6 +1323,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         None,
                         None,
                         Some(response_id.clone()),
+                        web_search_completed_count,
                     );
                     match fctx.finalization_svc.finalize_turn_cas(input).await {
                         Ok(outcome) if outcome.won_cas => {
@@ -1314,6 +1417,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         None,
                         None,
                         None,
+                        web_search_completed_count,
                     );
                     match fctx.finalization_svc.finalize_turn_cas(input).await {
                         Ok(outcome) if outcome.won_cas => {
@@ -1390,6 +1494,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
                         Some(code.clone()),
                         None,
                         None,
+                        web_search_completed_count,
                     );
                     match fctx.finalization_svc.finalize_turn_cas(input).await {
                         Ok(outcome) if outcome.won_cas => {
@@ -1582,6 +1687,85 @@ mod tests {
                 events: std::sync::Mutex::new(events),
             }
         }
+
+        /// Provider that emits `web_search` tool start/done pairs, then completes.
+        fn with_web_search_calls(web_search_count: usize) -> Self {
+            let mut events: Vec<Result<TranslatedEvent, StreamingError>> = Vec::new();
+
+            // Emit a delta first so we have content
+            events.push(Ok(TranslatedEvent::Sse(ClientSseEvent::Delta {
+                r#type: "text",
+                content: "Hello".to_owned(),
+            })));
+
+            for _ in 0..web_search_count {
+                events.push(Ok(TranslatedEvent::Sse(ClientSseEvent::Tool {
+                    phase: ToolPhase::Start,
+                    name: "web_search",
+                    details: serde_json::json!({}),
+                })));
+                events.push(Ok(TranslatedEvent::Sse(ClientSseEvent::Tool {
+                    phase: ToolPhase::Done,
+                    name: "web_search",
+                    details: serde_json::json!({}),
+                })));
+            }
+
+            events.push(Ok(TranslatedEvent::Terminal(TerminalOutcome::Completed {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                },
+                response_id: "resp-test".to_owned(),
+                content: "Hello".to_owned(),
+                citations: vec![],
+                raw_response: serde_json::Value::Null,
+            })));
+
+            Self {
+                events: std::sync::Mutex::new(events),
+            }
+        }
+
+        /// Provider that emits tool start/done pairs for arbitrary tool names, then completes.
+        fn with_tool_calls(calls: &[(&'static str, usize)]) -> Self {
+            let mut events: Vec<Result<TranslatedEvent, StreamingError>> = Vec::new();
+
+            events.push(Ok(TranslatedEvent::Sse(ClientSseEvent::Delta {
+                r#type: "text",
+                content: "Hello".to_owned(),
+            })));
+
+            for &(name, count) in calls {
+                for _ in 0..count {
+                    events.push(Ok(TranslatedEvent::Sse(ClientSseEvent::Tool {
+                        phase: ToolPhase::Start,
+                        name,
+                        details: serde_json::json!({}),
+                    })));
+                    events.push(Ok(TranslatedEvent::Sse(ClientSseEvent::Tool {
+                        phase: ToolPhase::Done,
+                        name,
+                        details: serde_json::json!({}),
+                    })));
+                }
+            }
+
+            events.push(Ok(TranslatedEvent::Terminal(TerminalOutcome::Completed {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                },
+                response_id: "resp-test".to_owned(),
+                content: "Hello".to_owned(),
+                citations: vec![],
+                raw_response: serde_json::Value::Null,
+            })));
+
+            Self {
+                events: std::sync::Mutex::new(events),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -1632,6 +1816,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // web_search_max_calls
             cancel,
             tx,
             None,
@@ -1680,6 +1865,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // web_search_max_calls
             cancel,
             tx,
             None,
@@ -1721,6 +1907,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // web_search_max_calls
             cancel,
             tx,
             None,
@@ -1811,6 +1998,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // web_search_max_calls
             cancel.clone(),
             tx,
             None,
@@ -1928,6 +2116,7 @@ mod tests {
             crate::config::EstimationBudgets::default(),
             crate::config::QuotaConfig {
                 overshoot_tolerance_factor: 1.10,
+                ..crate::config::QuotaConfig::default()
             },
         ));
 
@@ -2056,6 +2245,7 @@ mod tests {
                 request_id,
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2118,6 +2308,7 @@ mod tests {
                 request_id,
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2197,6 +2388,7 @@ mod tests {
                 request_id,
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2276,6 +2468,7 @@ mod tests {
                 request_id,
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2340,6 +2533,7 @@ mod tests {
                 Uuid::new_v4(),
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2375,6 +2569,7 @@ mod tests {
                 Uuid::new_v4(),
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2426,6 +2621,7 @@ mod tests {
                 request_id,
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel1,
                 tx1,
             )
@@ -2451,6 +2647,7 @@ mod tests {
                 request_id,
                 "hello again".into(),
                 test_resolved_model(),
+                false,
                 cancel2,
                 tx2,
             )
@@ -2534,6 +2731,7 @@ mod tests {
                 request_id,
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel.clone(),
                 tx,
             )
@@ -2599,6 +2797,7 @@ mod tests {
                 Uuid::new_v4(),
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -2728,6 +2927,7 @@ mod tests {
             "gpt-4o-mini".into(), // effective_model passed as the model param
             "gpt-4o-mini".into(),
             4096,
+            2, // web_search_max_calls
             cancel,
             tx,
             Some(fctx),
@@ -2853,6 +3053,7 @@ mod tests {
             crate::config::EstimationBudgets::default(),
             crate::config::QuotaConfig {
                 overshoot_tolerance_factor: 1.10,
+                ..crate::config::QuotaConfig::default()
             },
         ));
 
@@ -2917,6 +3118,7 @@ mod tests {
                 Uuid::new_v4(),
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -3009,6 +3211,7 @@ mod tests {
                 Uuid::new_v4(),
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -3019,6 +3222,7 @@ mod tests {
             StreamError::QuotaExhausted {
                 error_code,
                 http_status,
+                ..
             } => {
                 assert_eq!(http_status, 429);
                 assert!(!error_code.is_empty());
@@ -3079,6 +3283,7 @@ mod tests {
                     context_window: 128_000,
                     system_prompt: String::new(),
                 },
+                false,
                 cancel,
                 tx,
             )
@@ -3141,6 +3346,7 @@ mod tests {
                 Uuid::new_v4(),
                 "hello".into(),
                 test_resolved_model(),
+                false,
                 cancel,
                 tx,
             )
@@ -3153,5 +3359,141 @@ mod tests {
             }
             other => panic!("expected ChatNotFound, got: {other:?}"),
         }
+    }
+
+    // ── Per-message web search call limit tests ──
+
+    /// 6.5: Web search calls within limit — stream completes normally.
+    #[tokio::test]
+    async fn test_per_message_limit_not_exceeded() {
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::with_web_search_calls(2)); // 2 calls, limit is 2
+        let (tx, mut rx) = mpsc::channel::<StreamEvent>(32);
+        let cancel = CancellationToken::new();
+
+        let handle = spawn_provider_task::<TurnRepo, MsgRepo>(
+            provider,
+            "test-alias".to_owned(),
+            mock_ctx(),
+            vec![LlmMessage::user("hi")],
+            None,
+            vec![],
+            "test-model".into(),
+            "test-model".into(),
+            4096,
+            2, // web_search_max_calls
+            cancel,
+            tx,
+            None,
+        );
+
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            let is_term = ev.is_terminal();
+            events.push(ev);
+            if is_term {
+                break;
+            }
+        }
+
+        let outcome = handle.await.expect("task should not panic");
+        assert_eq!(outcome.terminal, StreamTerminal::Completed);
+
+        // Expect: 1 delta + 2*(start+done) tool events + 1 done = 6 events
+        assert_eq!(events.len(), 6);
+        assert!(matches!(events.last(), Some(StreamEvent::Done(_))));
+        // No error events
+        assert!(!events.iter().any(|e| matches!(e, StreamEvent::Error(_))));
+    }
+
+    /// 6.6: Web search calls exceed limit — stream terminates with error.
+    #[tokio::test]
+    async fn test_per_message_limit_exceeded() {
+        // 3 web search calls but limit is 2 — the 3rd start should trigger error
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::with_web_search_calls(3));
+        let (tx, mut rx) = mpsc::channel::<StreamEvent>(32);
+        let cancel = CancellationToken::new();
+
+        let handle = spawn_provider_task::<TurnRepo, MsgRepo>(
+            provider,
+            "test-alias".to_owned(),
+            mock_ctx(),
+            vec![LlmMessage::user("hi")],
+            None,
+            vec![],
+            "test-model".into(),
+            "test-model".into(),
+            4096,
+            2, // web_search_max_calls
+            cancel,
+            tx,
+            None,
+        );
+
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            let is_term = ev.is_terminal();
+            events.push(ev);
+            if is_term {
+                break;
+            }
+        }
+
+        let outcome = handle.await.expect("task should not panic");
+        assert_eq!(outcome.terminal, StreamTerminal::Failed);
+        assert_eq!(
+            outcome.error_code.as_deref(),
+            Some("web_search_calls_exceeded")
+        );
+
+        // Last event should be an error
+        let last = events.last().expect("should have events");
+        match last {
+            StreamEvent::Error(data) => {
+                assert_eq!(data.code, "web_search_calls_exceeded");
+            }
+            other => panic!("expected Error event, got: {other:?}"),
+        }
+    }
+
+    /// 6.7: Other tool calls don't count toward web search limit.
+    #[tokio::test]
+    async fn test_per_message_counter_ignores_other_tools() {
+        // 5 file_search calls + 1 web_search call, limit is 2 — should complete
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::with_tool_calls(&[
+            ("file_search", 5),
+            ("web_search", 1),
+        ]));
+        let (tx, mut rx) = mpsc::channel::<StreamEvent>(32);
+        let cancel = CancellationToken::new();
+
+        let handle = spawn_provider_task::<TurnRepo, MsgRepo>(
+            provider,
+            "test-alias".to_owned(),
+            mock_ctx(),
+            vec![LlmMessage::user("hi")],
+            None,
+            vec![],
+            "test-model".into(),
+            "test-model".into(),
+            4096,
+            2, // web_search_max_calls
+            cancel,
+            tx,
+            None,
+        );
+
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            let is_term = ev.is_terminal();
+            events.push(ev);
+            if is_term {
+                break;
+            }
+        }
+
+        let outcome = handle.await.expect("task should not panic");
+        assert_eq!(outcome.terminal, StreamTerminal::Completed);
+        // No error events
+        assert!(!events.iter().any(|e| matches!(e, StreamEvent::Error(_))));
     }
 }

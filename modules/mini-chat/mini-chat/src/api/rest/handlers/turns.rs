@@ -203,6 +203,7 @@ async fn start_mutation_stream(
             mutation.new_turn_id,
             mutation.user_content,
             resolved,
+            false, // web_search_enabled: retry/edit defaults to disabled
             mutation.snapshot_boundary,
             cancel.clone(),
             tx,
@@ -273,16 +274,32 @@ fn mutation_error_to_problem(err: &MutationError) -> Problem {
 
 /// Caller is expected to be within an instrumented span that carries
 /// `chat_id` and `turn_request_id` fields.
+#[allow(clippy::cognitive_complexity)]
 fn stream_error_to_response(err: &StreamError) -> Response {
     match err {
         StreamError::QuotaExhausted {
             error_code,
             http_status,
+            quota_scope,
         } => {
-            info!(error_code = %error_code, http_status = *http_status, "quota exhausted, mutation rejected");
+            info!(error_code = %error_code, http_status = *http_status, quota_scope = %quota_scope, "quota exhausted, mutation rejected");
             let status =
                 StatusCode::from_u16(*http_status).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
-            Problem::new(status, "Quota Exhausted", error_code).into_response()
+            // TODO(P2): include `quota_scope` in the response body so clients can
+            // distinguish token vs web_search quota exhaustion (DESIGN.md §5.2).
+            Problem::new(status, error_code, error_code).into_response()
+        }
+        StreamError::WebSearchDisabled => {
+            info!(
+                reason = "kill_switch",
+                "web search disabled via kill switch, mutation rejected"
+            );
+            Problem::new(
+                StatusCode::BAD_REQUEST,
+                "web_search_disabled",
+                "Web search is currently disabled",
+            )
+            .into_response()
         }
         other => {
             warn!(error = ?other, "post-mutation stream error");

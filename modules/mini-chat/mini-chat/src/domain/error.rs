@@ -41,6 +41,12 @@ pub enum DomainError {
 
     #[error("Internal error: {message}")]
     InternalError { message: String },
+
+    #[error("Web search is currently disabled")]
+    WebSearchDisabled,
+
+    #[error("Web search calls exceeded for this message")]
+    WebSearchCallsExceeded,
 }
 
 impl DomainError {

@@ -385,7 +385,7 @@ fn translate_provider_event(event: &ProviderEvent, accumulated_text: &str) -> Tr
         }
 
         ProviderEvent::ResponseCompleted { response } => {
-            let citations = extract_citations(response);
+            let citations = extract_citations(response, accumulated_text);
             let usage = Usage {
                 input_tokens: response.usage.input_tokens,
                 output_tokens: response.usage.output_tokens,
@@ -427,37 +427,53 @@ fn translate_provider_event(event: &ProviderEvent, accumulated_text: &str) -> Tr
 }
 
 /// Extract citations from a `ResponseCompleted`'s output annotations.
-fn extract_citations(response: &ResponseObject) -> Vec<Citation> {
+fn extract_citations(response: &ResponseObject, accumulated_text: &str) -> Vec<Citation> {
     let mut citations = Vec::new();
 
     for output_item in &response.output {
         for content_part in &output_item.content {
             for annotation in &content_part.annotations {
                 let citation = match annotation.r#type.as_str() {
-                    "file_citation" => Citation {
-                        source: CitationSource::File,
-                        title: annotation.title.clone(),
-                        url: None,
-                        attachment_id: annotation.file_id.clone(),
-                        snippet: annotation.text.clone().unwrap_or_default(),
-                        score: None,
-                        span: match (annotation.start_index, annotation.end_index) {
+                    "file_citation" | "url_citation" => {
+                        let snippet = annotation
+                            .text
+                            .clone()
+                            .or_else(|| {
+                                annotation.start_index.zip(annotation.end_index).and_then(
+                                    |(start, end)| {
+                                        accumulated_text.get(start..end).map(ToOwned::to_owned)
+                                    },
+                                )
+                            })
+                            .unwrap_or_default();
+                        let span = match (annotation.start_index, annotation.end_index) {
                             (Some(start), Some(end)) => Some(TextSpan { start, end }),
                             _ => None,
-                        },
-                    },
-                    "url_citation" => Citation {
-                        source: CitationSource::Web,
-                        title: annotation.title.clone(),
-                        url: annotation.url.clone(),
-                        attachment_id: None,
-                        snippet: annotation.text.clone().unwrap_or_default(),
-                        score: None,
-                        span: match (annotation.start_index, annotation.end_index) {
-                            (Some(start), Some(end)) => Some(TextSpan { start, end }),
-                            _ => None,
-                        },
-                    },
+                        };
+
+                        let is_file = annotation.r#type == "file_citation";
+                        Citation {
+                            source: if is_file {
+                                CitationSource::File
+                            } else {
+                                CitationSource::Web
+                            },
+                            title: annotation.title.clone(),
+                            url: if is_file {
+                                None
+                            } else {
+                                annotation.url.clone()
+                            },
+                            attachment_id: if is_file {
+                                annotation.file_id.clone()
+                            } else {
+                                None
+                            },
+                            snippet,
+                            score: None,
+                            span,
+                        }
+                    }
                     _ => continue,
                 };
                 citations.push(citation);
@@ -551,6 +567,7 @@ fn build_request_body<M>(request: &LlmRequest<M>, stream: bool) -> serde_json::V
                 "type": "file_search",
                 "vector_store_ids": vector_store_ids
             })),
+            // TODO(P2): Update "web_search_preview" to "web_search" when adding provider parameter pass-through
             LlmTool::WebSearch => Some(serde_json::json!({
                 "type": "web_search_preview"
             })),
@@ -718,8 +735,6 @@ impl crate::infra::llm::LlmProvider for OpenAiResponsesProvider {
         let response_obj: ResponseObject =
             serde_json::from_slice(&bytes).map_err(|_| parse_error_response(&bytes))?;
 
-        let citations = extract_citations(&response_obj);
-
         // Extract text content from output
         let content = response_obj
             .output
@@ -729,6 +744,8 @@ impl crate::infra::llm::LlmProvider for OpenAiResponsesProvider {
             .map(|part| part.text.as_str())
             .collect::<Vec<_>>()
             .join("");
+
+        let citations = extract_citations(&response_obj, &content);
 
         let usage = Usage {
             input_tokens: response_obj.usage.input_tokens,
@@ -1479,7 +1496,7 @@ mod tests {
                 output_tokens: 0,
             },
         };
-        let citations = extract_citations(&response);
+        let citations = extract_citations(&response, "");
         assert_eq!(citations.len(), 1);
         assert!(matches!(citations[0].source, CitationSource::File));
         assert_eq!(citations[0].title, "Report.pdf");
@@ -1513,7 +1530,7 @@ mod tests {
                 output_tokens: 0,
             },
         };
-        let citations = extract_citations(&response);
+        let citations = extract_citations(&response, "");
         assert_eq!(citations.len(), 1);
         assert!(matches!(citations[0].source, CitationSource::Web));
         assert_eq!(citations[0].url.as_deref(), Some("https://example.com"));
@@ -1537,8 +1554,99 @@ mod tests {
                 output_tokens: 0,
             },
         };
-        let citations = extract_citations(&response);
+        let citations = extract_citations(&response, "");
         assert!(citations.is_empty());
+    }
+
+    #[test]
+    fn extract_citations_url_citation_snippet_from_text_range() {
+        let accumulated = "0123456789The capital of France is Paris.";
+        let response = ResponseObject {
+            id: "resp-1".into(),
+            output: vec![OutputItem {
+                r#type: "message".into(),
+                content: vec![ResponseContentPart {
+                    r#type: "output_text".into(),
+                    text: accumulated.into(),
+                    annotations: vec![Annotation {
+                        r#type: "url_citation".into(),
+                        title: "Wikipedia".into(),
+                        url: Some("https://en.wikipedia.org/wiki/France".into()),
+                        file_id: None,
+                        start_index: Some(10),
+                        end_index: Some(31),
+                        text: None,
+                    }],
+                }],
+            }],
+            usage: RawUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+            },
+        };
+        let citations = extract_citations(&response, accumulated);
+        assert_eq!(citations.len(), 1);
+        assert_eq!(citations[0].snippet, "The capital of France");
+    }
+
+    #[test]
+    fn extract_citations_url_citation_snippet_from_annotation_text() {
+        let response = ResponseObject {
+            id: "resp-1".into(),
+            output: vec![OutputItem {
+                r#type: "message".into(),
+                content: vec![ResponseContentPart {
+                    r#type: "output_text".into(),
+                    text: "Hello world".into(),
+                    annotations: vec![Annotation {
+                        r#type: "url_citation".into(),
+                        title: "Example".into(),
+                        url: Some("https://example.com".into()),
+                        file_id: None,
+                        start_index: Some(0),
+                        end_index: Some(5),
+                        text: Some("explicit snippet".into()),
+                    }],
+                }],
+            }],
+            usage: RawUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+            },
+        };
+        let citations = extract_citations(&response, "Hello world");
+        assert_eq!(citations.len(), 1);
+        assert_eq!(citations[0].snippet, "explicit snippet");
+    }
+
+    #[test]
+    fn extract_citations_url_citation_no_text_no_indices() {
+        let response = ResponseObject {
+            id: "resp-1".into(),
+            output: vec![OutputItem {
+                r#type: "message".into(),
+                content: vec![ResponseContentPart {
+                    r#type: "output_text".into(),
+                    text: "Hello".into(),
+                    annotations: vec![Annotation {
+                        r#type: "url_citation".into(),
+                        title: "Example".into(),
+                        url: Some("https://example.com".into()),
+                        file_id: None,
+                        start_index: None,
+                        end_index: None,
+                        text: None,
+                    }],
+                }],
+            }],
+            usage: RawUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+            },
+        };
+        let citations = extract_citations(&response, "Hello");
+        assert_eq!(citations.len(), 1);
+        assert_eq!(citations[0].snippet, "");
     }
 
     // ── Integration tests: streaming ───────────────────────────────────────

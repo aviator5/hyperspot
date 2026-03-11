@@ -103,6 +103,8 @@ pub struct SettlementInput {
     pub minimal_generation_floor_applied: i32,
     pub settlement_path: SettlementPath,
     pub period_starts: Vec<(PeriodType, time::Date)>,
+    /// Completed web search calls to settle.
+    pub web_search_calls: u32,
 }
 
 /// Classification of the settlement path to take.

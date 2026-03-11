@@ -189,6 +189,7 @@ impl<TR: TurnRepository + 'static, MR: MessageRepository + 'static> Finalization
                         minimal_generation_floor_applied: input.minimal_generation_floor_applied,
                         settlement_path,
                         period_starts: input.period_starts.clone(),
+                        web_search_calls: input.web_search_calls,
                     };
                     let settlement_outcome = quota_settler
                         .settle_in_tx(tx, &scope, settlement_input)
@@ -535,6 +536,7 @@ mod tests {
                 (PeriodType::Daily, today),
                 (PeriodType::Monthly, month_start),
             ],
+            web_search_calls: 3,
         }
     }
 

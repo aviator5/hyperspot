@@ -93,6 +93,9 @@ pub(crate) async fn stream_message(
         }
     };
 
+    // ── Extract web search flag from DTO ───────────────────────────────
+    let web_search_enabled = body.web_search.as_ref().is_some_and(|c| c.enabled);
+
     // ── Wire up streaming pipeline ─────────────────────────────────────
     let capacity = svc.stream.channel_capacity();
     let ping_secs = svc.stream.ping_interval_secs();
@@ -110,6 +113,7 @@ pub(crate) async fn stream_message(
             request_id,
             body.content,
             resolved,
+            web_search_enabled,
             cancel.clone(),
             tx,
         )
@@ -176,11 +180,26 @@ fn stream_error_response(err: &StreamError) -> Response {
         StreamError::QuotaExhausted {
             error_code,
             http_status,
+            quota_scope,
         } => {
-            info!(error_code = %error_code, http_status = *http_status, "quota exhausted, request rejected");
+            info!(error_code = %error_code, http_status = *http_status, quota_scope = %quota_scope, "quota exhausted, request rejected");
             let status =
                 StatusCode::from_u16(*http_status).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
-            Problem::new(status, "Quota Exhausted", error_code).into_response()
+            // TODO(P2): include `quota_scope` in the response body so clients can
+            // distinguish token vs web_search quota exhaustion (DESIGN.md §5.2).
+            Problem::new(status, error_code, error_code).into_response()
+        }
+        StreamError::WebSearchDisabled => {
+            info!(
+                reason = "kill_switch",
+                "web search disabled via kill switch, request rejected"
+            );
+            Problem::new(
+                StatusCode::BAD_REQUEST,
+                "web_search_disabled",
+                "Web search is currently disabled",
+            )
+            .into_response()
         }
     }
 }

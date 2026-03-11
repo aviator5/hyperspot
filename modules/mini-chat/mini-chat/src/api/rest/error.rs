@@ -77,6 +77,20 @@ impl From<DomainError> for Problem {
                 )
                 .with_trace_id(trace_id.unwrap_or_default())
             }
+
+            DomainError::WebSearchDisabled => Problem::new(
+                StatusCode::BAD_REQUEST,
+                "web_search_disabled",
+                "Web search is currently disabled",
+            )
+            .with_trace_id(trace_id.unwrap_or_default()),
+
+            DomainError::WebSearchCallsExceeded => Problem::new(
+                StatusCode::BAD_REQUEST,
+                "web_search_calls_exceeded",
+                "Web search calls exceeded for this message",
+            )
+            .with_trace_id(trace_id.unwrap_or_default()),
         }
     }
 }

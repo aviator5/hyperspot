@@ -62,6 +62,10 @@ impl<QR: QuotaUsageRepository> QuotaService<QR> {
             quota_config,
         }
     }
+
+    pub(crate) fn web_search_max_calls_per_message(&self) -> u32 {
+        self.quota_config.web_search_max_calls_per_message
+    }
 }
 
 // ── Cascade types ──
@@ -259,6 +263,7 @@ pub struct PreflightComputed {
 impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
     /// Evaluate preflight: external I/O, token estimation, cascade decision.
     /// Does NOT write reserves — call `preflight_write_reserve` in the caller's transaction.
+    #[allow(clippy::too_many_lines)]
     pub async fn preflight_evaluate(
         &self,
         input: PreflightInput,
@@ -276,6 +281,11 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
             .limits_provider
             .get_limits(input.user_id, policy_version)
             .await?;
+
+        // 1b. Web search kill switch check (before any estimation or DB reads)
+        if input.web_search_enabled && snapshot.kill_switches.disable_web_search {
+            return Err(DomainError::WebSearchDisabled);
+        }
 
         // 2. Estimate tokens
         let estimation = token_estimator::estimate_tokens(
@@ -320,13 +330,15 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
             .map_err(|e| DomainError::internal(e.to_string()))?;
         let periods = vec![(PeriodType::Daily, now), (PeriodType::Monthly, month_start)];
 
-        // 6. Read-only transaction: lock rows, run cascade
+        // 6. Transaction: lock rows, check web search quota, run cascade
         let repo = Arc::clone(&self.repo);
         let tenant_id = input.tenant_id;
         let user_id = input.user_id;
         let selected_model = input.selected_model.clone();
         let max_output_tokens_cap = input.max_output_tokens_cap;
         let estimation_budgets = self.estimation_budgets;
+        let web_search_enabled = input.web_search_enabled;
+        let web_search_daily_quota = self.quota_config.web_search_daily_quota;
 
         let tx_result = self
             .db
@@ -354,6 +366,29 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                         )
                         .await
                         .map_err(to_db)?;
+
+                    // 6a. Daily web search quota check (inside tx to prevent TOCTOU)
+                    if web_search_enabled {
+                        let today = period_starts[0]; // Daily period start
+                        let daily_web_search_calls = repo
+                            .get_daily_web_search_calls(tx, &scope, tenant_id, user_id, today)
+                            .await
+                            .map_err(to_db)?;
+                        if daily_web_search_calls >= web_search_daily_quota {
+                            return Ok(PreflightComputed {
+                                decision: PreflightDecision::Reject {
+                                    error_code: "quota_exceeded".to_owned(),
+                                    http_status: 429,
+                                    quota_scope: "web_search".to_owned(),
+                                },
+                                buckets: vec![],
+                                reserved_credits_micro: 0,
+                                periods: periods.clone(),
+                                tenant_id,
+                                user_id,
+                            });
+                        }
+                    }
 
                     let cascade_ctx = CascadeContext {
                         snapshot: &snapshot,
@@ -717,6 +752,7 @@ impl<QR: QuotaUsageRepository> QuotaService<QR> {
                             actual_credits_micro: committed_credits,
                             input_tokens: if is_total { Some(actual_input) } else { None },
                             output_tokens: if is_total { Some(actual_output) } else { None },
+                            web_search_calls: input.web_search_calls,
                         },
                     )
                     .await?;
@@ -773,6 +809,7 @@ impl<QR: QuotaUsageRepository> QuotaService<QR> {
                             actual_credits_micro: actual_credits,
                             input_tokens: None,
                             output_tokens: None,
+                            web_search_calls: input.web_search_calls,
                         },
                     )
                     .await?;
@@ -811,6 +848,7 @@ impl<QR: QuotaUsageRepository> QuotaService<QR> {
                             actual_credits_micro: 0,
                             input_tokens: None,
                             output_tokens: None,
+                            web_search_calls: 0,
                         },
                     )
                     .await?;
@@ -1169,6 +1207,7 @@ mod tests {
             crate::config::EstimationBudgets::default(),
             QuotaConfig {
                 overshoot_tolerance_factor: overshoot_tolerance,
+                ..QuotaConfig::default()
             },
         )
     }
@@ -1192,6 +1231,7 @@ mod tests {
             minimal_generation_floor_applied: 50,
             settlement_path: path,
             period_starts: default_periods(today),
+            web_search_calls: 0,
         }
     }
 
@@ -1686,6 +1726,7 @@ mod tests {
             crate::config::EstimationBudgets::default(),
             QuotaConfig {
                 overshoot_tolerance_factor: 1.10,
+                ..QuotaConfig::default()
             },
         );
 
@@ -1861,6 +1902,94 @@ mod tests {
         );
     }
 
+    // ── Web search preflight tests ──
+
+    #[tokio::test]
+    async fn preflight_web_search_kill_switch_rejects() {
+        let db_raw = inmem_db().await;
+        let db = mock_db_provider(db_raw);
+        let mut snapshot = default_snapshot();
+        snapshot.kill_switches.disable_web_search = true;
+        let svc = make_test_service(Arc::clone(&db), snapshot, 1.10);
+
+        let mut input = preflight_input("gpt-5");
+        input.web_search_enabled = true;
+
+        let result = svc.preflight_evaluate(input).await;
+        assert!(
+            matches!(result, Err(DomainError::WebSearchDisabled)),
+            "expected WebSearchDisabled, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_web_search_daily_quota_rejects() {
+        let db_raw = inmem_db().await;
+        let db = mock_db_provider(db_raw);
+        let snapshot = default_snapshot();
+        let svc = make_test_service(Arc::clone(&db), snapshot, 1.10);
+
+        // Seed daily web search usage at the quota limit
+        let today = OffsetDateTime::now_utc().date();
+        let scope = AccessScope::for_tenant(Uuid::nil());
+        let repo = QuotaUsageRepo;
+        let conn = db.conn().unwrap();
+
+        // First create the row via increment_reserve, then settle with web_search_calls
+        use crate::domain::repos::IncrementReserveParams;
+        repo.increment_reserve(
+            &conn,
+            &scope,
+            IncrementReserveParams {
+                tenant_id: Uuid::nil(),
+                user_id: Uuid::nil(),
+                period_type: PeriodType::Daily,
+                period_start: today,
+                bucket: "total".to_owned(),
+                amount_micro: 1000,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Settle with web_search_calls = daily quota (default 75)
+        use crate::domain::repos::SettleParams;
+        repo.settle(
+            &conn,
+            &scope,
+            SettleParams {
+                tenant_id: Uuid::nil(),
+                user_id: Uuid::nil(),
+                period_type: PeriodType::Daily,
+                period_start: today,
+                bucket: "total".to_owned(),
+                reserved_credits_micro: 1000,
+                actual_credits_micro: 1000,
+                input_tokens: Some(10),
+                output_tokens: Some(5),
+                web_search_calls: QuotaConfig::default().web_search_daily_quota,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut input = preflight_input("gpt-5");
+        input.web_search_enabled = true;
+
+        let computed = svc.preflight_evaluate(input).await.unwrap();
+        match computed.decision {
+            PreflightDecision::Reject {
+                quota_scope,
+                http_status,
+                ..
+            } => {
+                assert_eq!(quota_scope, "web_search");
+                assert_eq!(http_status, 429);
+            }
+            other => panic!("expected Reject with web_search scope, got {other:?}"),
+        }
+    }
+
     // ── 10: Integration tests ──
 
     // 10.2: Full preflight → settle round-trip
@@ -1921,6 +2050,7 @@ mod tests {
                 output_tokens: 200,
             },
             period_starts: default_periods(today),
+            web_search_calls: 0,
         };
 
         let outcome = svc.settle(&conn, &scope, settle_input).await.unwrap();
@@ -2015,6 +2145,7 @@ mod tests {
                 output_tokens: 200,
             },
             period_starts: default_periods(today),
+            web_search_calls: 0,
         };
 
         let outcome = svc.settle(&conn, &scope, settle_input).await.unwrap();

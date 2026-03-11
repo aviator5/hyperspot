@@ -334,6 +334,12 @@ fn default_web_surcharge() -> u32 {
 fn default_min_gen_floor() -> u32 {
     50
 }
+fn default_web_search_max_calls() -> u32 {
+    2
+}
+fn default_web_search_daily_quota() -> u32 {
+    75
+}
 
 /// Quota enforcement configuration.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -341,12 +347,18 @@ fn default_min_gen_floor() -> u32 {
 pub struct QuotaConfig {
     #[serde(default = "default_overshoot_tolerance")]
     pub overshoot_tolerance_factor: f64,
+    #[serde(default = "default_web_search_max_calls")]
+    pub web_search_max_calls_per_message: u32,
+    #[serde(default = "default_web_search_daily_quota")]
+    pub web_search_daily_quota: u32,
 }
 
 impl Default for QuotaConfig {
     fn default() -> Self {
         Self {
             overshoot_tolerance_factor: default_overshoot_tolerance(),
+            web_search_max_calls_per_message: default_web_search_max_calls(),
+            web_search_daily_quota: default_web_search_daily_quota(),
         }
     }
 }
@@ -358,6 +370,12 @@ impl QuotaConfig {
                 "overshoot_tolerance_factor must be 1.0-1.5, got {}",
                 self.overshoot_tolerance_factor
             ));
+        }
+        if self.web_search_max_calls_per_message == 0 {
+            return Err("web_search_max_calls_per_message must be > 0".to_owned());
+        }
+        if self.web_search_daily_quota == 0 {
+            return Err("web_search_daily_quota must be > 0".to_owned());
         }
         Ok(())
     }
@@ -510,28 +528,48 @@ mod tests {
     fn quota_config_validation() {
         assert!(
             (QuotaConfig {
-                overshoot_tolerance_factor: 0.99
+                overshoot_tolerance_factor: 0.99,
+                ..QuotaConfig::default()
             })
             .validate()
             .is_err()
         );
         assert!(
             (QuotaConfig {
-                overshoot_tolerance_factor: 1.0
+                overshoot_tolerance_factor: 1.0,
+                ..QuotaConfig::default()
             })
             .validate()
             .is_ok()
         );
         assert!(
             (QuotaConfig {
-                overshoot_tolerance_factor: 1.5
+                overshoot_tolerance_factor: 1.5,
+                ..QuotaConfig::default()
             })
             .validate()
             .is_ok()
         );
         assert!(
             (QuotaConfig {
-                overshoot_tolerance_factor: 1.51
+                overshoot_tolerance_factor: 1.51,
+                ..QuotaConfig::default()
+            })
+            .validate()
+            .is_err()
+        );
+        assert!(
+            (QuotaConfig {
+                web_search_max_calls_per_message: 0,
+                ..QuotaConfig::default()
+            })
+            .validate()
+            .is_err()
+        );
+        assert!(
+            (QuotaConfig {
+                web_search_daily_quota: 0,
+                ..QuotaConfig::default()
             })
             .validate()
             .is_err()
