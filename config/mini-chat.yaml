@@ -101,7 +101,7 @@ modules:
     config:
       secrets:
         - key: "azure-openai-key"
-          value: "AZURE_OPENAI_API_KEY_PLACEHOLDER"
+          value: "${AZURE_API_KEY}"
 
   file-parser:
     config:
@@ -123,7 +123,7 @@ modules:
           auth_config:
             header: "api-key"
             prefix: ""
-            secret_ref: "cred://${AZURE_API_KEY}"
+            secret_ref: "cred://azure-openai-key"
 
       # ── Azure OpenAI example (uncomment and set your endpoint) ──────────
       #   azure_openai:
@@ -135,7 +135,7 @@ modules:
       #     auth_config:
       #       header: "api-key"
       #       prefix: ""
-      #       secret_ref: "cred://${AZURE_API_KEY}"
+      #       secret_ref: "cred://azure-openai-key"
       #
       # ── Per-tenant Azure example (each tenant gets its own endpoint/auth) ─
       # Tenant overrides share the root provider's adapter kind and api_path.
@@ -150,7 +150,7 @@ modules:
       #     auth_config:
       #       header: "api-key"
       #       prefix: ""
-      #       secret_ref: "cred://${AZURE_API_KEY}"
+      #       secret_ref: "cred://azure-openai-key"
       #     tenant_overrides:
       #       "tenant-a-uuid":
       #         host: "tenant-a.openai.azure.com"

@@ -35,10 +35,13 @@ pub async fn register_oagw_upstreams(
         .map_err(|e| anyhow::anyhow!("failed to build security context: {e}"))?;
 
     for (provider_id, entry) in providers.iter_mut() {
-        // Register root upstream + route.
-        let Some(upstream) = create_upstream(gateway, &ctx, provider_id, entry).await else {
-            continue;
-        };
+        // Register root upstream + route. Fail hard — without upstreams the
+        // module cannot proxy LLM requests.
+        let upstream = create_upstream(gateway, &ctx, provider_id, entry)
+            .await
+            .ok_or_else(|| {
+                anyhow::anyhow!("OAGW upstream registration failed for provider '{provider_id}'")
+            })?;
         entry.upstream_alias = Some(upstream.alias.clone());
         register_route(gateway, &ctx, provider_id, entry, &upstream).await;
 
