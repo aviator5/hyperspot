@@ -548,11 +548,13 @@ impl<
             )
             .await?;
 
-        let resolved_provider = self.provider_resolver.resolve(&provider_id).map_err(|e| {
-            StreamError::TurnCreationFailed {
+        let tenant_id_str = tenant_id.to_string();
+        let resolved_provider = self
+            .provider_resolver
+            .resolve(&provider_id, Some(&tenant_id_str))
+            .map_err(|e| StreamError::TurnCreationFailed {
                 source: DomainError::internal(format!("provider resolution: {e}")),
-            }
-        })?;
+            })?;
         // Build the full OAGW proxy path: {alias}{api_path} with {model} substituted.
         // Use provider_model_id (the actual provider-facing model name) for the LLM request.
         let api_path = resolved_provider
@@ -902,11 +904,13 @@ impl<
             )
             .await?;
 
-        let resolved_provider = self.provider_resolver.resolve(&provider_id).map_err(|e| {
-            StreamError::TurnCreationFailed {
+        let tenant_id_str = tenant_id.to_string();
+        let resolved_provider = self
+            .provider_resolver
+            .resolve(&provider_id, Some(&tenant_id_str))
+            .map_err(|e| StreamError::TurnCreationFailed {
                 source: DomainError::internal(format!("provider resolution: {e}")),
-            }
-        })?;
+            })?;
         let api_path = resolved_provider
             .api_path
             .replace("{model}", &provider_model_id);

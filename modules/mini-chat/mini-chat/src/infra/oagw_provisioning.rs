@@ -2,6 +2,11 @@
 //!
 //! Called once during `Module::init()` to ensure every provider entry
 //! has a corresponding OAGW upstream (with auth config) and route.
+//!
+//! After each successful `create_upstream`, the OAGW-assigned alias is
+//! stamped onto [`ProviderEntry::upstream_alias`] (or
+//! [`ProviderTenantOverride::upstream_alias`]) so the rest of mini-chat uses
+//! the authoritative alias from OAGW rather than deriving one locally.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,11 +18,15 @@ use crate::config::ProviderEntry;
 
 /// Register OAGW upstreams and routes for each configured provider.
 ///
+/// On success the **OAGW-assigned alias** is written into
+/// [`ProviderEntry::upstream_alias`] (root) and
+/// [`ProviderTenantOverride::upstream_alias`] (per-tenant).
+///
 /// Uses a default-tenant `SecurityContext`. If the upstream already exists
 /// (e.g. re-init), the error is logged and skipped.
 pub async fn register_oagw_upstreams(
     gateway: &Arc<dyn ServiceGatewayClientV1>,
-    providers: &HashMap<String, ProviderEntry>,
+    providers: &mut HashMap<String, ProviderEntry>,
 ) -> anyhow::Result<()> {
     let ctx = modkit_security::SecurityContext::builder()
         .subject_tenant_id(modkit_security::constants::DEFAULT_TENANT_ID)
@@ -25,17 +34,36 @@ pub async fn register_oagw_upstreams(
         .build()
         .map_err(|e| anyhow::anyhow!("failed to build security context: {e}"))?;
 
-    for (provider_id, entry) in providers {
+    for (provider_id, entry) in providers.iter_mut() {
+        // Register root upstream + route.
         let Some(upstream) = create_upstream(gateway, &ctx, provider_id, entry).await else {
             continue;
         };
+        entry.upstream_alias = Some(upstream.alias.clone());
         register_route(gateway, &ctx, provider_id, entry, &upstream).await;
+
+        // Register tenant-specific upstreams (share the same route/api_path).
+        let tenant_ids: Vec<String> = entry.tenant_overrides.keys().cloned().collect();
+        for tenant_id in &tenant_ids {
+            let label = format!("{provider_id}[tenant={tenant_id}]");
+            if let Some(alias) =
+                create_tenant_upstream(gateway, &ctx, &label, entry, tenant_id).await
+                && let Some(ovr) = entry.tenant_overrides.get_mut(tenant_id)
+            {
+                ovr.upstream_alias = Some(alias);
+            }
+        }
     }
 
     Ok(())
 }
 
 /// Create an OAGW upstream for a single provider entry.
+///
+/// Only passes `upstream_alias` to OAGW when explicitly configured
+/// (required for IP-based hosts). For hostname-based hosts OAGW
+/// auto-derives the alias.
+///
 /// Returns `None` (with a warning log) if registration fails.
 async fn create_upstream(
     gateway: &Arc<dyn ServiceGatewayClientV1>,
@@ -55,8 +83,12 @@ async fn create_upstream(
 
     let mut builder =
         CreateUpstreamRequest::builder(server, "gts.x.core.oagw.protocol.v1~x.core.oagw.http.v1")
-            .alias(entry.effective_alias())
             .enabled(true);
+
+    // Only pass alias when explicitly configured (IP-based hosts).
+    if let Some(alias) = &entry.upstream_alias {
+        builder = builder.alias(alias);
+    }
 
     if let (Some(plugin_type), Some(config)) = (&entry.auth_plugin_type, &entry.auth_config) {
         builder = builder.auth(AuthConfig {
@@ -70,7 +102,7 @@ async fn create_upstream(
         Ok(u) => {
             info!(
                 provider_id,
-                alias = %entry.effective_alias(),
+                alias = %u.alias,
                 upstream_id = %u.id,
                 "OAGW upstream registered"
             );
@@ -79,9 +111,80 @@ async fn create_upstream(
         Err(e) => {
             warn!(
                 provider_id,
-                alias = %entry.effective_alias(),
                 error = %e,
                 "OAGW upstream registration failed (may already exist)"
+            );
+            None
+        }
+    }
+}
+
+/// Create an OAGW upstream for a tenant-specific override.
+///
+/// Uses [`ProviderEntry::effective_host_for_tenant`] and the tenant's auth
+/// config. Only passes `upstream_alias` when the tenant override explicitly
+/// sets one (required for IP-based hosts). For hostname-based hosts OAGW
+/// auto-derives the alias.
+///
+/// Returns the OAGW-assigned alias on success, `None` on failure.
+async fn create_tenant_upstream(
+    gateway: &Arc<dyn ServiceGatewayClientV1>,
+    ctx: &modkit_security::SecurityContext,
+    label: &str,
+    entry: &ProviderEntry,
+    tenant_id: &str,
+) -> Option<String> {
+    use oagw_sdk::{AuthConfig, CreateUpstreamRequest, Endpoint, Scheme, Server};
+
+    let host = entry.effective_host_for_tenant(tenant_id);
+
+    let server = Server {
+        endpoints: vec![Endpoint {
+            scheme: Scheme::Https,
+            host: host.to_owned(),
+            port: 443,
+        }],
+    };
+
+    let mut builder =
+        CreateUpstreamRequest::builder(server, "gts.x.core.oagw.protocol.v1~x.core.oagw.http.v1")
+            .enabled(true);
+
+    // Only pass alias when the tenant override explicitly sets one (IP-based hosts).
+    if let Some(alias) = entry
+        .tenant_overrides
+        .get(tenant_id)
+        .and_then(|o| o.upstream_alias.as_deref())
+    {
+        builder = builder.alias(alias);
+    }
+
+    if let (Some(plugin_type), Some(config)) = (
+        entry.effective_auth_plugin_type_for_tenant(tenant_id),
+        entry.effective_auth_config_for_tenant(tenant_id),
+    ) {
+        builder = builder.auth(AuthConfig {
+            plugin_type: plugin_type.to_owned(),
+            sharing: oagw_sdk::SharingMode::Inherit,
+            config: Some(config.clone()),
+        });
+    }
+
+    match gateway.create_upstream(ctx.clone(), builder.build()).await {
+        Ok(u) => {
+            info!(
+                label,
+                alias = %u.alias,
+                upstream_id = %u.id,
+                "OAGW tenant upstream registered"
+            );
+            Some(u.alias)
+        }
+        Err(e) => {
+            warn!(
+                label,
+                error = %e,
+                "OAGW tenant upstream registration failed (may already exist)"
             );
             None
         }

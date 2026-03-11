@@ -66,7 +66,7 @@ impl Module for MiniChatModule {
     async fn init(&self, ctx: &ModuleCtx) -> anyhow::Result<()> {
         info!("Initializing {} module", Self::MODULE_NAME);
 
-        let cfg: crate::config::MiniChatConfig = ctx.config_expanded()?;
+        let mut cfg: crate::config::MiniChatConfig = ctx.config_expanded()?;
         cfg.streaming
             .validate()
             .map_err(|e| anyhow::anyhow!("streaming config: {e}"))?;
@@ -179,7 +179,9 @@ impl Module for MiniChatModule {
             .map_err(|e| anyhow::anyhow!("failed to get OAGW gateway: {e}"))?;
 
         // Register OAGW upstreams for each configured provider.
-        crate::infra::oagw_provisioning::register_oagw_upstreams(&gateway, &cfg.providers).await?;
+        // This stamps `upstream_alias` on each ProviderEntry / ProviderTenantOverride.
+        crate::infra::oagw_provisioning::register_oagw_upstreams(&gateway, &mut cfg.providers)
+            .await?;
 
         let provider_resolver = Arc::new(ProviderResolver::new(&gateway, cfg.providers));
 

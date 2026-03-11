@@ -35,7 +35,12 @@ pub struct ProviderEntry {
     /// Which adapter to use (e.g., `openai_responses`, `openai_chat_completions`).
     pub kind: ProviderKind,
     /// OAGW upstream alias (used in proxy URI: `/{alias}/...`).
-    /// Defaults to [`host`](ProviderEntry::host) when omitted.
+    ///
+    /// In config: only required for IP-based hosts. For hostname-based
+    /// hosts OAGW auto-derives the alias — leave this unset.
+    ///
+    /// At runtime: overwritten with the OAGW-assigned alias after
+    /// `create_upstream` succeeds.
     #[serde(default)]
     pub upstream_alias: Option<String>,
     /// Upstream hostname (e.g., `api.openai.com`). Used for OAGW upstream
@@ -56,20 +61,87 @@ pub struct ProviderEntry {
     #[expand_vars]
     #[serde(default)]
     pub auth_config: Option<HashMap<String, String>>,
+    /// Per-tenant overrides. Key = tenant ID (UUID string).
+    /// Overrides host and/or auth for specific tenants while sharing
+    /// the same adapter kind and API path.
+    #[expand_vars]
+    #[serde(default)]
+    pub tenant_overrides: HashMap<String, ProviderTenantOverride>,
+}
+
+/// Per-tenant override for a [`ProviderEntry`].
+///
+/// All fields are optional — omitted fields inherit from the parent
+/// [`ProviderEntry`]. Keyed by tenant ID (UUID string) in the config.
+#[derive(Debug, Clone, Serialize, Deserialize, modkit_macros::ExpandVars)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderTenantOverride {
+    /// Override upstream hostname for this tenant.
+    #[serde(default)]
+    pub host: Option<String>,
+    /// OAGW upstream alias for this tenant.
+    ///
+    /// In config: only required for IP-based hosts. For hostname-based
+    /// hosts OAGW auto-derives the alias — leave this unset.
+    ///
+    /// At runtime: overwritten with the OAGW-assigned alias after
+    /// `create_upstream` succeeds.
+    #[serde(default)]
+    pub upstream_alias: Option<String>,
+    /// Override auth plugin type for this tenant.
+    #[serde(default)]
+    pub auth_plugin_type: Option<String>,
+    /// Override auth plugin config for this tenant.
+    #[expand_vars]
+    #[serde(default)]
+    pub auth_config: Option<HashMap<String, String>>,
 }
 
 impl ProviderEntry {
-    /// Effective OAGW upstream alias — falls back to [`host`](Self::host) when
-    /// [`upstream_alias`](Self::upstream_alias) is not explicitly configured.
+    /// Effective host for a given tenant. Returns the tenant override host
+    /// if configured, otherwise the root host.
     #[must_use]
-    pub fn effective_alias(&self) -> &str {
-        self.upstream_alias.as_deref().unwrap_or(&self.host)
+    pub fn effective_host_for_tenant(&self, tenant_id: &str) -> &str {
+        self.tenant_overrides
+            .get(tenant_id)
+            .and_then(|o| o.host.as_deref())
+            .unwrap_or(&self.host)
+    }
+
+    /// Effective auth plugin type for a given tenant.
+    #[must_use]
+    pub fn effective_auth_plugin_type_for_tenant(&self, tenant_id: &str) -> Option<&str> {
+        self.tenant_overrides
+            .get(tenant_id)
+            .and_then(|o| o.auth_plugin_type.as_deref())
+            .or(self.auth_plugin_type.as_deref())
+    }
+
+    /// Effective auth config for a given tenant.
+    #[must_use]
+    pub fn effective_auth_config_for_tenant(
+        &self,
+        tenant_id: &str,
+    ) -> Option<&HashMap<String, String>> {
+        self.tenant_overrides
+            .get(tenant_id)
+            .and_then(|o| o.auth_config.as_ref())
+            .or(self.auth_config.as_ref())
     }
 
     /// Validate provider entry at startup.
     pub fn validate(&self, provider_id: &str) -> Result<(), String> {
         if self.host.trim().is_empty() {
             return Err(format!("provider '{provider_id}': host must not be empty"));
+        }
+        for (tid, ovr) in &self.tenant_overrides {
+            if let Some(h) = &ovr.host
+                && h.trim().is_empty()
+            {
+                return Err(format!(
+                    "provider '{provider_id}': tenant override '{tid}' host must not be empty"
+                ));
+            }
         }
         Ok(())
     }
@@ -98,6 +170,7 @@ fn default_providers() -> HashMap<String, ProviderEntry> {
                 c.insert("secret_ref".to_owned(), "cred://openai-key".to_owned());
                 c
             }),
+            tenant_overrides: HashMap::new(),
         },
     );
     m
@@ -531,12 +604,12 @@ mod tests {
     fn provider_entry_deser_with_alias() {
         let json = r#"{
             "kind": "openai_responses",
-            "host": "api.openai.com",
-            "upstream_alias": "custom-alias"
+            "host": "10.0.0.1",
+            "upstream_alias": "my-llm-service"
         }"#;
         let entry: ProviderEntry = serde_json::from_str(json).unwrap();
-        assert_eq!(entry.host, "api.openai.com");
-        assert_eq!(entry.effective_alias(), "custom-alias");
+        assert_eq!(entry.host, "10.0.0.1");
+        assert_eq!(entry.upstream_alias.as_deref(), Some("my-llm-service"));
         assert!(entry.auth_plugin_type.is_none());
     }
 
@@ -548,7 +621,8 @@ mod tests {
             "api_path": "/openai/v1/responses"
         }"#;
         let entry: ProviderEntry = serde_json::from_str(json).unwrap();
-        assert_eq!(entry.effective_alias(), "my-azure.openai.azure.com");
+        assert!(entry.upstream_alias.is_none());
+        assert_eq!(entry.host, "my-azure.openai.azure.com");
         assert_eq!(entry.api_path, "/openai/v1/responses");
     }
 
@@ -576,7 +650,169 @@ mod tests {
         let cfg = MiniChatConfig::default();
         assert!(cfg.providers.contains_key("openai"));
         let openai = &cfg.providers["openai"];
-        assert_eq!(openai.effective_alias(), "api.openai.com");
+        assert_eq!(openai.host, "api.openai.com");
         assert_eq!(openai.api_path, "/v1/responses");
+    }
+
+    #[test]
+    fn provider_entry_deser_with_tenant_overrides() {
+        let json = r#"{
+            "kind": "openai_responses",
+            "host": "default.openai.azure.com",
+            "api_path": "/openai/v1/responses",
+            "tenant_overrides": {
+                "tenant-a": {
+                    "host": "tenant-a.openai.azure.com"
+                },
+                "tenant-b": {
+                    "host": "tenant-b.openai.azure.com"
+                }
+            }
+        }"#;
+        let entry: ProviderEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.tenant_overrides.len(), 2);
+        assert_eq!(
+            entry.tenant_overrides["tenant-a"].host.as_deref(),
+            Some("tenant-a.openai.azure.com")
+        );
+        assert!(entry.tenant_overrides["tenant-b"].host.is_some());
+    }
+
+    #[test]
+    fn effective_host_for_tenant_fallback() {
+        let entry = ProviderEntry {
+            kind: crate::infra::llm::ProviderKind::OpenAiResponses,
+            upstream_alias: None,
+            host: "default.openai.azure.com".to_owned(),
+            api_path: "/v1/responses".to_owned(),
+            auth_plugin_type: None,
+            auth_config: None,
+            tenant_overrides: {
+                let mut m = HashMap::new();
+                m.insert(
+                    "tenant-a".to_owned(),
+                    ProviderTenantOverride {
+                        host: Some("tenant-a.openai.azure.com".to_owned()),
+                        upstream_alias: None,
+                        auth_plugin_type: None,
+                        auth_config: None,
+                    },
+                );
+                // Tenant with no host override — inherits root.
+                m.insert(
+                    "tenant-c".to_owned(),
+                    ProviderTenantOverride {
+                        host: None,
+                        upstream_alias: None,
+                        auth_plugin_type: Some("custom-plugin".to_owned()),
+                        auth_config: None,
+                    },
+                );
+                m
+            },
+        };
+        assert_eq!(
+            entry.effective_host_for_tenant("tenant-a"),
+            "tenant-a.openai.azure.com"
+        );
+        assert_eq!(
+            entry.effective_host_for_tenant("tenant-c"),
+            "default.openai.azure.com"
+        );
+        assert_eq!(
+            entry.effective_host_for_tenant("unknown"),
+            "default.openai.azure.com"
+        );
+    }
+
+    #[test]
+    fn effective_auth_for_tenant() {
+        let root_auth: HashMap<String, String> = {
+            let mut c = HashMap::new();
+            c.insert("header".to_owned(), "api-key".to_owned());
+            c.insert("secret_ref".to_owned(), "cred://root-key".to_owned());
+            c
+        };
+        let tenant_auth: HashMap<String, String> = {
+            let mut c = HashMap::new();
+            c.insert("header".to_owned(), "api-key".to_owned());
+            c.insert("secret_ref".to_owned(), "cred://tenant-a-key".to_owned());
+            c
+        };
+        let entry = ProviderEntry {
+            kind: crate::infra::llm::ProviderKind::OpenAiResponses,
+            upstream_alias: None,
+            host: "default.openai.azure.com".to_owned(),
+            api_path: "/v1/responses".to_owned(),
+            auth_plugin_type: Some("root-plugin".to_owned()),
+            auth_config: Some(root_auth),
+            tenant_overrides: {
+                let mut m = HashMap::new();
+                m.insert(
+                    "tenant-a".to_owned(),
+                    ProviderTenantOverride {
+                        host: None,
+                        upstream_alias: None,
+                        auth_plugin_type: Some("tenant-plugin".to_owned()),
+                        auth_config: Some(tenant_auth),
+                    },
+                );
+                m
+            },
+        };
+        // Tenant with auth override.
+        assert_eq!(
+            entry.effective_auth_plugin_type_for_tenant("tenant-a"),
+            Some("tenant-plugin")
+        );
+        assert_eq!(
+            entry
+                .effective_auth_config_for_tenant("tenant-a")
+                .unwrap()
+                .get("secret_ref")
+                .unwrap(),
+            "cred://tenant-a-key"
+        );
+        // Unknown tenant → falls back to root.
+        assert_eq!(
+            entry.effective_auth_plugin_type_for_tenant("unknown"),
+            Some("root-plugin")
+        );
+        assert_eq!(
+            entry
+                .effective_auth_config_for_tenant("unknown")
+                .unwrap()
+                .get("secret_ref")
+                .unwrap(),
+            "cred://root-key"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_empty_tenant_override_host() {
+        let entry = ProviderEntry {
+            kind: crate::infra::llm::ProviderKind::OpenAiResponses,
+            upstream_alias: None,
+            host: "default.openai.azure.com".to_owned(),
+            api_path: "/v1/responses".to_owned(),
+            auth_plugin_type: None,
+            auth_config: None,
+            tenant_overrides: {
+                let mut m = HashMap::new();
+                m.insert(
+                    "bad-tenant".to_owned(),
+                    ProviderTenantOverride {
+                        host: Some("  ".to_owned()),
+                        upstream_alias: None,
+                        auth_plugin_type: None,
+                        auth_config: None,
+                    },
+                );
+                m
+            },
+        };
+        let err = entry.validate("azure_openai").unwrap_err();
+        assert!(err.contains("bad-tenant"));
+        assert!(err.contains("host must not be empty"));
     }
 }

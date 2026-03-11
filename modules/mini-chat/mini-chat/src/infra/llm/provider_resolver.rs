@@ -1,6 +1,9 @@
 //! Runtime resolution of LLM provider adapter + OAGW upstream alias.
 //!
-//! Built once at module startup from `MiniChatConfig.providers`.
+//! Built once at module startup from `MiniChatConfig.providers` after
+//! OAGW upstream registration has stamped `upstream_alias` on each
+//! [`ProviderEntry`] and [`ProviderTenantOverride`].
+//!
 //! Used per turn to resolve which adapter and OAGW alias to use
 //! based on the model's `provider_id`.
 
@@ -22,16 +25,23 @@ pub struct ResolvedProvider<'a> {
 }
 
 /// Resolves `(provider adapter, upstream alias)` from a `provider_id`.
+///
+/// Upstream aliases are read from [`ProviderEntry::upstream_alias`] and
+/// [`ProviderTenantOverride::upstream_alias`], which are set by OAGW at startup.
 pub struct ProviderResolver {
     /// One adapter per distinct `ProviderKind`.
     adapters: HashMap<ProviderKind, Arc<dyn LlmProvider>>,
-    /// `provider_id` → `ProviderEntry` from config.
+    /// `provider_id` → `ProviderEntry` from config (with `upstream_alias` set).
     registry: HashMap<String, ProviderEntry>,
 }
 
 impl ProviderResolver {
     /// Build from config + OAGW gateway. Creates one adapter per distinct
     /// `ProviderKind` (not per `provider_id`).
+    ///
+    /// `providers` must have been passed through
+    /// [`register_oagw_upstreams`](crate::infra::oagw_provisioning::register_oagw_upstreams)
+    /// first so that `upstream_alias` is populated.
     pub fn new(
         gateway: &Arc<dyn ServiceGatewayClientV1>,
         providers: HashMap<String, ProviderEntry>,
@@ -50,7 +60,15 @@ impl ProviderResolver {
 
     /// Resolve the provider adapter, upstream alias, and API path template
     /// for a `provider_id`.
-    pub fn resolve(&self, provider_id: &str) -> Result<ResolvedProvider<'_>, LlmProviderError> {
+    ///
+    /// When `tenant_id` is provided and the tenant override has an
+    /// `upstream_alias`, that alias is returned. Otherwise, the root
+    /// `upstream_alias` is used.
+    pub fn resolve(
+        &self,
+        provider_id: &str,
+        tenant_id: Option<&str>,
+    ) -> Result<ResolvedProvider<'_>, LlmProviderError> {
         let entry =
             self.registry
                 .get(provider_id)
@@ -69,9 +87,24 @@ impl ProviderResolver {
                     raw_detail: None,
                 })?;
 
+        // Tenant-specific upstream_alias first, then root upstream_alias.
+        let upstream_alias = tenant_id
+            .and_then(|tid| {
+                entry
+                    .tenant_overrides
+                    .get(tid)
+                    .and_then(|ovr| ovr.upstream_alias.as_deref())
+            })
+            .or(entry.upstream_alias.as_deref())
+            .ok_or_else(|| LlmProviderError::ProviderError {
+                code: "configuration_error".to_owned(),
+                message: format!("no OAGW alias registered for provider '{provider_id}'"),
+                raw_detail: None,
+            })?;
+
         Ok(ResolvedProvider {
             adapter: Arc::clone(adapter),
-            upstream_alias: entry.effective_alias(),
+            upstream_alias,
             api_path: &entry.api_path,
         })
     }
@@ -94,11 +127,12 @@ impl ProviderResolver {
             "openai".to_owned(),
             ProviderEntry {
                 kind,
-                upstream_alias: None,
+                upstream_alias: Some("test-host".to_owned()),
                 host: "test-host".to_owned(),
                 api_path: "/v1/responses".to_owned(),
                 auth_plugin_type: None,
                 auth_config: None,
+                tenant_overrides: HashMap::new(),
             },
         );
         Self { adapters, registry }
@@ -216,11 +250,12 @@ mod tests {
             "openai".to_owned(),
             ProviderEntry {
                 kind: ProviderKind::OpenAiResponses,
-                upstream_alias: None, // defaults to host
+                upstream_alias: Some("api.openai.com".to_owned()),
                 host: "api.openai.com".to_owned(),
                 api_path: "/v1/responses".to_owned(),
                 auth_plugin_type: None,
                 auth_config: None,
+                tenant_overrides: HashMap::new(),
             },
         );
         m.insert(
@@ -232,6 +267,7 @@ mod tests {
                 api_path: "/openai/v1/responses".to_owned(),
                 auth_plugin_type: None,
                 auth_config: None,
+                tenant_overrides: HashMap::new(),
             },
         );
         m
@@ -240,7 +276,7 @@ mod tests {
     #[test]
     fn resolve_openai() {
         let resolver = ProviderResolver::new(&null_gw(), mock_providers());
-        let r = resolver.resolve("openai").unwrap();
+        let r = resolver.resolve("openai", None).unwrap();
         assert_eq!(r.upstream_alias, "api.openai.com");
         assert_eq!(r.api_path, "/v1/responses");
     }
@@ -248,49 +284,96 @@ mod tests {
     #[test]
     fn resolve_azure() {
         let resolver = ProviderResolver::new(&null_gw(), mock_providers());
-        let r = resolver.resolve("azure_openai").unwrap();
+        let r = resolver.resolve("azure_openai", None).unwrap();
         assert_eq!(r.upstream_alias, "my-azure.openai.azure.com");
         assert_eq!(r.api_path, "/openai/v1/responses");
     }
 
     #[test]
-    fn alias_defaults_to_host() {
-        let entry = ProviderEntry {
-            kind: ProviderKind::OpenAiResponses,
-            upstream_alias: None,
-            host: "example.openai.azure.com".to_owned(),
-            api_path: "/v1/responses".to_owned(),
-            auth_plugin_type: None,
-            auth_config: None,
-        };
-        assert_eq!(entry.effective_alias(), "example.openai.azure.com");
-    }
-
-    #[test]
-    fn explicit_alias_overrides_host() {
-        let entry = ProviderEntry {
-            kind: ProviderKind::OpenAiResponses,
-            upstream_alias: Some("custom-alias".to_owned()),
-            host: "example.openai.azure.com".to_owned(),
-            api_path: "/v1/responses".to_owned(),
-            auth_plugin_type: None,
-            auth_config: None,
-        };
-        assert_eq!(entry.effective_alias(), "custom-alias");
-    }
-
-    #[test]
     fn resolve_unknown_fails() {
         let resolver = ProviderResolver::new(&null_gw(), mock_providers());
-        let result = resolver.resolve("anthropic");
+        let result = resolver.resolve("anthropic", None);
         assert!(result.is_err());
     }
 
     #[test]
     fn same_kind_shares_adapter() {
         let resolver = ProviderResolver::new(&null_gw(), mock_providers());
-        let r1 = resolver.resolve("openai").unwrap();
-        let r2 = resolver.resolve("azure_openai").unwrap();
+        let r1 = resolver.resolve("openai", None).unwrap();
+        let r2 = resolver.resolve("azure_openai", None).unwrap();
         assert!(Arc::ptr_eq(&r1.adapter, &r2.adapter));
+    }
+
+    fn mock_providers_with_tenant_overrides() -> HashMap<String, ProviderEntry> {
+        use crate::config::ProviderTenantOverride;
+        let mut m = HashMap::new();
+        m.insert(
+            "azure_openai".to_owned(),
+            ProviderEntry {
+                kind: ProviderKind::OpenAiResponses,
+                upstream_alias: Some("default.openai.azure.com".to_owned()),
+                host: "default.openai.azure.com".to_owned(),
+                api_path: "/openai/v1/responses".to_owned(),
+                auth_plugin_type: None,
+                auth_config: None,
+                tenant_overrides: {
+                    let mut t = HashMap::new();
+                    t.insert(
+                        "tenant-a".to_owned(),
+                        ProviderTenantOverride {
+                            host: Some("tenant-a.openai.azure.com".to_owned()),
+                            upstream_alias: Some("tenant-a.openai.azure.com".to_owned()),
+                            auth_plugin_type: None,
+                            auth_config: None,
+                        },
+                    );
+                    t.insert(
+                        "tenant-b".to_owned(),
+                        ProviderTenantOverride {
+                            host: None,
+                            // No upstream_alias — auth-only override, falls back to root.
+                            upstream_alias: None,
+                            auth_plugin_type: Some("custom-plugin".to_owned()),
+                            auth_config: None,
+                        },
+                    );
+                    t
+                },
+            },
+        );
+        m
+    }
+
+    #[test]
+    fn resolve_with_tenant_override_host() {
+        let resolver = ProviderResolver::new(&null_gw(), mock_providers_with_tenant_overrides());
+        let r = resolver.resolve("azure_openai", Some("tenant-a")).unwrap();
+        assert_eq!(r.upstream_alias, "tenant-a.openai.azure.com");
+        assert_eq!(r.api_path, "/openai/v1/responses");
+    }
+
+    #[test]
+    fn resolve_with_tenant_override_no_host_falls_back() {
+        let resolver = ProviderResolver::new(&null_gw(), mock_providers_with_tenant_overrides());
+        // tenant-b has auth override but no host override → no separate
+        // upstream was created, so resolver falls back to root alias.
+        let r = resolver.resolve("azure_openai", Some("tenant-b")).unwrap();
+        assert_eq!(r.upstream_alias, "default.openai.azure.com");
+    }
+
+    #[test]
+    fn resolve_with_unknown_tenant_falls_back_to_root() {
+        let resolver = ProviderResolver::new(&null_gw(), mock_providers_with_tenant_overrides());
+        let r = resolver
+            .resolve("azure_openai", Some("unknown-tenant"))
+            .unwrap();
+        assert_eq!(r.upstream_alias, "default.openai.azure.com");
+    }
+
+    #[test]
+    fn resolve_with_none_tenant_uses_root() {
+        let resolver = ProviderResolver::new(&null_gw(), mock_providers_with_tenant_overrides());
+        let r = resolver.resolve("azure_openai", None).unwrap();
+        assert_eq!(r.upstream_alias, "default.openai.azure.com");
     }
 }
