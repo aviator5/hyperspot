@@ -15,8 +15,8 @@ workspace = true
 
 [dependencies]
 # Plugin SDK
-mini-chat-sdk = { package = "cf-mini-chat-sdk", version = "0.4.1", path = "../../mini-chat-sdk" }
-types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.1.4", path = "../../../system/types-registry/types-registry-sdk" }
+mini-chat-sdk = { package = "cf-mini-chat-sdk", version = "0.5.0", path = "../../mini-chat-sdk" }
+types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.1.5", path = "../../../system/types-registry/types-registry-sdk" }
 
 # ModKit dependencies
 modkit = { workspace = true }
