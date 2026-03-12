@@ -57,10 +57,14 @@ pub async fn register_oagw_upstreams(
             }
 
             let label = format!("{provider_id}[tenant={tenant_id}]");
-            if let Some(alias) =
-                create_tenant_upstream(gateway, ctx, &label, entry, tenant_id).await
-                && let Some(tenant_override) = entry.tenant_overrides.get_mut(tenant_id)
-            {
+            let alias = create_tenant_upstream(gateway, ctx, &label, entry, tenant_id)
+                .await
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "OAGW tenant upstream registration failed for provider '{provider_id}', tenant '{tenant_id}'"
+                    )
+                })?;
+            if let Some(tenant_override) = entry.tenant_overrides.get_mut(tenant_id) {
                 tenant_override.upstream_alias = Some(alias);
             }
         }

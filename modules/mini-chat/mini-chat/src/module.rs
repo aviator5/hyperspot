@@ -10,7 +10,6 @@ use modkit::{DatabaseCapability, Module, ModuleCtx, RestApiCapability};
 use modkit_db::outbox::{Outbox, OutboxHandle, Partitions};
 use oagw_sdk::ServiceGatewayClientV1;
 use sea_orm_migration::MigrationTrait;
-use secrecy::ExposeSecret;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use types_registry_sdk::{RegisterResult, TypesRegistryClient};
@@ -358,7 +357,7 @@ async fn exchange_client_credentials(
     info!("Exchanging client credentials for OAGW provisioning context");
     let request = ClientCredentialsRequest {
         client_id: creds.client_id.clone(),
-        client_secret: secrecy::SecretString::from(creds.client_secret.expose_secret().to_owned()),
+        client_secret: creds.client_secret.clone(),
         scopes: Vec::new(),
     };
     let result = authn
