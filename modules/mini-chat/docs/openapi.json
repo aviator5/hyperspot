@@ -447,7 +447,7 @@
                   "$ref": "#/components/schemas/Attachment"
                 },
                 "example": {
-                  "attachment_id": "c3d4e5f6-7890-4abc-def1-234567890abc",
+                  "id": "c3d4e5f6-7890-4abc-def1-234567890abc",
                   "status": "pending",
                   "kind": "document",
                   "filename": "Q3_Report.pdf",
@@ -642,7 +642,7 @@
                   "document_attachment": {
                     "summary": "Document attachment (ready, with summary)",
                     "value": {
-                      "attachment_id": "c3d4e5f6-7890-4abc-def1-234567890abc",
+                      "id": "c3d4e5f6-7890-4abc-def1-234567890abc",
                       "status": "ready",
                       "kind": "document",
                       "filename": "Q3_Report.pdf",
@@ -658,7 +658,7 @@
                   "image_attachment": {
                     "summary": "Image attachment (ready, with thumbnail preview)",
                     "value": {
-                      "attachment_id": "d4e5f6a7-8901-4abc-def1-234567890abd",
+                      "id": "d4e5f6a7-8901-4abc-def1-234567890abd",
                       "status": "ready",
                       "kind": "image",
                       "filename": "architecture_diagram.png",
@@ -1488,12 +1488,13 @@
       },
       "Attachment": {
         "type": "object",
-        "required": ["attachment_id", "status", "kind", "filename", "content_type", "size_bytes", "created_at"],
+        "required": ["id", "status", "kind", "filename", "content_type", "size_bytes", "created_at"],
         "description": "File attachment (document or image) on a chat.",
         "properties": {
-          "attachment_id": {
+          "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Attachment UUID."
           },
           "status": {
             "type": "string",
