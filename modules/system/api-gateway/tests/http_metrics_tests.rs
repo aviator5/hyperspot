@@ -413,3 +413,64 @@ async fn metrics_unmatched_route() -> Result<()> {
 
     Ok(())
 }
+
+fn prefixed_config() -> serde_json::Value {
+    json!({
+        "api-gateway": {
+            "config": {
+                "bind_addr": "127.0.0.1:0",
+                "cors_enabled": false,
+                "auth_disabled": true,
+                "metrics": { "prefix": "myapp" },
+                "defaults": {
+                    "rate_limit": { "rps": 1000, "burst": 1000, "in_flight": 64 }
+                },
+            }
+        }
+    })
+}
+
+#[tokio::test]
+async fn metrics_prefix_applied_to_instrument_names() -> Result<()> {
+    let _lock = METER_LOCK.lock().await;
+    let (provider, exporter) = install_test_meter_provider();
+    let ctx = create_api_gateway_ctx(prefixed_config());
+    let api = api_gateway::ApiGateway::default();
+    api.init(&ctx).await?;
+
+    let router = OperationBuilder::get("/tests/v1/items")
+        .operation_id("test:list-items")
+        .summary("List items")
+        .public()
+        .json_response(StatusCode::OK, "OK")
+        .handler(axum::routing::get(ok_handler))
+        .register(Router::new(), &api);
+    let app = api.rest_finalize(&ctx, router)?;
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/tests/v1/items")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    provider.force_flush().unwrap();
+
+    let count = histogram_count(&exporter, "myapp.http.server.request.duration");
+    assert!(
+        count >= 1,
+        "expected at least 1 data point for prefixed metric name, got {count}"
+    );
+
+    // The unprefixed name should NOT have data points from this test
+    let unprefixed = histogram_count(&exporter, "http.server.request.duration");
+    assert_eq!(
+        unprefixed, 0,
+        "unprefixed metric should not exist when prefix is configured"
+    );
+
+    Ok(())
+}

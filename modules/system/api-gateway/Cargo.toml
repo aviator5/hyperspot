@@ -54,9 +54,7 @@ rust-embed = { workspace = true }
 
 [dev-dependencies]
 futures-core = { workspace = true }
-opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
-uuid = { workspace = true }
 
 [features]
 grpc = []
