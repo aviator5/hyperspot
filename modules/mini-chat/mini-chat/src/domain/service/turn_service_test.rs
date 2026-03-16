@@ -627,3 +627,98 @@ async fn delete_success_emits_metrics() {
         "should record turn_mutation_latency_ms histogram"
     );
 }
+
+// ── Tenant-only AuthZ: user isolation via ensure_owner ──
+
+/// Build a `TurnService` with tenant-only enforcer for cross-owner tests.
+/// Creates a chat owned by `chat_owner_id` and returns the service, `tenant_id`, and `chat_id`.
+async fn setup_tenant_only_authz(
+    chat_owner_id: Uuid,
+) -> (
+    TurnService<
+        repo::turn_repo::TurnRepository,
+        repo::message_repo::MessageRepository,
+        repo::chat_repo::ChatRepository,
+        repo::message_attachment_repo::MessageAttachmentRepository,
+    >,
+    Uuid, // tenant_id
+    Uuid, // chat_id
+) {
+    let db = inmem_db().await;
+    let db = mock_db_provider(db);
+    let tenant_id = Uuid::new_v4();
+
+    let chat_repo = Arc::new(repo::chat_repo::ChatRepository::new(
+        modkit_db::odata::LimitCfg {
+            default: 20,
+            max: 100,
+        },
+    ));
+    let turn_repo = Arc::new(repo::turn_repo::TurnRepository);
+    let message_repo = Arc::new(repo::message_repo::MessageRepository::new(
+        modkit_db::odata::LimitCfg {
+            default: 20,
+            max: 100,
+        },
+    ));
+
+    let chat_id = Uuid::now_v7();
+    let scope = AccessScope::for_tenant(tenant_id);
+    let conn = db.conn().unwrap();
+    chat_repo
+        .create(
+            &conn,
+            &scope,
+            crate::domain::models::Chat {
+                id: chat_id,
+                tenant_id,
+                user_id: chat_owner_id,
+                model: "gpt-5.2".to_owned(),
+                title: Some("Test chat".to_owned()),
+                is_temporary: false,
+                created_at: time::OffsetDateTime::now_utc(),
+                updated_at: time::OffsetDateTime::now_utc(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let svc = TurnService::new(
+        Arc::clone(&db),
+        turn_repo,
+        message_repo,
+        chat_repo,
+        Arc::new(crate::infra::db::repo::message_attachment_repo::MessageAttachmentRepository),
+        mock_tenant_only_enforcer(),
+        Arc::new(crate::domain::ports::metrics::NoopMetrics),
+    );
+
+    (svc, tenant_id, chat_id)
+}
+
+#[tokio::test]
+async fn get_turn_tenant_only_authz_cross_owner_not_found() {
+    let user_a = Uuid::new_v4();
+    let user_b = Uuid::new_v4();
+
+    let (svc, tenant_id, chat_id) = setup_tenant_only_authz(user_a).await;
+
+    // Create a turn owned by user_a
+    let request_id = create_completed_turn(
+        &svc.db,
+        &*svc.turn_repo,
+        &*svc.message_repo,
+        tenant_id,
+        chat_id,
+        user_a,
+    )
+    .await;
+
+    // User B (same tenant) tries to read the turn — must fail
+    let ctx_b = test_security_ctx_with_id(tenant_id, user_b);
+    let err = svc.get(&ctx_b, chat_id, request_id).await.unwrap_err();
+    assert!(
+        matches!(err, MutationError::ChatNotFound { .. }),
+        "Cross-owner get must fail with ChatNotFound, got: {err:?}"
+    );
+}

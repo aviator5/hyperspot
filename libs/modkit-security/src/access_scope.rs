@@ -907,4 +907,39 @@ mod tests {
             "Must narrow to single Eq for the matching owner"
         );
     }
+
+    #[test]
+    fn ensure_owner_multi_constraint_keeps_only_matching() {
+        let alice = uid(T1);
+        let bob = uid(T2);
+        let tenant = uid(T1);
+
+        // Constraint 1: tenant + alice → matches alice
+        let c1 = ScopeConstraint::new(vec![
+            ScopeFilter::eq(pep_properties::OWNER_TENANT_ID, tenant),
+            ScopeFilter::eq(pep_properties::OWNER_ID, alice),
+        ]);
+        // Constraint 2: tenant + bob → does NOT match alice
+        let c2 = ScopeConstraint::new(vec![
+            ScopeFilter::eq(pep_properties::OWNER_TENANT_ID, tenant),
+            ScopeFilter::eq(pep_properties::OWNER_ID, bob),
+        ]);
+
+        let scope = AccessScope::from_constraints(vec![c1, c2]);
+        let scoped = scope.ensure_owner(alice);
+
+        assert!(
+            !scoped.is_deny_all(),
+            "Must not be deny-all - one constraint matches"
+        );
+        assert_eq!(
+            scoped.all_uuid_values_for(pep_properties::OWNER_ID),
+            &[alice],
+            "Must keep only the constraint matching alice"
+        );
+        assert!(
+            scoped.contains_uuid(pep_properties::OWNER_TENANT_ID, tenant),
+            "Tenant filter must be preserved"
+        );
+    }
 }

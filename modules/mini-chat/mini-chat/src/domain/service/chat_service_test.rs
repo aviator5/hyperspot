@@ -16,24 +16,9 @@ use crate::domain::service::test_helpers::{
 
 // ── Test Helpers ──
 
-fn build_service(db: modkit_db::Db) -> ChatService<OrmChatRepository, MockThreadSummaryRepo> {
-    let db = mock_db_provider(db);
-    let chat_repo = Arc::new(OrmChatRepository::new(modkit_db::odata::LimitCfg {
-        default: 20,
-        max: 100,
-    }));
-
-    ChatService::new(
-        db,
-        chat_repo,
-        mock_thread_summary_repo(),
-        mock_enforcer(),
-        mock_model_resolver(),
-    )
-}
-
-fn build_service_tenant_only_authz(
+fn build_service_with_enforcer(
     db: modkit_db::Db,
+    enforcer: authz_resolver_sdk::PolicyEnforcer,
 ) -> ChatService<OrmChatRepository, MockThreadSummaryRepo> {
     let db = mock_db_provider(db);
     let chat_repo = Arc::new(OrmChatRepository::new(modkit_db::odata::LimitCfg {
@@ -45,9 +30,19 @@ fn build_service_tenant_only_authz(
         db,
         chat_repo,
         mock_thread_summary_repo(),
-        mock_tenant_only_enforcer(),
+        enforcer,
         mock_model_resolver(),
     )
+}
+
+fn build_service(db: modkit_db::Db) -> ChatService<OrmChatRepository, MockThreadSummaryRepo> {
+    build_service_with_enforcer(db, mock_enforcer())
+}
+
+fn build_service_tenant_only_authz(
+    db: modkit_db::Db,
+) -> ChatService<OrmChatRepository, MockThreadSummaryRepo> {
+    build_service_with_enforcer(db, mock_tenant_only_enforcer())
 }
 
 // ── Tests ──
@@ -967,5 +962,48 @@ async fn delete_chat_tenant_only_authz_cross_owner_not_found() {
     assert!(
         matches!(result.unwrap_err(), DomainError::ChatNotFound { .. }),
         "Expected ChatNotFound for cross-owner delete with tenant-only authz"
+    );
+}
+
+#[tokio::test]
+async fn update_chat_tenant_only_authz_cross_owner_not_found() {
+    let db = inmem_db().await;
+    let svc = build_service_tenant_only_authz(db);
+
+    let tenant_id = Uuid::new_v4();
+    let user_a = Uuid::new_v4();
+    let user_b = Uuid::new_v4();
+    let ctx_a = test_security_ctx_with_id(tenant_id, user_a);
+    let ctx_b = test_security_ctx_with_id(tenant_id, user_b);
+
+    let created = svc
+        .create_chat(
+            &ctx_a,
+            NewChat {
+                model: Some("gpt-5.2".to_owned()),
+                title: Some("User A chat".to_owned()),
+                is_temporary: false,
+            },
+        )
+        .await
+        .expect("create failed");
+
+    // User B (same tenant) tries to update User A's chat — must fail
+    let result = svc
+        .update_chat(
+            &ctx_b,
+            created.id,
+            ChatPatch {
+                title: Some(Some("Hijacked".to_owned())),
+            },
+        )
+        .await;
+    assert!(
+        result.is_err(),
+        "Cross-owner update must fail with tenant-only authz"
+    );
+    assert!(
+        matches!(result.unwrap_err(), DomainError::ChatNotFound { .. }),
+        "Expected ChatNotFound for cross-owner update with tenant-only authz"
     );
 }
