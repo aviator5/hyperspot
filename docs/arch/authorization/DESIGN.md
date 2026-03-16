@@ -339,19 +339,22 @@ scope mismatch without calling PDP.
 
 **Configuration:**
 ```yaml
-auth:
-  gateway_scope_checks:
-    enabled: true
-    routes:
-      "/admin/*":
-        required_scopes: ["admin"]
-      "/events/v1/*":
-        required_scopes: ["read:events", "write:events"]  # any of these
+api-gateway:
+  config:
+    route_policies:
+      enabled: true
+      rules:
+        - path: "/admin/**"
+          required_scopes: ["admin"]
+        - path: "/events/v1/*"
+          required_scopes: ["read:events", "write:events"]  # any of these
 ```
 
 **Behavior:**
-- If `token_scopes: ["*"]` → always pass
+- Rules are evaluated in declaration order (first match wins)
+- If `token_scopes: ["*"]` → always pass (first-party app)
 - If `token_scopes` contains any of `required_scopes` → pass
+- Empty `token_scopes` → 403 Forbidden (fail-closed)
 - Otherwise → 403 Forbidden (before PDP call)
 
 **Note:** This is coarse-grained optimization. Fine-grained permission checks still happen in PDP.

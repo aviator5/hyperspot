@@ -1,7 +1,7 @@
-# E2E Configuration for Gateway Scope Enforcement Testing
+# E2E Configuration for Route Policy Enforcement Testing
 #
 # This config enables authentication with static tokens that have specific scopes,
-# allowing us to test the gateway_scope_checks middleware.
+# allowing us to test the route_policies middleware.
 
 server:
   home_dir: "~/.hyperspot"
@@ -47,20 +47,20 @@ modules:
       require_auth_by_default: true
 
       # Gateway Scope Enforcement configuration
-      gateway_scope_checks:
+      route_policies:
         enabled: true
-        routes:
+        rules:
           # Require 'users:read' scope for listing users
-          "/users-info/v1/users":
+          - path: "/users-info/v1/users"
             required_scopes: ["users:read", "users:admin"]
           # Require 'users:read' or 'users:admin' for getting a specific user
-          "/users-info/v1/users/*":
+          - path: "/users-info/v1/users/*"
             required_scopes: ["users:read", "users:admin"]
           # Require 'cities:admin' for cities endpoints
           # Use both exact path and glob to cover list and nested paths
-          "/users-info/v1/cities":
+          - path: "/users-info/v1/cities"
             required_scopes: ["cities:admin"]
-          "/users-info/v1/cities/*":
+          - path: "/users-info/v1/cities/*"
             required_scopes: ["cities:admin"]
 
   # AuthN pipeline - validates bearer tokens

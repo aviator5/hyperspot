@@ -257,10 +257,10 @@ impl ApiGateway {
             },
         ));
 
-        // 11) Gateway Scope Enforcement (runs after auth, checks token_scopes against route requirements)
-        if config.gateway_scope_checks.enabled {
+        // 11) Route Policy Enforcement (runs after auth, checks token_scopes against route requirements)
+        if config.route_policies.enabled {
             let scope_rules = middleware::scope_enforcement::ScopeEnforcementRules::from_config(
-                &config.gateway_scope_checks,
+                &config.route_policies,
             )?;
             let scope_state =
                 middleware::scope_enforcement::ScopeEnforcementState { rules: scope_rules };

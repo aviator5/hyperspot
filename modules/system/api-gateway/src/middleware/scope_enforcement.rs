@@ -10,13 +10,13 @@ use std::sync::Arc;
 use axum::response::IntoResponse;
 use glob::{MatchOptions, Pattern};
 
-use crate::config::GatewayScopeChecksConfig;
+use crate::config::RoutePoliciesConfig;
 use crate::middleware::common;
 use modkit::api::Problem;
 use modkit_security::SecurityContext;
 
 /// Compiled scope enforcement rules for efficient runtime matching.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ScopeEnforcementRules {
     /// Compiled glob patterns with their required scopes.
     rules: Arc<[CompiledRule]>,
@@ -25,7 +25,7 @@ pub struct ScopeEnforcementRules {
 }
 
 /// A single compiled rule: glob pattern + required scopes.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CompiledRule {
     pattern: Pattern,
     required_scopes: Vec<String>,
@@ -36,8 +36,8 @@ impl ScopeEnforcementRules {
     ///
     /// # Errors
     ///
-    /// Returns an error if any glob pattern is invalid.
-    pub fn from_config(config: &GatewayScopeChecksConfig) -> Result<Self, anyhow::Error> {
+    /// Returns an error if any glob pattern is invalid or if any rule has empty `required_scopes`.
+    pub fn from_config(config: &RoutePoliciesConfig) -> Result<Self, anyhow::Error> {
         if !config.enabled {
             return Ok(Self {
                 rules: Arc::from([]),
@@ -45,22 +45,34 @@ impl ScopeEnforcementRules {
             });
         }
 
-        let mut rules = Vec::with_capacity(config.routes.len());
+        let mut rules = Vec::with_capacity(config.rules.len());
 
-        for (pattern_str, requirement) in &config.routes {
-            let pattern = Pattern::new(pattern_str).map_err(|e| {
-                anyhow::anyhow!("Invalid glob pattern '{pattern_str}' in gateway_scope_checks: {e}")
+        for rule in &config.rules {
+            // Validate: empty required_scopes is likely a config mistake
+            if rule.required_scopes.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Route policy rule for path '{}' has empty required_scopes. \
+                     This would match all tokens and is likely a config mistake.",
+                    rule.path
+                ));
+            }
+
+            let pattern = Pattern::new(&rule.path).map_err(|e| {
+                anyhow::anyhow!(
+                    "Invalid glob pattern '{}' in route_policies: {e}",
+                    rule.path
+                )
             })?;
 
             rules.push(CompiledRule {
                 pattern,
-                required_scopes: requirement.required_scopes.clone(),
+                required_scopes: rule.required_scopes.clone(),
             });
         }
 
         tracing::info!(
             rules_count = rules.len(),
-            "Gateway scope enforcement enabled with {} route rules",
+            "Route policy enforcement enabled with {} rules",
             rules.len()
         );
 
@@ -97,8 +109,9 @@ impl ScopeEnforcementRules {
             return Ok(());
         }
 
-        // `["*"]` and legacy empty scopes are both unrestricted.
-        if token_scopes.is_empty() || token_scopes.iter().any(|s| s == "*") {
+        // Only wildcard scope `["*"]` is unrestricted (first-party apps).
+        // Empty scopes = no permissions (fail-closed).
+        if token_scopes.iter().any(|s| s == "*") {
             return Ok(());
         }
 
@@ -118,12 +131,12 @@ impl ScopeEnforcementRules {
                     .any(|required| token_scopes.contains(required));
 
                 if !has_required_scope {
-                    tracing::debug!(
+                    tracing::warn!(
                         path = %path,
                         pattern = %rule.pattern,
                         required_scopes = ?rule.required_scopes,
                         token_scopes = ?token_scopes,
-                        "Gateway scope check failed: insufficient scopes"
+                        "Route policy enforcement denied: insufficient scopes"
                     );
 
                     return Err(Problem::new(
@@ -172,9 +185,9 @@ pub async fn scope_enforcement_middleware(
         // If the path matches a protected route, reject with 401 Unauthorized.
         // Otherwise, let it pass through for public/unprotected routes.
         if state.rules.matches_protected_route(&path) {
-            tracing::debug!(
+            tracing::warn!(
                 path = %path,
-                "Gateway scope check failed: no SecurityContext for protected route"
+                "Route policy enforcement denied: no SecurityContext for protected route"
             );
             return Problem::new(
                 axum::http::StatusCode::UNAUTHORIZED,
@@ -198,26 +211,18 @@ pub async fn scope_enforcement_middleware(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::config::RouteScopeRequirement;
-    use std::collections::HashMap;
+    use crate::config::RoutePolicyRule;
 
-    fn build_config(enabled: bool, routes: Vec<(&str, Vec<&str>)>) -> GatewayScopeChecksConfig {
-        let routes_map: HashMap<String, RouteScopeRequirement> = routes
+    fn build_config(enabled: bool, routes: Vec<(&str, Vec<&str>)>) -> RoutePoliciesConfig {
+        let rules = routes
             .into_iter()
-            .map(|(pattern, scopes)| {
-                (
-                    pattern.to_owned(),
-                    RouteScopeRequirement {
-                        required_scopes: scopes.into_iter().map(String::from).collect(),
-                    },
-                )
+            .map(|(path, scopes)| RoutePolicyRule {
+                path: path.to_owned(),
+                required_scopes: scopes.into_iter().map(String::from).collect(),
             })
             .collect();
 
-        GatewayScopeChecksConfig {
-            enabled,
-            routes: routes_map,
-        }
+        RoutePoliciesConfig { enabled, rules }
     }
 
     #[test]
@@ -279,13 +284,16 @@ mod tests {
     }
 
     #[test]
-    fn empty_scopes_passes_for_legacy_compatibility() {
+    fn empty_scopes_returns_forbidden() {
         let config = build_config(true, vec![("/admin/*", vec!["admin"])]);
         let rules = ScopeEnforcementRules::from_config(&config).unwrap();
 
-        // Empty scopes are treated as unrestricted (legacy first-party behavior)
+        // Empty scopes = no permissions (fail-closed)
         let result = rules.check("/admin/users", &[]);
-        assert!(result.is_ok());
+        assert!(result.is_err());
+
+        let problem = result.unwrap_err();
+        assert_eq!(problem.status, axum::http::StatusCode::FORBIDDEN);
     }
 
     #[test]
@@ -336,6 +344,17 @@ mod tests {
         let config = build_config(true, vec![("/admin/[invalid", vec!["admin"])]);
         let result = ScopeEnforcementRules::from_config(&config);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_required_scopes_returns_error() {
+        let config = build_config(true, vec![("/admin/*", vec![])]);
+        let result = ScopeEnforcementRules::from_config(&config);
+        let err = result.expect_err("should fail with empty required_scopes");
+        assert!(
+            err.to_string().contains("empty required_scopes"),
+            "error should mention empty required_scopes: {err}"
+        );
     }
 
     #[test]

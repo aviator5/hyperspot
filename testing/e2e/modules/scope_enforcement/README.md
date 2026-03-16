@@ -1,6 +1,6 @@
-# Gateway Scope Enforcement E2E Tests
+# Route Policy Enforcement E2E Tests
 
-Tests for the Gateway Scope Enforcement middleware, which performs coarse-grained
+Tests for the Route Policy Enforcement middleware, which performs coarse-grained
 early rejection of requests based on token scopes without calling the PDP.
 
 ## Prerequisites
