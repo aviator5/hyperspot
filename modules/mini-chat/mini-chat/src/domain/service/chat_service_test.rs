@@ -10,7 +10,8 @@ use crate::infra::db::repo::chat_repo::ChatRepository as OrmChatRepository;
 use super::ChatService;
 use crate::domain::service::test_helpers::{
     MockThreadSummaryRepo, inmem_db, mock_db_provider, mock_enforcer, mock_model_resolver,
-    mock_thread_summary_repo, test_security_ctx, test_security_ctx_with_id,
+    mock_tenant_only_enforcer, mock_thread_summary_repo, test_security_ctx,
+    test_security_ctx_with_id,
 };
 
 // ── Test Helpers ──
@@ -27,6 +28,24 @@ fn build_service(db: modkit_db::Db) -> ChatService<OrmChatRepository, MockThread
         chat_repo,
         mock_thread_summary_repo(),
         mock_enforcer(),
+        mock_model_resolver(),
+    )
+}
+
+fn build_service_tenant_only_authz(
+    db: modkit_db::Db,
+) -> ChatService<OrmChatRepository, MockThreadSummaryRepo> {
+    let db = mock_db_provider(db);
+    let chat_repo = Arc::new(OrmChatRepository::new(modkit_db::odata::LimitCfg {
+        default: 20,
+        max: 100,
+    }));
+
+    ChatService::new(
+        db,
+        chat_repo,
+        mock_thread_summary_repo(),
+        mock_tenant_only_enforcer(),
         mock_model_resolver(),
     )
 }
@@ -834,5 +853,119 @@ async fn list_chats_pagination_backward_cursor() {
     assert_eq!(
         back_ids, page1_ids,
         "Backward navigation must return to page 1 items"
+    );
+}
+
+// ── Tenant-only AuthZ: user isolation via ensure_owner ──
+
+#[tokio::test]
+async fn list_chats_tenant_only_authz_cross_owner_returns_empty() {
+    let db = inmem_db().await;
+    let svc = build_service_tenant_only_authz(db);
+
+    let tenant_id = Uuid::new_v4();
+    let user_a = Uuid::new_v4();
+    let user_b = Uuid::new_v4();
+    let ctx_a = test_security_ctx_with_id(tenant_id, user_a);
+    let ctx_b = test_security_ctx_with_id(tenant_id, user_b);
+
+    // User A creates a chat (AuthZ returns only tenant constraint, no owner_id)
+    svc.create_chat(
+        &ctx_a,
+        NewChat {
+            model: Some("gpt-5.2".to_owned()),
+            title: Some("User A chat".to_owned()),
+            is_temporary: false,
+        },
+    )
+    .await
+    .expect("create failed");
+
+    // User B (same tenant) lists — must still see nothing thanks to ensure_owner
+    let page = svc
+        .list_chats(&ctx_b, &ODataQuery::default())
+        .await
+        .expect("list failed");
+    assert_eq!(
+        page.items.len(),
+        0,
+        "User B must not see User A chats even when AuthZ returns tenant-only constraints"
+    );
+
+    // User A sees their own chat
+    let page = svc
+        .list_chats(&ctx_a, &ODataQuery::default())
+        .await
+        .expect("list failed");
+    assert_eq!(page.items.len(), 1, "User A must see their own chat");
+}
+
+#[tokio::test]
+async fn get_chat_tenant_only_authz_cross_owner_not_found() {
+    let db = inmem_db().await;
+    let svc = build_service_tenant_only_authz(db);
+
+    let tenant_id = Uuid::new_v4();
+    let user_a = Uuid::new_v4();
+    let user_b = Uuid::new_v4();
+    let ctx_a = test_security_ctx_with_id(tenant_id, user_a);
+    let ctx_b = test_security_ctx_with_id(tenant_id, user_b);
+
+    let created = svc
+        .create_chat(
+            &ctx_a,
+            NewChat {
+                model: Some("gpt-5.2".to_owned()),
+                title: Some("User A chat".to_owned()),
+                is_temporary: false,
+            },
+        )
+        .await
+        .expect("create failed");
+
+    // User B (same tenant) tries to get User A's chat — must fail
+    let result = svc.get_chat(&ctx_b, created.id).await;
+    assert!(
+        result.is_err(),
+        "Cross-owner get must fail with tenant-only authz"
+    );
+    assert!(
+        matches!(result.unwrap_err(), DomainError::ChatNotFound { .. }),
+        "Expected ChatNotFound for cross-owner access with tenant-only authz"
+    );
+}
+
+#[tokio::test]
+async fn delete_chat_tenant_only_authz_cross_owner_not_found() {
+    let db = inmem_db().await;
+    let svc = build_service_tenant_only_authz(db);
+
+    let tenant_id = Uuid::new_v4();
+    let user_a = Uuid::new_v4();
+    let user_b = Uuid::new_v4();
+    let ctx_a = test_security_ctx_with_id(tenant_id, user_a);
+    let ctx_b = test_security_ctx_with_id(tenant_id, user_b);
+
+    let created = svc
+        .create_chat(
+            &ctx_a,
+            NewChat {
+                model: Some("gpt-5.2".to_owned()),
+                title: Some("User A chat".to_owned()),
+                is_temporary: false,
+            },
+        )
+        .await
+        .expect("create failed");
+
+    // User B (same tenant) tries to delete — must fail
+    let result = svc.delete_chat(&ctx_b, created.id).await;
+    assert!(
+        result.is_err(),
+        "Cross-owner delete must fail with tenant-only authz"
+    );
+    assert!(
+        matches!(result.unwrap_err(), DomainError::ChatNotFound { .. }),
+        "Expected ChatNotFound for cross-owner delete with tenant-only authz"
     );
 }

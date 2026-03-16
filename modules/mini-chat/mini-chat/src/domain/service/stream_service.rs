@@ -524,10 +524,11 @@ impl<
         let user_id = ctx.subject_id();
 
         // ── Authorization ──
-        let scope = self
+        let chat_scope = self
             .enforcer
             .access_scope(&ctx, &resources::CHAT, actions::SEND_MESSAGE, Some(chat_id))
-            .await?;
+            .await?
+            .ensure_owner(ctx.subject_id());
 
         // Non-transactional connection for pre-stream checks (D6)
         let conn = self
@@ -539,12 +540,12 @@ impl<
 
         // ── Verify chat exists (scoped) ──
         self.chat_repo
-            .get(&conn, &scope, chat_id)
+            .get(&conn, &chat_scope, chat_id)
             .await
             .map_err(|e| StreamError::TurnCreationFailed { source: e })?
             .ok_or(StreamError::ChatNotFound { chat_id })?;
 
-        let scope = scope.tenant_only();
+        let scope = chat_scope.tenant_only();
 
         // ── Idempotency check (DESIGN §3.7 Check Priority Order) ──
         if let Some(existing_turn) = self
@@ -3772,7 +3773,7 @@ mod tests {
         assert!(done.downgrade_from.is_none());
 
         // Verify turn was created with real quota fields (not placeholder 1_000_000)
-        let scope = AccessScope::allow_all().tenant_only();
+        let scope = AccessScope::allow_all();
         let conn = db.conn().unwrap();
         let turn_repo = TurnRepo;
         let turn = turn_repo

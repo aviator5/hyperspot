@@ -177,9 +177,19 @@ impl<
             .await?;
 
         let conn = self.db.conn().map_err(DomainError::from)?;
+
+        // Verify user owns the chat (ensure_owner for defence-in-depth).
+        let chat_scope = scope.ensure_owner(ctx.subject_id());
+        self.chat_repo
+            .get(&conn, &chat_scope, chat_id)
+            .await?
+            .ok_or_else(|| DomainError::not_found("Chat", chat_id))?;
+
+        // Attachment entity is no_owner — use tenant-only scope.
+        let att_scope = scope.tenant_only();
         let row = self
             .attachment_repo
-            .get(&conn, &scope, attachment_id)
+            .get(&conn, &att_scope, attachment_id)
             .await?
             .ok_or_else(|| DomainError::not_found("Attachment", attachment_id))?;
 
@@ -218,10 +228,18 @@ impl<
 
         let conn = self.db.conn().map_err(DomainError::from)?;
 
-        // Load row (including soft-deleted)
+        // Verify user owns the chat (ensure_owner for defence-in-depth).
+        let chat_scope = scope.ensure_owner(ctx.subject_id());
+        self.chat_repo
+            .get(&conn, &chat_scope, chat_id)
+            .await?
+            .ok_or_else(|| DomainError::not_found("Chat", chat_id))?;
+
+        // Load row (including soft-deleted); attachment is no_owner → tenant scope.
+        let att_scope = scope.tenant_only();
         let row = self
             .attachment_repo
-            .get(&conn, &scope, attachment_id)
+            .get(&conn, &att_scope, attachment_id)
             .await?
             .ok_or_else(|| DomainError::not_found("Attachment", attachment_id))?;
 
@@ -517,9 +535,10 @@ impl<
             .await?;
 
         let conn = self.db.conn().map_err(DomainError::from)?;
+        let chat_scope = scope.ensure_owner(ctx.subject_id());
         let chat = self
             .chat_repo
-            .get(&conn, &scope, chat_id)
+            .get(&conn, &chat_scope, chat_id)
             .await?
             .ok_or_else(|| DomainError::not_found("Chat", chat_id))?;
         let resolved = self
@@ -533,6 +552,7 @@ impl<
         let attachment_repo = Arc::clone(&self.attachment_repo);
         let chat_repo = Arc::clone(&self.chat_repo);
         let rag_config = self.rag_config.clone();
+        let chat_scope_tx = chat_scope.clone();
         let scope_tx = scope.clone();
         let kind_str = validated.kind.to_string();
         let insert_params = InsertAttachmentParams {
@@ -553,7 +573,7 @@ impl<
                 Box::pin(async move {
                     // Lock chat row to serialize concurrent uploads
                     let _chat = chat_repo
-                        .get_for_update(tx, &scope_tx, chat_id)
+                        .get_for_update(tx, &chat_scope_tx, chat_id)
                         .await
                         .map_err(|e| modkit_db::DbError::Other(anyhow::Error::new(e)))?
                         .ok_or_else(|| {

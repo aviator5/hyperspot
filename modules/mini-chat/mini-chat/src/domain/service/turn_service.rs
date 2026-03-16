@@ -159,10 +159,11 @@ impl<
         chat_id: Uuid,
         request_id: Uuid,
     ) -> Result<TurnModel, MutationError> {
-        let scope = self
+        let chat_scope = self
             .enforcer
             .access_scope(ctx, &resources::CHAT, actions::READ_TURN, Some(chat_id))
-            .await?;
+            .await?
+            .ensure_owner(ctx.subject_id());
 
         let conn = self.db.conn().map_err(|e| MutationError::Internal {
             message: e.to_string(),
@@ -170,14 +171,14 @@ impl<
 
         // Verify chat exists (scoped by authz)
         self.chat_repo
-            .get(&conn, &scope, chat_id)
+            .get(&conn, &chat_scope, chat_id)
             .await
             .map_err(|e| MutationError::Internal {
                 message: e.to_string(),
             })?
             .ok_or(MutationError::ChatNotFound { chat_id })?;
 
-        let scope = scope.tenant_only();
+        let scope = chat_scope.tenant_only();
 
         self.turn_repo
             .find_by_chat_and_request_id(&conn, &scope, chat_id, request_id)
@@ -201,16 +202,17 @@ impl<
     ) -> Result<(), MutationError> {
         info!(%chat_id, %request_id, "turn delete");
 
-        let scope = self
+        let chat_scope = self
             .enforcer
             .access_scope(ctx, &resources::CHAT, actions::DELETE_TURN, Some(chat_id))
-            .await?;
+            .await?
+            .ensure_owner(ctx.subject_id());
 
         let start = std::time::Instant::now();
 
         let turn_repo = Arc::clone(&self.turn_repo);
         let chat_repo = Arc::clone(&self.chat_repo);
-        let scope_tx = scope.clone();
+        let scope_tx = chat_scope.clone();
         let ctx_clone = ctx.clone();
 
         let result = self
@@ -257,14 +259,15 @@ impl<
     ) -> Result<MutationResult, MutationError> {
         info!(%chat_id, %request_id, "turn retry");
 
-        let scope = self
+        let chat_scope = self
             .enforcer
             .access_scope(ctx, &resources::CHAT, actions::RETRY_TURN, Some(chat_id))
-            .await?;
+            .await?
+            .ensure_owner(ctx.subject_id());
 
         let start = std::time::Instant::now();
         let result = self
-            .mutate_for_stream(ctx, scope, chat_id, request_id, None)
+            .mutate_for_stream(ctx, chat_scope, chat_id, request_id, None)
             .await;
 
         let ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -285,14 +288,15 @@ impl<
     ) -> Result<MutationResult, MutationError> {
         info!(%chat_id, %request_id, "turn edit");
 
-        let scope = self
+        let chat_scope = self
             .enforcer
             .access_scope(ctx, &resources::CHAT, actions::EDIT_TURN, Some(chat_id))
-            .await?;
+            .await?
+            .ensure_owner(ctx.subject_id());
 
         let start = std::time::Instant::now();
         let result = self
-            .mutate_for_stream(ctx, scope, chat_id, request_id, Some(new_content))
+            .mutate_for_stream(ctx, chat_scope, chat_id, request_id, Some(new_content))
             .await;
 
         let ms = start.elapsed().as_secs_f64() * 1000.0;

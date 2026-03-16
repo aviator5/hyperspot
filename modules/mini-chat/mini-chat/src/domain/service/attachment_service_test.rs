@@ -724,10 +724,10 @@ async fn test_delete_attachment_idempotent_already_deleted() {
     assert!(result.is_ok(), "idempotent delete should succeed");
 }
 
-// ── P5-F3: Delete by wrong user returns forbidden ──
+// ── P5-F3: Delete by wrong user masked as not-found ──
 
 #[tokio::test]
-async fn test_delete_attachment_wrong_user_forbidden() {
+async fn test_delete_attachment_wrong_user_not_found() {
     let db = inmem_db().await;
     let tenant_id = Uuid::new_v4();
     let chat_id = Uuid::new_v4();
@@ -744,7 +744,8 @@ async fn test_delete_attachment_wrong_user_forbidden() {
     let att_id =
         crate::domain::service::test_helpers::insert_test_attachment(&db_prov, params).await;
 
-    // Different user tries to delete
+    // Different user tries to delete — chat ownership check rejects first
+    // (more secure: user doesn't even learn the chat exists).
     let ctx =
         crate::domain::service::test_helpers::test_security_ctx_with_id(tenant_id, other_user_id);
     let oagw = MockOagwGateway::with_responses(vec![]);
@@ -752,13 +753,88 @@ async fn test_delete_attachment_wrong_user_forbidden() {
     let svc = build_service(db, Arc::clone(&oagw) as _, outbox, RagConfig::default());
 
     let result = svc.delete_attachment(&ctx, chat_id, att_id).await;
-    assert!(result.is_err());
     assert!(
         matches!(
             result.unwrap_err(),
-            crate::domain::error::DomainError::Forbidden
+            crate::domain::error::DomainError::NotFound { .. }
         ),
-        "expected Forbidden"
+        "cross-owner delete must be masked as NotFound"
+    );
+}
+
+// ── Cross-owner isolation (tenant-only authz, ensure_owner defence-in-depth) ──
+
+#[tokio::test]
+async fn test_get_attachment_cross_owner_not_found() {
+    let db = inmem_db().await;
+    let tenant_id = Uuid::new_v4();
+    let chat_id = Uuid::new_v4();
+    let owner_id = Uuid::new_v4();
+    let other_user_id = Uuid::new_v4();
+    let db_prov = mock_db_provider(db.clone());
+    insert_chat_for_user(&db_prov, tenant_id, chat_id, owner_id).await;
+
+    let mut params =
+        crate::domain::service::test_helpers::InsertTestAttachmentParams::ready_document(
+            tenant_id, chat_id,
+        );
+    params.uploaded_by_user_id = owner_id;
+    let att_id =
+        crate::domain::service::test_helpers::insert_test_attachment(&db_prov, params).await;
+
+    // Different user (same tenant) tries to read the attachment
+    let ctx =
+        crate::domain::service::test_helpers::test_security_ctx_with_id(tenant_id, other_user_id);
+    let oagw = MockOagwGateway::with_responses(vec![]);
+    let outbox = Arc::new(NoopOutboxEnqueuer);
+    let svc = build_service(db, Arc::clone(&oagw) as _, outbox, RagConfig::default());
+
+    let result = svc.get_attachment(&ctx, chat_id, att_id).await;
+    assert!(
+        matches!(
+            result.unwrap_err(),
+            crate::domain::error::DomainError::NotFound { .. }
+        ),
+        "cross-owner get_attachment must be masked as NotFound"
+    );
+}
+
+#[tokio::test]
+async fn test_upload_attachment_cross_owner_not_found() {
+    let db = inmem_db().await;
+    let tenant_id = Uuid::new_v4();
+    let chat_id = Uuid::new_v4();
+    let owner_id = Uuid::new_v4();
+    let other_user_id = Uuid::new_v4();
+    let db_prov = mock_db_provider(db.clone());
+    insert_chat_for_user(&db_prov, tenant_id, chat_id, owner_id).await;
+
+    // Different user (same tenant) tries to upload to owner's chat
+    let ctx =
+        crate::domain::service::test_helpers::test_security_ctx_with_id(tenant_id, other_user_id);
+    let oagw = MockOagwGateway::with_responses(vec![]);
+    let outbox = Arc::new(NoopOutboxEnqueuer);
+    let svc = build_service(db, Arc::clone(&oagw) as _, outbox, RagConfig::default());
+
+    let result = svc
+        .upload_file(
+            &ctx,
+            chat_id,
+            "test.pdf".to_owned(),
+            "application/pdf",
+            Bytes::from_static(b"dummy content"),
+        )
+        .await;
+    assert!(
+        matches!(
+            result.unwrap_err(),
+            crate::domain::error::DomainError::NotFound { .. }
+        ),
+        "cross-owner upload must be masked as NotFound"
+    );
+    assert!(
+        oagw.captured_requests.lock().unwrap().is_empty(),
+        "cross-owner upload must fail before any provider call"
     );
 }
 

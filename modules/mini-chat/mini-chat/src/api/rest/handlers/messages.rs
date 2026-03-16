@@ -102,6 +102,9 @@ pub(crate) async fn stream_message(
     let (tx, rx) = mpsc::channel::<StreamEvent>(capacity);
     let cancel = CancellationToken::new();
 
+    // Capture tenant_id before `ctx` is moved into `run_stream`.
+    let tenant_id = ctx.subject_tenant_id();
+
     info!(model = %resolved.model_id, provider_id = %resolved.provider_id, "starting SSE stream");
 
     // Pre-stream checks + spawn the provider task
@@ -122,7 +125,7 @@ pub(crate) async fn stream_message(
     {
         Ok(handle) => handle,
         Err(StreamError::Replay { turn }) => {
-            return replay_response(&svc, &selected_model, &turn, ping_secs).await;
+            return replay_response(&svc, tenant_id, &selected_model, &turn, ping_secs).await;
         }
         Err(e) => return stream_error_response(&e),
     };
@@ -232,11 +235,12 @@ fn stream_error_response(err: &StreamError) -> Response {
 /// the same `SseRelay` infrastructure as normal streaming.
 async fn replay_response(
     svc: &AppServices,
+    tenant_id: uuid::Uuid,
     selected_model: &str,
     turn: &TurnModel,
     ping_secs: u64,
 ) -> Response {
-    let scope = modkit_security::AccessScope::allow_all().tenant_only();
+    let scope = modkit_security::AccessScope::for_tenant(tenant_id);
 
     let events = match replay::replay_turn(
         &svc.db,
