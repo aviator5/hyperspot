@@ -59,6 +59,15 @@ pub enum DomainError {
     #[error("{detail}")]
     RequestTimeout { detail: String, instance: String },
 
+    /// A guard plugin rejected the request with a specific status and error code.
+    #[error("guard rejected: {detail}")]
+    GuardRejected {
+        status: u16,
+        error_code: String,
+        detail: String,
+        instance: String,
+    },
+
     /// The request was denied by the authorization policy.
     #[error("access forbidden: {detail}")]
     Forbidden { detail: String },

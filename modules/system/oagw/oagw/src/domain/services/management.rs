@@ -1226,7 +1226,7 @@ pub(crate) fn compute_effective_config(
                         .map(|p| p.items.clone())
                         .unwrap_or_default();
                     for item in &route_plugins.items {
-                        if !merged_items.contains(item) {
+                        if !merged_items.iter().any(|m| m == item) {
                             merged_items.push(item.clone());
                         }
                     }
@@ -1379,7 +1379,7 @@ fn merge_plugins(effective: &mut Upstream, layer: &Upstream) {
                     .map(|p| p.items.clone())
                     .unwrap_or_default();
                 for item in &descendant_plugins.items {
-                    if !merged.contains(item) {
+                    if !merged.iter().any(|m| m == item) {
                         merged.push(item.clone());
                     }
                 }
@@ -1399,7 +1399,7 @@ fn merge_plugins(effective: &mut Upstream, layer: &Upstream) {
                     .map(|p| p.items.clone())
                     .unwrap_or_default();
                 for item in &descendant_plugins.items {
-                    if !merged.contains(item) {
+                    if !merged.iter().any(|m| m == item) {
                         merged.push(item.clone());
                     }
                 }
@@ -2350,9 +2350,11 @@ mod tests {
 
     // -- Effective config merge tests --
 
+    use std::collections::HashMap;
+
     use crate::domain::model::{
-        AuthConfig, PluginsConfig, RateLimitAlgorithm, RateLimitConfig, RateLimitScope,
-        RateLimitStrategy, SharingMode, SustainedRate, Window,
+        AuthConfig, PluginBinding, PluginsConfig, RateLimitAlgorithm, RateLimitConfig,
+        RateLimitScope, RateLimitStrategy, SharingMode, SustainedRate, Window,
     };
 
     fn make_upstream(
@@ -2497,11 +2499,29 @@ mod tests {
 
         let root_plugins = PluginsConfig {
             sharing: SharingMode::Inherit,
-            items: vec!["plugin-a".into(), "plugin-b".into()],
+            items: vec![
+                PluginBinding {
+                    plugin_ref: "plugin-a".into(),
+                    config: HashMap::new(),
+                },
+                PluginBinding {
+                    plugin_ref: "plugin-b".into(),
+                    config: HashMap::new(),
+                },
+            ],
         };
         let child_plugins = PluginsConfig {
             sharing: SharingMode::Inherit,
-            items: vec!["plugin-b".into(), "plugin-c".into()],
+            items: vec![
+                PluginBinding {
+                    plugin_ref: "plugin-b".into(),
+                    config: HashMap::new(),
+                },
+                PluginBinding {
+                    plugin_ref: "plugin-c".into(),
+                    config: HashMap::new(),
+                },
+            ],
         };
 
         let root = make_upstream(root_id, "openai", None, None, Some(root_plugins), vec![]);
@@ -2510,7 +2530,13 @@ mod tests {
         let effective = compute_effective_config(&[root, child], None).unwrap();
         let items = effective.plugins.unwrap().items;
         // ancestor + descendant (dedup): [a, b, c]
-        assert_eq!(items, vec!["plugin-a", "plugin-b", "plugin-c"]);
+        assert_eq!(
+            items
+                .iter()
+                .map(|b| b.plugin_ref.as_str())
+                .collect::<Vec<_>>(),
+            vec!["plugin-a", "plugin-b", "plugin-c"]
+        );
     }
 
     #[test]
@@ -2520,11 +2546,17 @@ mod tests {
 
         let root_plugins = PluginsConfig {
             sharing: SharingMode::Enforce,
-            items: vec!["required-plugin".into()],
+            items: vec![PluginBinding {
+                plugin_ref: "required-plugin".into(),
+                config: HashMap::new(),
+            }],
         };
         let child_plugins = PluginsConfig {
             sharing: SharingMode::Enforce,
-            items: vec!["extra-plugin".into()],
+            items: vec![PluginBinding {
+                plugin_ref: "extra-plugin".into(),
+                config: HashMap::new(),
+            }],
         };
 
         let root = make_upstream(root_id, "openai", None, None, Some(root_plugins), vec![]);
@@ -2533,8 +2565,8 @@ mod tests {
         let effective = compute_effective_config(&[root, child], None).unwrap();
         let items = effective.plugins.unwrap().items;
         // Enforced plugins remain: required-plugin + extra-plugin.
-        assert!(items.contains(&"required-plugin".to_string()));
-        assert!(items.contains(&"extra-plugin".to_string()));
+        assert!(items.iter().any(|b| b.plugin_ref == "required-plugin"));
+        assert!(items.iter().any(|b| b.plugin_ref == "extra-plugin"));
     }
 
     #[test]
@@ -2609,7 +2641,10 @@ mod tests {
             Some(make_rate_limit(SharingMode::Enforce, 1000, Window::Minute)),
             Some(PluginsConfig {
                 sharing: SharingMode::Enforce,
-                items: vec!["audit-log".into()],
+                items: vec![PluginBinding {
+                    plugin_ref: "audit-log".into(),
+                    config: HashMap::new(),
+                }],
             }),
             vec!["env:prod".into()],
         );
@@ -2624,7 +2659,10 @@ mod tests {
             Some(make_rate_limit(SharingMode::Inherit, 500, Window::Minute)),
             Some(PluginsConfig {
                 sharing: SharingMode::Inherit,
-                items: vec!["rate-guard".into()],
+                items: vec![PluginBinding {
+                    plugin_ref: "rate-guard".into(),
+                    config: HashMap::new(),
+                }],
             }),
             vec!["team:partner".into()],
         );
@@ -2635,7 +2673,10 @@ mod tests {
             Some(make_rate_limit(SharingMode::Inherit, 200, Window::Minute)),
             Some(PluginsConfig {
                 sharing: SharingMode::Inherit,
-                items: vec!["transform-x".into()],
+                items: vec![PluginBinding {
+                    plugin_ref: "transform-x".into(),
+                    config: HashMap::new(),
+                }],
             }),
             vec!["region:us".into()],
         );
@@ -2651,9 +2692,9 @@ mod tests {
 
         // Plugins: enforced audit-log + rate-guard + transform-x.
         let items = effective.plugins.unwrap().items;
-        assert!(items.contains(&"audit-log".to_string()));
-        assert!(items.contains(&"rate-guard".to_string()));
-        assert!(items.contains(&"transform-x".to_string()));
+        assert!(items.iter().any(|b| b.plugin_ref == "audit-log"));
+        assert!(items.iter().any(|b| b.plugin_ref == "rate-guard"));
+        assert!(items.iter().any(|b| b.plugin_ref == "transform-x"));
 
         // Tags: union of all three.
         assert!(effective.tags.contains(&"env:prod".to_string()));
@@ -3213,7 +3254,10 @@ mod tests {
         let t = Uuid::new_v4();
         let upstream_plugins = PluginsConfig {
             sharing: SharingMode::Inherit,
-            items: vec!["upstream-plugin".into()],
+            items: vec![PluginBinding {
+                plugin_ref: "upstream-plugin".into(),
+                config: HashMap::new(),
+            }],
         };
         let u = make_upstream(t, "openai", None, None, Some(upstream_plugins), vec![]);
 
@@ -3227,7 +3271,10 @@ mod tests {
             },
             plugins: Some(PluginsConfig {
                 sharing: SharingMode::Private,
-                items: vec!["route-plugin".into()],
+                items: vec![PluginBinding {
+                    plugin_ref: "route-plugin".into(),
+                    config: HashMap::new(),
+                }],
             }),
             rate_limit: None,
             tags: vec![],
@@ -3238,7 +3285,13 @@ mod tests {
         let effective = compute_effective_config(&[u], Some(&route)).unwrap();
         let items = effective.plugins.unwrap().items;
         // Route plugins with Private sharing are skipped — only upstream plugins remain.
-        assert_eq!(items, vec!["upstream-plugin".to_string()]);
+        assert_eq!(
+            items
+                .iter()
+                .map(|b| b.plugin_ref.as_str())
+                .collect::<Vec<_>>(),
+            vec!["upstream-plugin"]
+        );
     }
 
     #[test]
@@ -3318,11 +3371,17 @@ mod tests {
 
         let root_plugins = PluginsConfig {
             sharing: SharingMode::Enforce,
-            items: vec!["audit-log".into()],
+            items: vec![PluginBinding {
+                plugin_ref: "audit-log".into(),
+                config: HashMap::new(),
+            }],
         };
         let child_plugins = PluginsConfig {
             sharing: SharingMode::Private,
-            items: vec!["my-plugin".into()],
+            items: vec![PluginBinding {
+                plugin_ref: "my-plugin".into(),
+                config: HashMap::new(),
+            }],
         };
 
         let root = make_upstream(root_id, "openai", None, None, Some(root_plugins), vec![]);
@@ -3331,8 +3390,8 @@ mod tests {
         let effective = compute_effective_config(&[root, child], None).unwrap();
         let items = effective.plugins.unwrap().items;
         // Enforced "audit-log" must survive even though descendant set Private.
-        assert!(items.contains(&"audit-log".to_string()));
-        assert!(items.contains(&"my-plugin".to_string()));
+        assert!(items.iter().any(|b| b.plugin_ref == "audit-log"));
+        assert!(items.iter().any(|b| b.plugin_ref == "my-plugin"));
     }
 
     // -- Alias enforcement tests --
