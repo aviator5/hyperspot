@@ -33,7 +33,7 @@ pub async fn create_route(
     Json(req): Json<CreateRouteRequest>,
 ) -> Result<impl IntoResponse, Problem> {
     let instance = "/oagw/v1/routes";
-    let upstream_uuid = parse_gts_id(&req.upstream_id, instance)?;
+    let upstream_uuid = parse_gts_id(&req.upstream_id, gts::UPSTREAM_SCHEMA, instance)?;
     let domain_req = crate::domain::model::CreateRouteRequest {
         upstream_id: upstream_uuid,
         match_rules: req.match_rules.into(),
@@ -57,7 +57,7 @@ pub async fn get_route(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, Problem> {
     let instance = format!("/oagw/v1/routes/{id}");
-    let uuid = parse_gts_id(&id, &instance)?;
+    let uuid = parse_gts_id(&id, gts::ROUTE_SCHEMA, &instance)?;
     let route = state
         .cp
         .get_route(&ctx, uuid)
@@ -91,7 +91,7 @@ pub async fn list_routes(
     let upstream_uuid = params
         .upstream_id
         .as_deref()
-        .map(|id| parse_gts_id(id, instance))
+        .map(|id| parse_gts_id(id, gts::UPSTREAM_SCHEMA, instance))
         .transpose()?;
     let query = crate::domain::model::ListQuery {
         top: params.limit.min(100),
@@ -113,7 +113,7 @@ pub async fn update_route(
     Json(req): Json<UpdateRouteRequest>,
 ) -> Result<impl IntoResponse, Problem> {
     let instance = format!("/oagw/v1/routes/{id}");
-    let uuid = parse_gts_id(&id, &instance)?;
+    let uuid = parse_gts_id(&id, gts::ROUTE_SCHEMA, &instance)?;
     let route = state
         .cp
         .update_route(&ctx, uuid, req.into())
@@ -128,7 +128,7 @@ pub async fn delete_route(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, Problem> {
     let instance = format!("/oagw/v1/routes/{id}");
-    let uuid = parse_gts_id(&id, &instance)?;
+    let uuid = parse_gts_id(&id, gts::ROUTE_SCHEMA, &instance)?;
     state
         .cp
         .delete_route(&ctx, uuid)
