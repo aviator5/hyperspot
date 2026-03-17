@@ -370,7 +370,7 @@ impl AppConfig {
             .ok_or_else(|| VendorConfigError::NotFound {
                 vendor: vendor_name.to_owned(),
             })?;
-        serde_json::from_value(raw.clone()).map_err(|e| VendorConfigError::InvalidConfig {
+        T::deserialize(raw).map_err(|e| VendorConfigError::InvalidConfig {
             vendor: vendor_name.to_owned(),
             source: e,
         })
@@ -388,7 +388,7 @@ impl AppConfig {
         let Some(raw) = self.vendor.get(vendor_name) else {
             return Ok(T::default());
         };
-        serde_json::from_value(raw.clone()).map_err(|e| VendorConfigError::InvalidConfig {
+        T::deserialize(raw).map_err(|e| VendorConfigError::InvalidConfig {
             vendor: vendor_name.to_owned(),
             source: e,
         })
