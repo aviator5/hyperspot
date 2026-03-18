@@ -745,6 +745,19 @@
           "FEATURE": {"coverage": "optional", "task": "allowed", "priority": "allowed", "headings": ["feature-dod"]}
         }
       },
+      "entity": {
+        "kind": "entity",
+        "name": "Domain Entity",
+        "description": "A domain model entity documented in DESIGN (e.g., Session, Message, Capability).",
+        "template": "cpt-{system}-entity-{slug}",
+        "required": false,
+        "task": "allowed",
+        "priority": "allowed",
+        "to_code": false,
+        "examples": ["cpt-cf-chat-engine-entity-session", "cpt-cf-chat-engine-entity-message"],
+        "headings": ["design-tech-arch"],
+        "references": {}
+      },
       "topology": {
         "kind": "topology",
         "name": "Topology",
