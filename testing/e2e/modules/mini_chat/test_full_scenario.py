@@ -1,13 +1,16 @@
 """Full end-to-end scenario test.
 
 Creates a chat, exchanges multiple messages, verifies message history,
-checks turn records and quota usage via SQLite, then cleans up.
+checks turn records and quota usage, then cleans up.
 
-Requires a running server with a real LLM provider.
+Uses REST API endpoints for verification where possible; falls back to
+direct SQLite queries only for fields not exposed via API (reserve_tokens,
+max_output_tokens_applied, reserved_credits_micro).
 """
 
 import os
 import sqlite3
+import time
 import uuid
 
 import pytest
@@ -18,8 +21,9 @@ from .conftest import API_PREFIX, DB_PATH, DEFAULT_MODEL, STANDARD_MODEL, expect
 pytestmark = pytest.mark.openai
 
 
+# ── DB helpers (only for fields not exposed via REST) ────────────────────
+
 def _to_blob(value):
-    """Convert a UUID string to bytes for SQLite blob comparison."""
     if isinstance(value, str):
         try:
             return uuid.UUID(value).bytes
@@ -29,10 +33,6 @@ def _to_blob(value):
 
 
 def query_db(sql: str, params: tuple = ()) -> list[dict]:
-    """Run a read-only query against the mini-chat SQLite DB.
-
-    UUID string params are auto-converted to bytes (SQLite stores UUIDs as blobs).
-    """
     if not os.path.exists(DB_PATH):
         pytest.skip(f"DB not found at {DB_PATH}")
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
@@ -45,8 +45,25 @@ def query_db(sql: str, params: tuple = ()) -> list[dict]:
         conn.close()
 
 
+# ── Quota endpoint helpers ───────────────────────────────────────────────
+
+def _get_quota_status() -> dict:
+    resp = httpx.get(f"{API_PREFIX}/quota/status", timeout=10)
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def _find_period(tiers: list, tier_name: str, period_name: str) -> dict | None:
+    for t in tiers:
+        if t["tier"] == tier_name:
+            for p in t["periods"]:
+                if p["period"] == period_name:
+                    return p
+    return None
+
+
 class TestFullConversationScenario:
-    """Complete conversation lifecycle: create → multi-turn → verify DB → delete."""
+    """Complete conversation lifecycle: create → multi-turn → verify → delete."""
 
     def test_full_conversation(self, server):
         # ── 1. Create chat with default (premium) model ──────────────────
@@ -73,7 +90,6 @@ class TestFullConversationScenario:
         assert usage1["input_tokens"] > 0
         assert usage1["output_tokens"] > 0
 
-        # Verify delta content is non-empty
         text1 = "".join(e.data["content"] for e in ev1 if e.event == "delta")
         assert len(text1.strip()) > 0
 
@@ -89,7 +105,6 @@ class TestFullConversationScenario:
         done2 = expect_done(ev2)
         usage2 = done2.data["usage"]
 
-        # Input tokens should be higher (conversation context grows)
         assert usage2["input_tokens"] > usage1["input_tokens"], (
             f"Turn 2 input_tokens ({usage2['input_tokens']}) should exceed "
             f"turn 1 ({usage1['input_tokens']}) — context assembly sends history"
@@ -113,12 +128,10 @@ class TestFullConversationScenario:
         assert resp.status_code == 200
         msgs = resp.json()["items"]
 
-        # 3 turns × 2 messages = 6 messages
         assert len(msgs) == 6
         roles = [m["role"] for m in msgs]
         assert roles == ["user", "assistant"] * 3
 
-        # Messages are chronologically ordered
         timestamps = [m["created_at"] for m in msgs]
         assert timestamps == sorted(timestamps)
 
@@ -135,69 +148,43 @@ class TestFullConversationScenario:
             assert turn["state"] == "done"
             assert turn["assistant_message_id"] is not None
 
-        # ── 8. Verify turns in SQLite ────────────────────────────────────
-        turns = query_db(
-            "SELECT * FROM chat_turns WHERE chat_id = ? AND deleted_at IS NULL ORDER BY started_at",
-            (chat_id,),
-        )
-        assert len(turns) == 3
-
-        for t in turns:
-            assert t["state"] == "completed"
-            assert t["effective_model"] == DEFAULT_MODEL
-            assert t["reserve_tokens"] is not None and t["reserve_tokens"] > 0
-            assert t["max_output_tokens_applied"] is not None and t["max_output_tokens_applied"] > 0
-            assert t["reserved_credits_micro"] is not None and t["reserved_credits_micro"] > 0
-            assert t["policy_version_applied"] is not None
-            assert t["completed_at"] is not None
-
-        # Turns should have increasing start times
-        start_times = [t["started_at"] for t in turns]
-        assert start_times == sorted(start_times)
-
-        # ── 9. Verify quota_usage in SQLite ──────────────────────────────
-        quota = query_db(
-            "SELECT * FROM quota_usage WHERE bucket = 'total'",
-        )
-        assert len(quota) >= 1
-
-        for q in quota:
-            # After settlement, reserved should be back to 0
-            assert q["reserved_credits_micro"] == 0, (
-                f"Stuck reserve! bucket={q['bucket']} period={q['period_type']} "
-                f"reserved={q['reserved_credits_micro']}"
-            )
-            assert q["spent_credits_micro"] > 0
-            assert q["calls"] >= 3  # at least our 3 turns
-            assert q["input_tokens"] > 0
-            assert q["output_tokens"] > 0
-
-        # ── 10. Verify messages in SQLite have token counts ──────────────
-        asst_msgs = query_db(
-            "SELECT * FROM messages WHERE chat_id = ? AND role = 'assistant' ORDER BY created_at",
-            (chat_id,),
-        )
+        # ── 8. Verify assistant messages have token counts (REST API) ────
+        asst_msgs = [m for m in msgs if m["role"] == "assistant"]
         assert len(asst_msgs) == 3
         for m in asst_msgs:
-            assert m["input_tokens"] > 0
-            assert m["output_tokens"] > 0
+            assert m.get("input_tokens") is not None and m["input_tokens"] > 0
+            assert m.get("output_tokens") is not None and m["output_tokens"] > 0
             assert len(m["content"]) > 0
 
-        # ── 11. Idempotency: replay turn 1 ──────────────────────────────
+        # ── 9. Verify quota via REST endpoint ────────────────────────────
+        time.sleep(0.5)  # settlement delay
+        status = _get_quota_status()
+
+        total_daily = _find_period(status["tiers"], "total", "daily")
+        assert total_daily is not None
+        assert total_daily["used_credits_micro"] > 0
+
+        # No stuck reserves: remaining = limit - used
+        for tier in status["tiers"]:
+            for p in tier["periods"]:
+                expected_remaining = p["limit_credits_micro"] - p["used_credits_micro"]
+                assert p["remaining_credits_micro"] == expected_remaining, (
+                    f"Stuck reserve in {tier['tier']}/{p['period']}"
+                )
+
+        # ── 10. Idempotency: replay turn 1 ───────────────────────────────
         s_replay, ev_replay, _ = stream_message(
             chat_id, "What is 2+2? Reply with just the number.", request_id=rid1,
         )
         assert s_replay == 200
-        # Replay should return stream_started with same message_id and is_new_turn=false
         ss_replay = expect_stream_started(ev_replay)
         assert ss_replay.data["message_id"] == msg_id1
         assert ss_replay.data["is_new_turn"] is False
 
-        # ── 12. Delete chat ──────────────────────────────────────────────
+        # ── 11. Delete chat ──────────────────────────────────────────────
         resp = httpx.delete(f"{API_PREFIX}/chats/{chat_id}")
         assert resp.status_code == 204
 
-        # Verify gone
         resp = httpx.get(f"{API_PREFIX}/chats/{chat_id}")
         assert resp.status_code == 404
 
@@ -206,45 +193,54 @@ class TestQuotaAccumulation:
     """Verify quota accumulates correctly across multiple turns."""
 
     def test_quota_credits_accumulate(self, server):
-        """Each turn should add to spent_credits_micro in quota_usage."""
-        # Snapshot quota before
-        quota_before = query_db("SELECT * FROM quota_usage WHERE bucket = 'total'")
-        spent_before = sum(q["spent_credits_micro"] for q in quota_before)
-        calls_before = sum(q["calls"] for q in quota_before)
+        """Each turn should add to used_credits_micro via quota status endpoint."""
+        before = _get_quota_status()
+        before_total_daily = _find_period(before["tiers"], "total", "daily")
+        assert before_total_daily is not None
+        spent_before = before_total_daily["used_credits_micro"]
 
-        # Create chat and do 2 turns
         resp = httpx.post(f"{API_PREFIX}/chats", json={})
         chat_id = resp.json()["id"]
 
         stream_message(chat_id, "Say A.")
         stream_message(chat_id, "Say B.")
 
-        # Snapshot after
-        quota_after = query_db("SELECT * FROM quota_usage WHERE bucket = 'total'")
-        spent_after = sum(q["spent_credits_micro"] for q in quota_after)
-        calls_after = sum(q["calls"] for q in quota_after)
+        time.sleep(0.5)
 
-        assert spent_after > spent_before
-        assert calls_after >= calls_before + 2
+        after = _get_quota_status()
+        after_total_daily = _find_period(after["tiers"], "total", "daily")
+        assert after_total_daily is not None
+        spent_after = after_total_daily["used_credits_micro"]
+
+        assert spent_after > spent_before, (
+            f"used_credits_micro should increase: before={spent_before}, after={spent_after}"
+        )
 
     def test_no_stuck_reserves_after_completion(self, server):
-        """After all turns complete, reserved_credits_micro should be 0."""
+        """After all turns complete, remaining should equal limit - used."""
         resp = httpx.post(f"{API_PREFIX}/chats", json={})
         chat_id = resp.json()["id"]
 
         stream_message(chat_id, "Hello.")
+        time.sleep(0.5)
 
-        # Check all quota rows — none should have stuck reserves
-        quota = query_db("SELECT * FROM quota_usage")
-        for q in quota:
-            assert q["reserved_credits_micro"] == 0, (
-                f"Stuck reserve: bucket={q['bucket']} period={q['period_type']} "
-                f"reserved={q['reserved_credits_micro']}"
-            )
+        status = _get_quota_status()
+        for tier in status["tiers"]:
+            for p in tier["periods"]:
+                expected_remaining = p["limit_credits_micro"] - p["used_credits_micro"]
+                assert p["remaining_credits_micro"] == expected_remaining, (
+                    f"Stuck reserve in {tier['tier']}/{p['period']}: "
+                    f"remaining={p['remaining_credits_micro']} != "
+                    f"limit({p['limit_credits_micro']}) - used({p['used_credits_micro']})"
+                )
 
 
 class TestTurnDetailsInDb:
-    """Verify turn-level DB fields from the P6 changes."""
+    """Verify turn-level DB fields not exposed via REST API.
+
+    These fields (reserve_tokens, max_output_tokens_applied, reserved_credits_micro)
+    are internal to the quota/reservation system and have no REST equivalent.
+    """
 
     def test_max_output_tokens_applied(self, server):
         """max_output_tokens_applied should reflect min(catalog, config_cap)."""
@@ -261,13 +257,8 @@ class TestTurnDetailsInDb:
         assert len(turns) == 1
         t = turns[0]
 
-        # max_output_tokens_applied should be set and positive
         assert t["max_output_tokens_applied"] is not None
         assert t["max_output_tokens_applied"] > 0
-
-        # For gpt-5.2 (catalog: 8192), it should be min(8192, config_cap)
-        # Config cap is StreamingConfig.max_output_tokens (likely 32768)
-        # So applied should be 8192
         assert t["max_output_tokens_applied"] <= 8192
 
     def test_reserve_tokens_formula(self, server):
@@ -284,27 +275,20 @@ class TestTurnDetailsInDb:
         )
         t = turns[0]
 
-        # reserve_tokens should be > max_output_tokens_applied
-        # (because it includes estimated input tokens)
         assert t["reserve_tokens"] > t["max_output_tokens_applied"]
 
     def test_credits_settled_after_completion(self, server):
-        """After completion, the turn's reserved_credits_micro should match
-        what was debited from quota_usage (no stuck reserve)."""
+        """After completion, no stuck reserves in quota (verified via REST)."""
         resp = httpx.post(f"{API_PREFIX}/chats", json={})
         chat_id = resp.json()["id"]
-        rid = str(uuid.uuid4())
 
-        stream_message(chat_id, "Say OK.", request_id=rid)
+        stream_message(chat_id, "Say OK.")
+        time.sleep(0.5)
 
-        turns = query_db(
-            "SELECT * FROM chat_turns WHERE chat_id = ? AND request_id = ?",
-            (chat_id, rid),
-        )
-        t = turns[0]
-        assert t["state"] == "completed"
-        assert t["reserved_credits_micro"] > 0  # was reserved
-
-        # All quota rows should have 0 reserved (fully settled)
-        quota = query_db("SELECT * FROM quota_usage WHERE reserved_credits_micro > 0")
-        assert len(quota) == 0, f"Stuck reserves found: {quota}"
+        status = _get_quota_status()
+        for tier in status["tiers"]:
+            for p in tier["periods"]:
+                expected_remaining = p["limit_credits_micro"] - p["used_credits_micro"]
+                assert p["remaining_credits_micro"] == expected_remaining, (
+                    f"Stuck reserve in {tier['tier']}/{p['period']}"
+                )

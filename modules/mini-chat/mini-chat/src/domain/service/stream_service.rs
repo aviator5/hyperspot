@@ -296,6 +296,8 @@ struct PreflightResult {
     system_prompt: String,
     context_window: u32,
     estimation_budgets: crate::config::EstimationBudgets,
+    max_retrieved_chunks_per_turn: u32,
+    max_tool_calls: u32,
 }
 
 /// Convert a `PreflightDecision` into a flat `PreflightResult` or a `StreamError`.
@@ -314,6 +316,8 @@ fn flatten_preflight(
             system_prompt,
             context_window,
             estimation_budgets,
+            max_retrieved_chunks_per_turn,
+            max_tool_calls,
             ..
         } => Ok(PreflightResult {
             effective_model,
@@ -328,6 +332,8 @@ fn flatten_preflight(
             system_prompt,
             context_window,
             estimation_budgets,
+            max_retrieved_chunks_per_turn,
+            max_tool_calls,
         }),
         PreflightDecision::Downgrade {
             effective_model,
@@ -341,6 +347,8 @@ fn flatten_preflight(
             system_prompt,
             context_window,
             estimation_budgets,
+            max_retrieved_chunks_per_turn,
+            max_tool_calls,
             ..
         } => Ok(PreflightResult {
             effective_model,
@@ -355,6 +363,8 @@ fn flatten_preflight(
             system_prompt,
             context_window,
             estimation_budgets,
+            max_retrieved_chunks_per_turn,
+            max_tool_calls,
         }),
         PreflightDecision::Reject {
             error_code,
@@ -754,6 +764,8 @@ impl<
                 file_search_enabled,
                 &vector_store_ids,
                 None, // file_search_filters: wired by P4-6
+                self.streaming_config.web_search_context_size,
+                pf.max_retrieved_chunks_per_turn,
                 token_budget,
             )
             .await?;
@@ -784,6 +796,7 @@ impl<
             model,
             provider_model_id,
             pf.max_output_tokens_applied.cast_unsigned(),
+            pf.max_tool_calls,
             self.quota.web_search_max_calls_per_message(),
             cancel,
             tx,
@@ -1021,6 +1034,8 @@ impl<
         file_search_enabled: bool,
         vector_store_ids: &[String],
         file_search_filters: Option<crate::domain::llm::FileSearchFilter>,
+        web_search_context_size: crate::domain::llm::WebSearchContextSize,
+        file_search_max_num_results: u32,
         token_budget: Option<super::context_assembly::TokenBudget>,
     ) -> Result<super::context_assembly::AssembledContext, StreamError> {
         let conn = self
@@ -1095,6 +1110,8 @@ impl<
             file_search_enabled,
             vector_store_ids,
             file_search_filters,
+            web_search_context_size,
+            file_search_max_num_results,
             token_budget,
         })
         .map_err(|e| StreamError::ContextBudgetExceeded {
@@ -1329,6 +1346,8 @@ impl<
                 file_search_enabled,
                 &vector_store_ids,
                 None, // file_search_filters: wired by P4-6
+                self.streaming_config.web_search_context_size,
+                pf.max_retrieved_chunks_per_turn,
                 token_budget,
             )
             .await?;
@@ -1357,6 +1376,7 @@ impl<
             pf.effective_model,
             provider_model_id,
             pf.max_output_tokens_applied.cast_unsigned(),
+            pf.max_tool_calls,
             self.quota.web_search_max_calls_per_message(),
             cancel,
             tx,
@@ -1406,6 +1426,7 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
     model: String,
     provider_model_id: String,
     max_output_tokens: u32,
+    max_tool_calls: u32,
     web_search_max_calls: u32,
     cancel: CancellationToken,
     tx: mpsc::Sender<StreamEvent>,
@@ -1442,7 +1463,8 @@ fn spawn_provider_task<TR: TurnRepository + 'static, MR: MessageRepository + 'st
         // Build the LLM request using provider_model_id (the actual provider-facing name)
         let mut builder = LlmRequestBuilder::new(&provider_model_id)
             .messages(messages)
-            .max_output_tokens(u64::from(max_output_tokens));
+            .max_output_tokens(u64::from(max_output_tokens))
+            .max_tool_calls(max_tool_calls);
         if let Some(instructions) = system_instructions {
             builder = builder.system_instructions(instructions);
         }
@@ -2433,6 +2455,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,
@@ -2483,6 +2506,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,
@@ -2526,6 +2550,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,
@@ -2618,6 +2643,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel.clone(),
             tx,
@@ -3605,6 +3631,7 @@ mod tests {
             "gpt-4o-mini".into(), // effective_model passed as the model param
             "gpt-4o-mini".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,
@@ -4076,6 +4103,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,
@@ -4120,6 +4148,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,
@@ -4174,6 +4203,7 @@ mod tests {
             "test-model".into(),
             "test-model".into(),
             4096,
+            2, // max_tool_calls
             2, // web_search_max_calls
             cancel,
             tx,

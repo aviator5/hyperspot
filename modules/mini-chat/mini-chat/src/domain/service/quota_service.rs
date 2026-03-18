@@ -666,6 +666,9 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                                     context_window: eff_entry.context_window,
                                     max_input_tokens: eff_entry.max_input_tokens,
                                     estimation_budgets: model_estimation_budgets,
+                                    max_retrieved_chunks_per_turn: eff_entry
+                                        .max_retrieved_chunks_per_turn,
+                                    max_tool_calls: eff_entry.max_tool_calls,
                                 },
                                 CascadeDecision::Downgrade {
                                     downgrade_from,
@@ -684,6 +687,9 @@ impl<QR: QuotaUsageRepository + 'static> QuotaService<QR> {
                                     context_window: eff_entry.context_window,
                                     max_input_tokens: eff_entry.max_input_tokens,
                                     estimation_budgets: model_estimation_budgets,
+                                    max_retrieved_chunks_per_turn: eff_entry
+                                        .max_retrieved_chunks_per_turn,
+                                    max_tool_calls: eff_entry.max_tool_calls,
                                 },
                                 CascadeDecision::Reject => unreachable!(),
                             };

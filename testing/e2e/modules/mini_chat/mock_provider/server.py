@@ -72,6 +72,7 @@ class _Handler(BaseHTTPRequestHandler):
         response_id = _next_response_id()
 
         server: MockProviderServer = self.server  # type: ignore[assignment]
+        server.capture_request(body)
         try:
             scenario = server._override_queue.get_nowait()
         except queue.Empty:
@@ -204,10 +205,27 @@ class MockProviderServer(HTTPServer):
         self._thread: threading.Thread | None = None
         self._files: dict[str, dict] = {}
         self._vector_stores: dict[str, dict] = {}
+        self._captured_requests: list[dict] = []
+        self._capture_lock = threading.Lock()
 
     @property
     def port(self) -> int:
         return self.server_address[1]
+
+    def capture_request(self, body: dict) -> None:
+        """Store a request body for later inspection (thread-safe)."""
+        with self._capture_lock:
+            self._captured_requests.append(body)
+
+    def get_last_request(self) -> dict | None:
+        """Return the most recent captured request body, or None."""
+        with self._capture_lock:
+            return self._captured_requests[-1] if self._captured_requests else None
+
+    def clear_captured_requests(self) -> None:
+        """Clear all captured request bodies."""
+        with self._capture_lock:
+            self._captured_requests.clear()
 
     def set_next_scenario(self, scenario: Scenario) -> None:
         """Override the scenario for the next request (consumed once, thread-safe)."""
@@ -231,6 +249,12 @@ class _DummyMockProvider:
     port = None
 
     def set_next_scenario(self, scenario: Scenario) -> None:
+        pass
+
+    def get_last_request(self) -> dict | None:
+        return None
+
+    def clear_captured_requests(self) -> None:
         pass
 
     def start(self) -> None:

@@ -134,9 +134,12 @@ pub enum LlmTool {
     FileSearch {
         vector_store_ids: Vec<String>,
         filters: Option<FileSearchFilter>,
+        max_num_results: Option<u32>,
     },
     /// Server-side web search (provider manages execution).
-    WebSearch,
+    WebSearch {
+        search_context_size: WebSearchContextSize,
+    },
     /// Generic function tool (for providers supporting function calling).
     Function {
         name: String,
@@ -172,6 +175,17 @@ pub struct Citation {
     pub score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub span: Option<TextSpan>,
+}
+
+/// How much context the web search tool should use.
+#[domain_model]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum WebSearchContextSize {
+    #[default]
+    Low,
+    Medium,
+    High,
 }
 
 /// Whether a citation came from a file or web search.

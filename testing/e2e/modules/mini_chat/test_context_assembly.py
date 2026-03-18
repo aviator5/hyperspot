@@ -11,36 +11,10 @@ import uuid
 
 import httpx
 
-from .conftest import API_PREFIX, DB_PATH, expect_done, stream_message
+from .conftest import API_PREFIX, expect_done, stream_message
 
 import pytest
 pytestmark = pytest.mark.openai
-
-# Optional DB access for token verification
-try:
-    import os
-    import sqlite3
-
-    def _to_blob(value):
-        if isinstance(value, str):
-            try:
-                return uuid.UUID(value).bytes
-            except ValueError:
-                pass
-        return value
-
-    def query_db(sql, params=()):
-        if not os.path.exists(DB_PATH):
-            return None
-        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        blob_params = tuple(_to_blob(p) for p in params)
-        try:
-            return [dict(r) for r in conn.execute(sql, blob_params).fetchall()]
-        finally:
-            conn.close()
-except ImportError:
-    query_db = None
 
 
 class TestSystemPrompt:
@@ -170,11 +144,11 @@ class TestContextRecall:
         )
 
 
-class TestContextDbTokens:
-    """Verify input_tokens stored in DB reflect growing context."""
+class TestContextMessageTokens:
+    """Verify input_tokens reflect growing context."""
 
-    def test_db_input_tokens_increase(self, server):
-        """Assistant message input_tokens in DB should grow with each turn."""
+    def test_message_input_tokens_increase(self, server):
+        """Assistant message input_tokens should grow with each turn."""
         resp = httpx.post(f"{API_PREFIX}/chats", json={})
         assert resp.status_code == 201
         chat_id = resp.json()["id"]
@@ -184,18 +158,14 @@ class TestContextDbTokens:
             _, events, _ = stream_message(chat_id, prompt)
             expect_done(events)
 
-        # Query assistant messages from DB
-        rows = query_db(
-            "SELECT input_tokens FROM messages "
-            "WHERE chat_id = ? AND role = 'assistant' AND deleted_at IS NULL "
-            "ORDER BY created_at",
-            (chat_id,),
-        )
-        if rows is None:
-            return  # DB not available, skip
+        # Fetch assistant messages via REST API
+        resp = httpx.get(f"{API_PREFIX}/chats/{chat_id}/messages")
+        assert resp.status_code == 200
+        msgs = resp.json()["items"]
+        asst_msgs = [m for m in msgs if m["role"] == "assistant"]
 
-        assert len(rows) == 3
-        tokens = [r["input_tokens"] for r in rows]
+        assert len(asst_msgs) == 3
+        tokens = [m["input_tokens"] for m in asst_msgs]
 
         # Each subsequent assistant message should have more input tokens
         for i in range(1, len(tokens)):

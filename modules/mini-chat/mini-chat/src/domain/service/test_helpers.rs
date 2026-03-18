@@ -430,6 +430,7 @@ pub fn test_catalog_entry(params: TestCatalogEntryParams) -> ModelCatalogEntry {
         multiplier_display: params.multiplier_display.clone(),
         estimation_budgets: EstimationBudgets::default(),
         max_retrieved_chunks_per_turn: 5,
+        max_tool_calls: 2,
         general_config: ModelGeneralConfig {
             config_type: String::new(),
             model_credential_id: Uuid::nil(),

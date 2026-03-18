@@ -167,6 +167,7 @@ modules:
           multiplier_display: "3x"
           provider_id: "openai"
           max_retrieved_chunks_per_turn: 10
+          max_tool_calls: 2
           estimation_budgets:
             bytes_per_token_conservative: 4
             fixed_overhead_tokens: 500
@@ -180,6 +181,8 @@ modules:
             sort_order: 1
           general_config:
             type: "chat"
+            model_credential_id: "00000000-0000-0000-0000-000000000000"
+            credential_tenant_id: "00000000-0000-0000-0000-000000000000"
             tier: "premium"
             available_from: "2025-01-01T00:00:00Z"
             max_file_size_mb: 50
@@ -251,6 +254,7 @@ modules:
           multiplier_display: "1x"
           provider_id: "openai"
           max_retrieved_chunks_per_turn: 10
+          max_tool_calls: 2
           estimation_budgets:
             bytes_per_token_conservative: 4
             fixed_overhead_tokens: 500
@@ -264,6 +268,8 @@ modules:
             sort_order: 2
           general_config:
             type: "chat"
+            model_credential_id: "00000000-0000-0000-0000-000000000000"
+            credential_tenant_id: "00000000-0000-0000-0000-000000000000"
             tier: "standard"
             available_from: "2025-01-01T00:00:00Z"
             max_file_size_mb: 50
@@ -335,6 +341,7 @@ modules:
           multiplier_display: "0.5x"
           provider_id: "openai"
           max_retrieved_chunks_per_turn: 5
+          max_tool_calls: 2
           estimation_budgets:
             bytes_per_token_conservative: 4
             fixed_overhead_tokens: 300
@@ -348,6 +355,8 @@ modules:
             sort_order: 3
           general_config:
             type: "chat"
+            model_credential_id: "00000000-0000-0000-0000-000000000000"
+            credential_tenant_id: "00000000-0000-0000-0000-000000000000"
             tier: "standard"
             available_from: "2025-01-01T00:00:00Z"
             max_file_size_mb: 25
@@ -419,6 +428,7 @@ modules:
           multiplier_display: "1x"
           provider_id: "azure_openai"
           max_retrieved_chunks_per_turn: 10
+          max_tool_calls: 2
           estimation_budgets:
             bytes_per_token_conservative: 4
             fixed_overhead_tokens: 500
@@ -432,6 +442,8 @@ modules:
             sort_order: 4
           general_config:
             type: "chat"
+            model_credential_id: "00000000-0000-0000-0000-000000000000"
+            credential_tenant_id: "00000000-0000-0000-0000-000000000000"
             tier: "standard"
             available_from: "2025-01-01T00:00:00Z"
             max_file_size_mb: 50
@@ -455,7 +467,7 @@ modules:
               audio: false
               video: false
             tool_support:
-              web_search: false
+              web_search: true
               file_search: true
               image_generation: false
               code_interpreter: false

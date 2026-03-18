@@ -117,6 +117,7 @@ mod tests {
             multiplier_display: "1x".to_owned(),
             estimation_budgets: EstimationBudgets::default(),
             max_retrieved_chunks_per_turn: 5,
+            max_tool_calls: 2,
             general_config: ModelGeneralConfig {
                 config_type: String::new(),
                 model_credential_id: Uuid::nil(),

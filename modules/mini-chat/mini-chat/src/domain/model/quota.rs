@@ -23,6 +23,10 @@ pub enum PreflightDecision {
         max_input_tokens: u32,
         /// Per-model estimation budgets from the effective model's catalog entry.
         estimation_budgets: EstimationBudgets,
+        /// Top-k chunks for `file_search` (from `ModelCatalogEntry`).
+        max_retrieved_chunks_per_turn: u32,
+        /// Max tool calls per request (from `ModelCatalogEntry`).
+        max_tool_calls: u32,
     },
     Downgrade {
         effective_model: String,
@@ -41,6 +45,10 @@ pub enum PreflightDecision {
         max_input_tokens: u32,
         /// Per-model estimation budgets from the effective model's catalog entry.
         estimation_budgets: EstimationBudgets,
+        /// Top-k chunks for `file_search` (from `ModelCatalogEntry`).
+        max_retrieved_chunks_per_turn: u32,
+        /// Max tool calls per request (from `ModelCatalogEntry`).
+        max_tool_calls: u32,
     },
     Reject {
         error_code: String,

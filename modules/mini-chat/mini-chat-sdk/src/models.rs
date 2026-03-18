@@ -80,6 +80,9 @@ pub struct ModelCatalogEntry {
     pub estimation_budgets: EstimationBudgets,
     /// Top-k chunks returned by similarity search per `file_search` call.
     pub max_retrieved_chunks_per_turn: u32,
+    /// Maximum tool calls the provider may make per request.
+    #[serde(default = "default_max_tool_calls")]
+    pub max_tool_calls: u32,
     /// Full general config captured at snapshot time.
     pub general_config: ModelGeneralConfig,
     /// Tenant preference settings captured at snapshot time.
@@ -125,6 +128,10 @@ impl Default for EstimationBudgets {
             minimal_generation_floor: 50,
         }
     }
+}
+
+fn default_max_tool_calls() -> u32 {
+    2
 }
 
 /// LLM API inference parameters (API: `PolicyModelApiParams`).
@@ -365,6 +372,7 @@ mod tests {
             multiplier_display: "1x".to_owned(),
             estimation_budgets: EstimationBudgets::default(),
             max_retrieved_chunks_per_turn: 5,
+            max_tool_calls: 2,
             general_config: sample_general_config(),
             preference: Some(ModelPreference {
                 is_default: false,
