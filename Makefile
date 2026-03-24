@@ -482,6 +482,10 @@ example:
 	cargo run --bin hyperspot-server $(E2E_ARGS) -- --config config/quickstart.yaml run
 
 # mini-chat targets are for running the mini-chat module locally and in Kubernetes, with options for building Docker images and deploying with Helm.
+## Run server with fips module
+fips:
+	cargo run --bin hyperspot-server --features fips,static-authn,static-authz,single-tenant,static-credstore,otel -- --config config/quickstart.yaml run
+
 ## Run server with mini-chat module
 mini-chat:
 	cargo run --bin hyperspot-server --features mini-chat,static-authn,static-authz,single-tenant,static-credstore,otel -- --config config/mini-chat.yaml run

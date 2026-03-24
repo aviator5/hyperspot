@@ -16,6 +16,8 @@ name = "oagw"
 path = "src/lib.rs"
 
 [features]
+# FIPS-140-3: compile TLS deps with FIPS-approved cipher suites only
+fips = ["modkit-http/fips"]
 test-utils = ["axum/ws", "dep:async-stream", "dep:futures", "dep:tower", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt"]
 
 [dependencies]
