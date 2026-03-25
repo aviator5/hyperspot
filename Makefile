@@ -153,6 +153,7 @@ gts-docs:
 		--exclude "target/*" \
 		--exclude "docs/api/*" \
 		--exclude "modules/chat-engine/*" \
+		--exclude "**/helm/*/templates/*" \
 		docs modules libs examples
 
 ## Validate GTS docs with vendor check (ensures all IDs use vendor "x")
