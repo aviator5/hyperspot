@@ -77,6 +77,9 @@ See [PRD.md](./PRD.md) section 1 "Overview" — Key Problems Solved:
 | Cypilot ID | Solution short description |
 |--------|----------------------------|
 | `cpt-cf-llm-gateway-nfr-scalability-v1` | Stateless design, distributed cache for async jobs |
+| `cpt-cf-llm-gateway-nfr-data-retention-v1` | TTL-based cleanup, background purge task for expired job records and outbox entries |
+| `cpt-cf-llm-gateway-nfr-recovery-v1` | Persistent storage for job state, infrastructure-level HA |
+| `cpt-cf-llm-gateway-nfr-compatibility-v1` | Open Responses protocol versioning, SDK-only inter-module communication |
 
 #### Key ADRs
 

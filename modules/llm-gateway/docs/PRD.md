@@ -1,4 +1,4 @@
-# PRD
+# PRD — LLM Gateway
 
 
 <!-- toc -->
@@ -41,7 +41,7 @@ LLM Gateway is the central integration point between platform consumers and exte
 
 The Gateway supports diverse modalities: text generation, embeddings, vision, audio, video, and document processing. It handles both synchronous and asynchronous operations, including streaming responses and long-running jobs. All interactions go through the Outbound API Gateway for reliability and credential management.
 
-Gateway is stateless by design. It does not store conversation history or execute tools — these are consumer responsibilities. The only exception is temporary state for async job tracking.
+Gateway is stateless for request processing — it does not store conversation history or execute tools, and consumers provide full context with each request. Gateway persists async and batch job state (internal-to-provider job ID mappings, job results) to support long-running operations that can take up to 24 hours. Gateway guarantees at-least-once delivery of usage records to the Usage Tracker module.
 
 **Target Users**:
 - **Platform Developers** — build AI-powered features using Gateway API
@@ -49,15 +49,29 @@ Gateway is stateless by design. It does not store conversation history or execut
 
 ### 1.2 Background / Problem Statement
 
-- **Provider fragmentation**: single API abstracts differences between OpenAI, Anthropic, Google, and other providers
-- **Governance**: budget enforcement, rate limiting, usage tracking, and audit logging at tenant level
-- **Security**: pre-call and post-response interceptors for content moderation and PII filtering
+Platform consumers need access to AI capabilities from multiple LLM providers — OpenAI, Anthropic, Google, and others. Each provider has its own API format, authentication mechanism, error semantics, and rate limiting behavior. Without a unified abstraction, every consumer must implement provider-specific integration logic, handle failover independently, and manage credentials directly. This fragments the codebase, increases the surface area for security issues, and makes it difficult to enforce consistent governance policies across the platform.
+
+The current state requires each consuming module to negotiate provider differences at the application layer: translating request formats, normalizing error responses, and implementing retry logic per provider. Usage tracking and budget enforcement are ad-hoc or absent, making it impossible to provide tenant-level cost visibility or enforce spending limits. Content moderation and PII filtering require each consumer to integrate interception logic independently, with no guarantee of consistent policy enforcement.
+
+LLM Gateway addresses these problems by providing a single integration point that abstracts provider differences behind a unified API. It centralizes governance — budget enforcement, rate limiting, usage tracking, and audit logging — at the tenant level. Pre-call and post-response interceptors enable consistent content moderation and PII filtering policies without requiring consumer-side implementation.
 
 ### 1.3 Goals (Business Outcomes)
 
-**Success Criteria**:
-- Gateway overhead < 50ms P99 (excluding provider latency)
-- Availability ≥ 99.9%
+**Success Criteria** (required at GA, baseline: new module — no prior data):
+- Gateway overhead < 50ms P99 at up to 1 000 concurrent requests (excluding provider latency)
+- Availability ≥ 99.9% measured monthly (Gateway infrastructure only — excludes provider outages; fallback-active mode counts as available)
+- Expected steady-state throughput: up to 500 requests/second; peak: up to 2 000 requests/second
+- Maintenance windows follow platform-defined schedule; Gateway supports rolling restarts with zero-downtime deployments
+
+**Post-GA Growth Targets** (6 months after GA):
+- Steady-state throughput: up to 1 000 requests/second; peak: up to 5 000 requests/second
+- Maintain < 50ms P99 overhead at increased load
+- Support up to 50 000 async/batch jobs/day per tenant
+
+**Capacity Planning Inputs**:
+- Expected async/batch job volume: up to 10 000 jobs/day per tenant at steady state
+- DB row growth: up to 50 000 rows/day across all tenants (job records + usage delivery); bounded by retention cleanup
+- Storage per async result: up to 1 MB (text responses); up to 100 MB (media generation results stored in FileStorage, not DB)
 
 **Capabilities**:
 - Text generation (chat completion)
@@ -73,16 +87,14 @@ Gateway is stateless by design. It does not store conversation history or execut
 | OAGW | Outbound API Gateway — handles external API calls, credential injection, circuit breaking |
 | TTFT | Time-to-first-token — latency until first response chunk |
 | GTS | Generic Type System — JSON Schema-based type definitions |
+| FileStorage | Platform module for storing and retrieving binary files (images, audio, video, documents) |
+| Model Registry | Platform module that resolves model identifiers to provider and endpoint information per tenant |
 
 ## 2. Actors
 
 ### 2.1 Human Actors
 
-#### API User
-
-**ID**: `cpt-cf-llm-gateway-actor-api-user`
-
-**Role**: End user who interacts with LLM Gateway directly via API. Sends chat completion requests, manages async jobs, uses streaming responses.
+No dedicated human actors. All interactions with LLM Gateway are mediated through the Consumer system actor (platform modules, external API clients).
 
 ### 2.2 System Actors
 
@@ -90,47 +102,90 @@ Gateway is stateless by design. It does not store conversation history or execut
 
 **ID**: `cpt-cf-llm-gateway-actor-consumer`
 
-**Role**: Sends requests to the Gateway.
+- **Role**: Sends requests to the Gateway.
+- **Needs**: Provider-agnostic API for all AI modalities; normalized responses; async job management; usage visibility.
+- **Direction**: inbound
+- **Data exchanged**: Chat completion requests (messages, model, parameters), tool definitions, async job commands; receives normalized responses, streaming chunks, job status/results.
+- **Availability**: Consumer availability is not a Gateway concern — Gateway responds to incoming requests as they arrive.
 
 #### Provider
 
 **ID**: `cpt-cf-llm-gateway-actor-provider`
 
-**Role**: External AI service that processes requests. Accessed via Outbound API Gateway.
+- **Role**: External AI service that processes requests. Accessed via Outbound API Gateway.
+- **Direction**: outbound
+- **Data exchanged**: Provider-formatted requests (prompts, parameters, tool schemas); receives completions, embeddings, generated media, tool calls, usage metrics.
+- **Availability**: Provider unavailability triggers fallback (if configured) or returns a provider-unavailable error to the consumer. OAGW circuit breaking protects against cascading failures.
 
 #### Hook Plugin
 
 **ID**: `cpt-cf-llm-gateway-actor-hook-plugin`
 
-**Role**: Pre-call and post-response interception (moderation, PII, transformation).
+- **Role**: Pre-call and post-response interception (moderation, PII, transformation).
+- **Direction**: bidirectional
+- **Data exchanged**: Outbound: request/response payloads for inspection; inbound: allow/block/modify decisions with optionally transformed payloads.
+- **Availability**: If Hook Plugin is unavailable, Gateway fails the request with a hook-unavailable error. Gateway does not bypass hooks silently — the tenant's security policy must be enforced.
 
 #### Usage Tracker
 
 **ID**: `cpt-cf-llm-gateway-actor-usage-tracker`
 
-**Role**: Budget checks and usage reporting.
+- **Role**: Budget checks and usage reporting.
+- **Direction**: outbound
+- **Data exchanged**: Usage records (tokens, cost estimate, latency, attribution: tenant, user, model); budget check requests before execution; receives budget status.
+- **Availability**: If Usage Tracker is unavailable for budget checks, Gateway rejects the request with a budget-check-unavailable error. Usage record delivery is guaranteed at-least-once — records are queued and retried until delivered.
 
 #### Audit Module
 
 **ID**: `cpt-cf-llm-gateway-actor-audit-module`
 
-**Role**: Compliance event logging.
+- **Role**: Compliance event logging.
+- **Direction**: outbound
+- **Data exchanged**: Audit events (request started, completed, failed, blocked, fallback triggered) with tenant/user/model attribution.
+- **Availability**: Audit Module unavailability does not block request processing. Audit events are delivered best-effort — Gateway logs a warning if delivery fails but does not reject the consumer request.
+
+#### Model Registry
+
+**ID**: `cpt-cf-llm-gateway-actor-model-registry`
+
+- **Role**: Resolves model identifiers to provider and endpoint information per tenant. Gateway queries Model Registry on every request to determine which provider and endpoint to use.
+- **Direction**: outbound
+- **Data exchanged**: Model resolution requests (model identifier, tenant context); receives provider details (endpoint URL, provider type, capabilities, configuration).
+- **Availability**: If Model Registry is unavailable, Gateway returns a model-resolution-unavailable error. Gateway cannot route requests without model resolution.
 
 ## 3. Operational Concept & Environment
 
-None
+### 3.1 Module-Specific Environment Constraints
+
+- Requires persistent storage for async/batch job state and guaranteed usage record delivery
+- All external provider calls route through Outbound API Gateway (OAGW) — Gateway never calls providers directly
+- Media files (images, audio, video, documents) are stored and retrieved via FileStorage module
 
 ## 4. Scope
 
-None
-
 ### 4.1 In Scope
 
-None
+- Unified LLM API
+- Provider abstraction via adapters (OpenAI, Anthropic, Google, and others)
+- Multimodal support: text, images, audio, video, documents
+- Synchronous and streaming request/response
+- Async job execution with durably persisted job state and results
+- Batch processing with durably persisted job ID mappings
+- Tool/function calling pass-through (consumer executes tools)
+- Structured output with schema validation
+- Pre-call and post-response hook plugin interception
+- Usage tracking with guaranteed at-least-once delivery
+- Provider fallback and timeout enforcement
+- Per-tenant budget enforcement and rate limiting
 
 ### 4.2 Out of Scope
 
-None
+- Conversation state storage — consumers provide full context per request
+- Tool execution — Gateway returns tool calls for consumer to execute
+- Prompt engineering or prompt optimization
+- Model training, fine-tuning, or model hosting
+- Direct provider access bypassing OAGW
+- Content caching or response deduplication
 
 ## 5. Functional Requirements
 
@@ -140,7 +195,7 @@ None
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-chat-completion-v1`
 
-Consumer sends messages, Gateway routes to provider based on model, returns response with usage.
+The system **MUST** accept a chat completion request with messages and model identifier, route it to the resolved provider, and return a normalized response with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -148,7 +203,7 @@ Consumer sends messages, Gateway routes to provider based on model, returns resp
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-streaming-v1`
 
-Same as chat completion, but response is streamed. Gateway normalizes provider events to unified format.
+The system **MUST** support streaming mode for chat completions, delivering response chunks in a normalized event format as they arrive from the provider.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -156,7 +211,7 @@ Same as chat completion, but response is streamed. Gateway normalizes provider e
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-embeddings-v1`
 
-Consumer sends text(s), Gateway returns vector embeddings.
+The system **MUST** accept one or more text inputs and return vector embeddings in a normalized format with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -164,7 +219,7 @@ Consumer sends text(s), Gateway returns vector embeddings.
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-vision-v1`
 
-Consumer sends message with image URLs. Gateway fetches media from FileStorage (direct) or external URLs (via OAGW), routes to vision-capable model via OAGW.
+The system **MUST** accept messages with image references (FileStorage URLs or external URLs), resolve the media, route to a vision-capable model, and return the analysis with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -172,7 +227,7 @@ Consumer sends message with image URLs. Gateway fetches media from FileStorage (
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-image-generation-v1`
 
-Consumer sends text prompt. Gateway sends request to provider via OAGW, stores generated image in FileStorage (direct), returns URL.
+The system **MUST** accept a text prompt, generate an image via the resolved provider, store the result, and return a retrievable URL with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -180,7 +235,7 @@ Consumer sends text prompt. Gateway sends request to provider via OAGW, stores g
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-speech-to-text-v1`
 
-Consumer sends message with audio URL. Gateway fetches audio from FileStorage (direct) or external URLs (via OAGW), sends to provider via OAGW, returns transcription.
+The system **MUST** accept messages with an audio reference (FileStorage URL or external URL), resolve the media, route to an STT-capable model, and return the transcription with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -188,7 +243,7 @@ Consumer sends message with audio URL. Gateway fetches audio from FileStorage (d
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-text-to-speech-v1`
 
-Consumer sends text. Gateway sends request to provider via OAGW, stores synthesized audio in FileStorage (direct), returns URL. Supports streaming mode.
+The system **MUST** accept a text input, synthesize audio via the resolved provider, store the result, and return a retrievable URL with usage metrics. The system **MUST** support streaming mode for audio delivery.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -196,7 +251,7 @@ Consumer sends text. Gateway sends request to provider via OAGW, stores synthesi
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-video-understanding-v1`
 
-Consumer sends message with video URL. Gateway fetches video from FileStorage (direct) or external URLs (via OAGW), sends to provider via OAGW, returns analysis.
+The system **MUST** accept messages with a video reference (FileStorage URL or external URL), resolve the media, route to a video-capable model, and return the analysis with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -204,7 +259,7 @@ Consumer sends message with video URL. Gateway fetches video from FileStorage (d
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-video-generation-v1`
 
-Consumer sends text prompt. Gateway sends request to provider via OAGW, stores generated video in FileStorage (direct), returns URL. Typically requires async mode due to long processing.
+The system **MUST** accept a text prompt, generate video via the resolved provider, store the result, and return a retrievable URL with usage metrics. Video generation typically requires async mode due to long processing times.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -212,7 +267,7 @@ Consumer sends text prompt. Gateway sends request to provider via OAGW, stores g
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-tool-calling-v1`
 
-Consumer sends request with tool definitions. Gateway resolves schema references, converts to provider format. Model returns tool calls for consumer to execute. Gateway does not execute tools — this is consumer responsibility.
+The system **MUST** accept requests with tool definitions (reference, inline GTS, or unified format), resolve schema references, and forward to the provider. The system **MUST** return tool calls in a unified format for the consumer to execute. The system **MUST NOT** execute tools — this is consumer responsibility.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -220,7 +275,7 @@ Consumer sends request with tool definitions. Gateway resolves schema references
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-structured-output-v1`
 
-Consumer requests response matching JSON schema. Gateway validates response against schema.
+The system **MUST** accept a JSON schema with the request and validate the provider response against it, returning either the validated response or a validation error with details.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -228,7 +283,7 @@ Consumer requests response matching JSON schema. Gateway validates response agai
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-document-understanding-v1`
 
-Consumer sends message with document URL. Gateway fetches document, routes to capable model.
+The system **MUST** accept messages with a document URL, resolve the document, route to a capable model, and return the analysis with usage metrics.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -236,11 +291,11 @@ Consumer sends message with document URL. Gateway fetches document, routes to ca
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-async-jobs-v1`
 
-Consumer can request async execution for long-running operations. Gateway returns job ID, consumer polls for result.
+The system **MUST** support async execution for long-running operations, returning a job ID that the consumer polls for results. The system **MUST** durably persist job state and store job results until the retention period expires.
 
-Gateway abstracts provider behavior:
-- Sync provider + async request → Gateway simulates job
-- Async provider + sync request → Gateway polls internally
+The system **MUST** provide a uniform async experience regardless of whether the provider supports async natively:
+- Consumer always receives a job ID and polls for results
+- The system **MUST** guarantee result availability for the retention period after completion
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -248,7 +303,7 @@ Gateway abstracts provider behavior:
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-realtime-audio-v1`
 
-Bidirectional audio streaming via WebSocket for voice conversations.
+The system **MUST** support bidirectional audio streaming via a persistent connection for real-time voice conversations, with usage reported on session close.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -256,7 +311,7 @@ Bidirectional audio streaming via WebSocket for voice conversations.
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-fr-usage-tracking-v1`
 
-Gateway reports usage after each request via Usage Tracker: tokens, cost estimate, latency, attribution (tenant, user, conversation, model).
+The system **MUST** report usage after each request via Usage Tracker: tokens, cost estimate, latency, attribution (tenant, user, conversation, model). The system **MUST** guarantee at-least-once delivery of usage records.
 
 Cross-cutting concern — applies to all operations, no dedicated UC.
 
@@ -268,7 +323,7 @@ Cross-cutting concern — applies to all operations, no dedicated UC.
 
 - [ ] `p2` - **ID**: `cpt-cf-llm-gateway-fr-provider-fallback-v1`
 
-When primary provider fails, Gateway automatically switches to fallback provider with matching capabilities.
+The system **MUST** automatically switch to a fallback provider with matching capabilities when the primary provider fails.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -276,11 +331,11 @@ When primary provider fails, Gateway automatically switches to fallback provider
 
 - [ ] `p2` - **ID**: `cpt-cf-llm-gateway-fr-timeout-v1`
 
-Gateway enforces timeout types:
+The system **MUST** enforce the following timeout types:
 - Time-to-first-token (TTFT): max wait for initial response chunk
 - Total generation timeout: max duration for complete response
 
-On timeout → fallback (if configured) → error.
+On timeout the system **MUST** trigger fallback (if configured) or return a timeout error.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -288,7 +343,7 @@ On timeout → fallback (if configured) → error.
 
 - [ ] `p2` - **ID**: `cpt-cf-llm-gateway-fr-pre-call-interceptor-v1`
 
-Before sending to provider, Gateway invokes Hook Plugin. Plugin can allow, block, or modify request.
+The system **MUST** invoke Hook Plugin before sending a request to the provider. The plugin can allow, block, or modify the request.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-hook-plugin`
 
@@ -296,7 +351,7 @@ Before sending to provider, Gateway invokes Hook Plugin. Plugin can allow, block
 
 - [ ] `p2` - **ID**: `cpt-cf-llm-gateway-fr-post-response-interceptor-v1`
 
-After receiving response, Gateway invokes Hook Plugin. Plugin can allow, block, or modify response.
+The system **MUST** invoke Hook Plugin after receiving a response from the provider. The plugin can allow, block, or modify the response.
 
 **Actors**: `cpt-cf-llm-gateway-actor-hook-plugin`, `cpt-cf-llm-gateway-actor-consumer`
 
@@ -304,7 +359,7 @@ After receiving response, Gateway invokes Hook Plugin. Plugin can allow, block, 
 
 - [ ] `p2` - **ID**: `cpt-cf-llm-gateway-fr-budget-enforcement-v1`
 
-Gateway checks budget before execution via Usage Tracker. Rejects if exhausted, reports actual usage after completion.
+The system **MUST** check budget before execution via Usage Tracker, reject requests when budget is exhausted, and report actual usage after completion.
 
 Cross-cutting concern — applies to all operations, no dedicated UC.
 
@@ -314,7 +369,7 @@ Cross-cutting concern — applies to all operations, no dedicated UC.
 
 - [ ] `p2` - **ID**: `cpt-cf-llm-gateway-fr-rate-limiting-v1`
 
-Gateway enforces rate limits at tenant and user levels. Rejects requests exceeding limits.
+The system **MUST** enforce rate limits at tenant and user levels and reject requests exceeding configured limits.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`
 
@@ -324,7 +379,7 @@ Gateway enforces rate limits at tenant and user levels. Rejects requests exceedi
 
 - [ ] `p3` - **ID**: `cpt-cf-llm-gateway-fr-batch-processing-v1`
 
-Consumer submits batch of requests for async processing at reduced cost. Gateway abstracts provider batch APIs (OpenAI Batch API, Anthropic Message Batches).
+The system **MUST** accept a batch of requests for async processing at reduced cost, abstracting provider batch APIs. Batch jobs can take up to 24 hours to complete; the system **MUST** durably persist batch-to-provider job ID mappings and results.
 
 **Actors**: `cpt-cf-llm-gateway-actor-consumer`, `cpt-cf-llm-gateway-actor-provider`
 
@@ -334,7 +389,7 @@ Consumer submits batch of requests for async processing at reduced cost. Gateway
 
 - [ ] `p4` - **ID**: `cpt-cf-llm-gateway-fr-audit-events-v1`
 
-Gateway emits audit events via Audit Module for compliance: request started, completed, failed, blocked, fallback triggered.
+The system **MUST** emit audit events via Audit Module for compliance: request started, completed, failed, blocked, fallback triggered.
 
 Cross-cutting concern — applies to all operations, no dedicated UC.
 
@@ -345,11 +400,42 @@ Cross-cutting concern — applies to all operations, no dedicated UC.
 ### Scalability
 
 - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-nfr-scalability-v1`
-Horizontal scaling without state coordination. Stateless design with exception for temporary async job state.
+
+The system **MUST** support horizontal scaling without instance-local state or inter-instance coordination. Any instance **MUST** be able to serve any request. Job state **MUST** be accessible from all instances.
+
+### Data Retention
+
+- [ ] `p1` - **ID**: `cpt-cf-llm-gateway-nfr-data-retention-v1`
+
+Async job records (ID mappings, results) are retained for 10 minutes after completion for LLM completion jobs and 48 hours after completion for batch jobs. Expired records are cleaned up automatically. Usage delivery records are removed after successful delivery.
+
+### Compatibility
+
+- [ ] `p2` - **ID**: `cpt-cf-llm-gateway-nfr-compatibility-v1`
+
+Gateway API follows the Open Responses protocol and maintains backward compatibility within the same major version. Breaking changes require a new API version prefix. Co-existence with other platform modules is guaranteed — Gateway communicates exclusively through SDK traits and ClientHub, with no shared mutable state.
+
+### NFR Exclusions
+
+The following quality domains are handled at the platform level and do not require module-specific NFRs:
+
+- **Authentication / Authorization**: Handled by platform AuthN/AuthZ modules via SecurityContext. All Gateway endpoints require valid authentication; authorization is enforced per tenant through platform middleware.
+- **Security implementation**: Credential management handled by CredStore; TLS and network security handled by infrastructure. Content security (PII filtering, moderation) is handled by Hook Plugins, not Gateway itself.
+- **Safety**: Not applicable — LLM Gateway is a software-only API module with no physical interaction or safety-critical operations.
+- **Usability / Accessibility**: Not applicable — API-only module with no user interface.
+- **Compliance / Regulatory**: LLM Gateway does not store conversation content or PII. Request/response data is transient. Compliance requirements for data processed by LLM providers are the responsibility of consumers and the providers themselves.
+- **Operations (Deployment / Monitoring)**: Handled by platform infrastructure. Gateway follows standard ModKit module deployment and observability patterns.
+- **Maintainability / Documentation**: Follows platform-wide documentation standards. API documentation generated from OpenAPI specs in DESIGN.
+
+### Recovery
+
+- [ ] `p2` - **ID**: `cpt-cf-llm-gateway-nfr-recovery-v1`
+
+Async and batch job state must survive Gateway instance restarts with zero data loss (RPO: 0). Recovery time is bounded by infrastructure restart time (RTO: platform-defined). Persistent storage availability is an infrastructure concern.
 
 ## 7. Public Library Interfaces
 
-None
+Not applicable — LLM Gateway exposes only a REST API (documented in DESIGN.md), not a public Rust crate interface.
 
 ## 8. Use Cases
 
@@ -368,6 +454,11 @@ None
 5. Gateway returns normalized response with usage
 
 **Postconditions**: Response returned, usage reported.
+
+**Alternative Flows**:
+- **Provider error**: Gateway normalizes provider error to Gateway error format and returns to consumer.
+- **Timeout**: Gateway enforces TTFT and total timeouts; on expiry triggers fallback (if configured) or returns timeout error.
+- **Invalid model**: Gateway returns model-not-found error if model is unavailable for tenant.
 
 **Acceptance criteria**:
 - Response in normalized format regardless of provider
@@ -391,6 +482,10 @@ None
 
 **Postconditions**: Stream completed, usage reported.
 
+**Alternative Flows**:
+- **Mid-stream provider failure**: Gateway closes stream with error event and reports partial usage.
+- **Consumer disconnects**: Gateway cancels upstream provider request and reports usage for consumed tokens.
+
 **Acceptance criteria**:
 - Chunks normalized from provider format
 - Final message includes usage metrics
@@ -412,6 +507,10 @@ None
 
 **Postconditions**: Vectors returned, usage reported.
 
+**Alternative Flows**:
+- **Provider error**: Gateway normalizes error and returns to consumer.
+- **Invalid input**: Gateway returns validation error if input is empty or exceeds provider limits.
+
 **Acceptance criteria**:
 - Vectors returned in normalized format
 - Usage metrics included (tokens)
@@ -432,6 +531,10 @@ None
 6. Gateway returns response with usage
 
 **Postconditions**: Response returned, usage reported.
+
+**Alternative Flows**:
+- **Media resolution failure**: Gateway returns media-not-found error if FileStorage URL is invalid or inaccessible.
+- **Provider error**: Gateway normalizes error and returns to consumer.
 
 **Acceptance criteria**:
 - Multiple images supported per request
@@ -455,6 +558,10 @@ None
 
 **Postconditions**: Image stored, URL returned, usage reported.
 
+**Alternative Flows**:
+- **Provider error**: Gateway normalizes error and returns to consumer.
+- **FileStorage upload failure**: Gateway returns storage error; generated image is lost.
+
 **Acceptance criteria**:
 - Generated image accessible via returned URL
 - Response in normalized format
@@ -477,6 +584,10 @@ None
 
 **Postconditions**: Transcription returned, usage reported.
 
+**Alternative Flows**:
+- **Media resolution failure**: Gateway returns media-not-found error if audio URL is invalid or inaccessible.
+- **Provider error**: Gateway normalizes error and returns to consumer.
+
 **Acceptance criteria**:
 - Transcription in normalized format
 - Usage metrics included
@@ -497,6 +608,10 @@ None
 6. Gateway returns URL with usage
 
 **Postconditions**: Audio stored, URL returned, usage reported.
+
+**Alternative Flows**:
+- **Provider error**: Gateway normalizes error and returns to consumer.
+- **FileStorage upload failure**: Gateway returns storage error; generated audio is lost.
 
 **Acceptance criteria**:
 - Generated audio accessible via returned URL
@@ -520,6 +635,10 @@ None
 
 **Postconditions**: Response returned, usage reported.
 
+**Alternative Flows**:
+- **Media resolution failure**: Gateway returns media-not-found error if video URL is invalid or inaccessible.
+- **Provider error**: Gateway normalizes error and returns to consumer.
+
 **Acceptance criteria**:
 - Response in normalized format
 - Usage metrics included
@@ -540,6 +659,10 @@ None
 6. Gateway returns URL with usage
 
 **Postconditions**: Video stored, URL returned, usage reported.
+
+**Alternative Flows**:
+- **Provider error**: Gateway normalizes error and returns to consumer.
+- **FileStorage upload failure**: Gateway returns storage error; generated video is lost.
 
 **Acceptance criteria**:
 - Generated video accessible via returned URL
@@ -568,6 +691,11 @@ None
 
 **Postconditions**: Response returned, usage reported.
 
+**Alternative Flows**:
+- **Schema resolution failure**: Gateway returns schema-not-found error if GTS reference is unresolvable.
+- **Provider error**: Gateway normalizes error and returns to consumer.
+- **Partial tool execution**: Consumer sends partial tool results; Gateway forwards to provider for continued generation.
+
 **Acceptance criteria**:
 - Tool definitions supported: reference, inline GTS, unified format (OpenAI-like)
 - Tool calls returned in unified format
@@ -589,6 +717,10 @@ None
 6. Gateway returns validated response with usage (or validation_error if invalid)
 
 **Postconditions**: Valid JSON returned, usage reported.
+
+**Alternative Flows**:
+- **Schema validation failure**: Gateway returns validation_error with details if response does not match schema.
+- **Provider error**: Gateway normalizes error and returns to consumer.
 
 **Acceptance criteria**:
 - Response validated against provided schema
@@ -612,6 +744,10 @@ None
 
 **Postconditions**: Response returned, usage reported.
 
+**Alternative Flows**:
+- **Media resolution failure**: Gateway returns media-not-found error if document URL is invalid or inaccessible.
+- **Provider error**: Gateway normalizes error and returns to consumer.
+
 **Acceptance criteria**:
 - Response in normalized format
 - Usage metrics included
@@ -634,6 +770,11 @@ None
 
 **Postconditions**: Job completed, cancelled, or result returned.
 
+**Alternative Flows**:
+- **Provider error during execution**: Gateway marks job as failed, stores error details in job result.
+- **Job not found**: Gateway returns job-not-found error if job ID is invalid or expired.
+- **Cancellation of completed job**: Gateway returns job-already-completed status; no-op.
+
 **Acceptance criteria**:
 - Sync provider + async request: Gateway simulates job
 - Async provider + sync request: Gateway polls internally
@@ -648,14 +789,18 @@ None
 **Preconditions**: Model available for tenant, model supports realtime audio.
 
 **Flow**:
-1. Consumer establishes WebSocket connection
+1. Consumer establishes persistent bidirectional connection
 2. Gateway resolves provider via Model Registry
-3. Gateway connects to provider WebSocket
+3. Gateway connects to provider via bidirectional channel
 4. Bidirectional audio/text streaming
 5. Consumer closes connection
 6. Gateway returns usage summary
 
 **Postconditions**: Session closed, usage reported.
+
+**Alternative Flows**:
+- **Connection failure**: Gateway returns connection error if realtime channel cannot be established.
+- **Mid-session provider failure**: Gateway closes session with error event and reports partial usage.
 
 **Acceptance criteria**:
 - Bidirectional streaming supported
@@ -791,16 +936,47 @@ None
 
 ## 9. Acceptance Criteria
 
-None
+- [ ] All supported modalities (text, image, audio, video, document) produce normalized responses regardless of provider
+- [ ] Gateway overhead < 50ms P99 excluding provider latency
+- [ ] Availability ≥ 99.9%
+- [ ] Async and batch job state survives Gateway instance restarts
+- [ ] Usage records are delivered to Usage Tracker at least once for every completed request
+- [ ] Expired job records are cleaned up within the defined retention windows
 
 ## 10. Dependencies
 
-None
+| Dependency | Description | Criticality |
+|------------|-------------|-------------|
+| Outbound API Gateway (OAGW) | Routes all external provider calls, injects credentials, provides circuit breaking | `p1` |
+| Model Registry | Resolves model identifiers to provider and endpoint information | `p1` |
+| FileStorage | Stores and retrieves media files (images, audio, video, documents) | `p1` |
+| CredStore | Provides provider API credentials to OAGW | `p1` |
+| Usage Tracker | Receives usage reports for budget enforcement and billing | `p1` |
+| Type Registry | Resolves GTS schema references for tool definitions | `p2` |
+| Audit Module | Receives compliance audit events | `p4` |
 
 ## 11. Assumptions
 
-None
+- LLM providers are accessible via OAGW with valid credentials in CredStore
+- Model Registry maintains an up-to-date catalog of available models and their capabilities per tenant
+- FileStorage is available for media operations (upload, download)
+- Database is available and shared across all Gateway instances
 
 ## 12. Risks
 
-None
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Provider API breaking changes | Adapter incompatibility, request failures | Version-pinned adapters, integration test suite per provider |
+| Provider rate limit exhaustion | Requests rejected by provider | Gateway-level rate limiting, provider fallback chains |
+| Database growth from batch jobs | Storage pressure, degraded query performance | Automated retention cleanup, monitoring on table sizes |
+| Provider outage during batch processing | Batch jobs stuck in pending state | Timeout-based job expiration, consumer-visible status updates |
+| Usage record delivery lag | Budget enforcement decisions based on stale data | Guaranteed delivery mechanism with short polling interval |
+
+## 13. Open Questions
+
+No open questions at this time. All scope, protocol, and integration decisions have been resolved through ADRs (0001–0005) and design discussions.
+
+## 14. Traceability
+
+- **Design**: [DESIGN.md](./DESIGN.md)
+- **ADRs**: [ADR/](./ADR/)
