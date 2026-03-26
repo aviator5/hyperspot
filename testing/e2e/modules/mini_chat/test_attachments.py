@@ -651,10 +651,8 @@ class TestUploadSizeEnforcement:
     are rejected with HTTP 413 and error code ``file_too_large``.
 
     NOTE: these tests rely on the server's default config limits:
-    - ``uploaded_file_max_size_kb``: 25600 (25 MB)
-    - ``uploaded_image_max_size_kb``: 5120 (5 MB)
-
-    Generating a 26 MB payload in-memory is acceptable for e2e.
+    - ``uploaded_file_max_size_kb``: 25600 (25 MB) for documents
+    - ``uploaded_image_max_size_kb``: 5120 (5 MB) for images
     """
 
     def test_oversize_image_rejected_413(self, chat):
@@ -680,25 +678,27 @@ class TestUploadSizeEnforcement:
             f"Expected file_too_large error code, got: {body}"
         )
 
-    def test_oversize_document_rejected_by_gateway(self, chat):
-        """Upload a document exceeding the API gateway body limit (16 MiB) → 400.
+    def test_oversize_document_rejected_413(self, chat):
+        """Upload a document exceeding uploaded_file_max_size_kb (25 MB) → 413.
 
-        Documents can be up to 25 MB, but the gateway's global
-        RequestBodyLimitLayer (16 MiB) rejects before our handler runs.
-        This verifies the gateway guard works as a coarse outer limit.
+        Uses ~26 MB which is over the 25 MB document limit, so the
+        handler's streaming size check rejects with ``file_too_large``.
         """
         chat_id = chat["id"]
-        # 17 MB > 16 MiB gateway limit
-        oversize_payload = b"\x00" * (17 * 1024 * 1024)
+        # 26 MB > 25 MB default document limit
+        oversize_payload = b"\x00" * (26 * 1024 * 1024)
         resp = upload_file(
             chat_id,
             content=oversize_payload,
             filename="huge.pdf",
             content_type="application/pdf",
         )
-        # Rejected by one of: OAGW body limit (502), gateway RequestBodyLimitLayer (400), or handler (413)
-        assert resp.status_code in (400, 413, 502), (
-            f"Expected 400/413/502 for oversize doc, got {resp.status_code}: {resp.text}"
+        assert resp.status_code == 413, (
+            f"Expected 413 for oversize document, got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        assert body.get("code") == "file_too_large" or "file_too_large" in resp.text, (
+            f"Expected file_too_large error code, got: {body}"
         )
 
     def test_document_within_limit_succeeds(self, chat):

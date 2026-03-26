@@ -1113,8 +1113,15 @@ fn domain_error_status(err: &DomainError) -> u16 {
         DomainError::RateLimitExceeded { .. } => 429,
         DomainError::SecretNotFound { .. } | DomainError::Internal { .. } => 500,
         DomainError::DownstreamError { .. } | DomainError::ProtocolError { .. } => 502,
-        DomainError::UpstreamDisabled { .. } => 503,
-        DomainError::ConnectionTimeout { .. } | DomainError::RequestTimeout { .. } => 504,
+        DomainError::UpstreamDisabled { .. }
+        | DomainError::LinkUnavailable { .. }
+        | DomainError::CircuitBreakerOpen { .. } => 503,
+        DomainError::ConnectionTimeout { .. }
+        | DomainError::RequestTimeout { .. }
+        | DomainError::IdleTimeout { .. } => 504,
+        DomainError::StreamAborted { .. } => 502,
+        DomainError::PluginNotFound { .. } => 404,
+        DomainError::PluginInUse { .. } => 409,
         DomainError::GuardRejected { status, .. } => *status,
         DomainError::CorsOriginNotAllowed { .. }
         | DomainError::CorsMethodNotAllowed { .. }
@@ -1145,6 +1152,12 @@ fn domain_error_type_name(err: &DomainError) -> &'static str {
         DomainError::CorsOriginNotAllowed { .. } => "CorsOriginNotAllowed",
         DomainError::CorsMethodNotAllowed { .. } => "CorsMethodNotAllowed",
         DomainError::CorsHeaderNotAllowed { .. } => "CorsHeaderNotAllowed",
+        DomainError::StreamAborted { .. } => "StreamAborted",
+        DomainError::LinkUnavailable { .. } => "LinkUnavailable",
+        DomainError::CircuitBreakerOpen { .. } => "CircuitBreakerOpen",
+        DomainError::IdleTimeout { .. } => "IdleTimeout",
+        DomainError::PluginNotFound { .. } => "PluginNotFound",
+        DomainError::PluginInUse { .. } => "PluginInUse",
         DomainError::Forbidden { .. } => "Forbidden",
     }
 }
@@ -1387,7 +1400,7 @@ mod tests {
             async fn list_routes(
                 &self,
                 _: &SecurityContext,
-                _: Uuid,
+                _: Option<Uuid>,
                 _: &ListQuery,
             ) -> Result<Vec<Route>, DomainError> {
                 unimplemented!()
