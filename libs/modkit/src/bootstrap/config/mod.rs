@@ -143,13 +143,25 @@ impl ConfigProvider for AppConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerConfig {
+    #[serde(default = "default_server_name")]
+    pub name: String,
+    #[serde(default = "default_home_dir")]
     pub home_dir: PathBuf, // will be normalized to absolute path
+}
+
+fn default_server_name() -> String {
+    "cyberfabric".to_owned()
+}
+
+fn default_home_dir() -> PathBuf {
+    super::host::paths::default_home_dir().join(".cyberfabric")
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            home_dir: super::host::paths::default_home_dir().join(".cyberfabric"),
+            name: default_server_name(),
+            home_dir: default_home_dir(),
         }
     }
 }
@@ -335,7 +347,7 @@ impl AppConfig {
     ///
     /// # Errors
     /// Returns an error if configuration loading or `home_dir` resolution fails.
-    pub fn load_or_default(config_path: &Option<PathBuf>) -> Result<Self> {
+    pub fn load_or_default(config_path: Option<&PathBuf>) -> Result<Self> {
         if let Some(path) = config_path {
             ensure!(
                 path.is_file(),
@@ -1400,7 +1412,7 @@ logging:
             "HOME"
         };
         with_var(env_var, Some(tmp.path().to_str().unwrap()), || {
-            let config = AppConfig::load_or_default(&None).unwrap();
+            let config = AppConfig::load_or_default(None).unwrap();
             assert!(is_normalized_path(&config.server.home_dir));
             assert!(config.server.home_dir.ends_with(default_subdir()));
         });
