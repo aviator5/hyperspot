@@ -339,8 +339,8 @@ Each Anthropic API response includes its own `usage`. The adapter **sums ALL fie
 |-------|------|-----------|
 | `input_tokens` | **Sum** | Anthropic bills per-request; user pays the same. Matches OpenAI parity (retrieved chunks included in input_tokens). |
 | `output_tokens` | **Sum** | Each iteration generates new output |
-| `cache_read_input_tokens` | **Sum** | Total cache hits |
-| `cache_write_input_tokens` | **Sum** | Total cache writes |
+| `cache_read_input_tokens` | **Sum** | Total cache hits. **Not included** in `input_tokens` — separate field. |
+| `cache_creation_input_tokens` | **Sum** | Total cache writes. **Not included** in `input_tokens` — separate field. |
 
 **Example:**
 
@@ -349,6 +349,12 @@ Each Anthropic API response includes its own `usage`. The adapter **sums ALL fie
 | 1st (→ tool_use) | 500 | 50 |
 | 2nd (with tool_result/file) | 800 | 200 |
 | **Reported to finalization** | **1300** | **250** |
+
+**Cache tokens and credits:** In Anthropic's API, `cache_read_input_tokens` and `cache_creation_input_tokens` are **separate from** `input_tokens`. This differs from OpenAI, where cached tokens are included in `input_tokens`. Total actual input = `input_tokens` + `cache_read_input_tokens` + `cache_creation_input_tokens`.
+
+The credits formula (`credits_micro_checked`) uses only `input_tokens` and `output_tokens`. For OpenAI this is correct — cached tokens are already included. For Anthropic, the adapter must **normalize** before passing to finalization: sum `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` into the `input_tokens` field of `Usage`. This ensures the credits formula sees the same total regardless of provider. The raw cache breakdown is preserved separately for observability (see §6.1 table).
+
+Anthropic bills cache_read at ~0.1x and cache_creation at ~1.25x of normal input price — applying these differential rates to credits is a separate concern (see open question #2).
 
 ### 6.2 State Machine
 
@@ -372,13 +378,31 @@ Cap at `max_tool_calls` iterations (already on `LlmRequest`).
 |----------|----------|
 | Vector store search fails | `tool_result { is_error: true }`, Claude continues without context |
 | File download/upload fails | `tool_result { is_error: true }`, Claude continues without file |
-| Continuation request fails | `Terminal(Failed)` with accumulated partial content |
-| Cancellation during tool execution | Check `cancel.is_cancelled()`, emit `Terminal(Failed)` |
+| Continuation request fails | `Terminal(Failed)` with accumulated partial content and accumulated usage (see below) |
+| Cancellation during tool execution | Check `cancel.is_cancelled()`, stop yielding events — CAS finalizer handles as `Cancelled` → billing ABORTED |
 | Max iterations reached | Force `tool_result` with error, Claude responds with available context |
+
+**Partial tool loop failure — usage for settlement:** When a continuation request fails at iteration N, the adapter has accumulated usage from iterations 1..N-1 (and possibly partial usage from iteration N's `message_start`). This accumulated usage constitutes "actual provider usage" for settlement purposes — `settlement_method="actual"` with the summed tokens. The adapter MUST pass the accumulated `Usage` to finalization regardless of which iteration failed. Do not fall back to the estimated formula or discard completed iterations' usage.
 
 ### 6.4 Prompt Caching
 
 Add `cache_control: { type: "ephemeral" }` to system prompt and tool definitions. On continuation, cached content costs ~10% of normal input price. Only new content (tool_use + tool_result + file) incurs full cost.
+
+### 6.5 Quota Reserve and Tool Loop Overshoot
+
+**Known limitation:** Quota reserve is computed once at preflight (§5.4) from `ContextPlan + max_output_tokens`. Each tool loop iteration re-sends the full conversation context plus new content (tool_result, file blocks). With N iterations, cumulative `input_tokens` can significantly exceed the single-call reserve estimate.
+
+**Comparison with OpenAI:** For OpenAI, `file_search` is server-side — one API call, chunks baked into `input_tokens`. For Anthropic, N custom tool iterations means N API calls with context re-send.
+
+**Mitigating factors:**
+
+1. **Prompt caching (§6.4)** — on iterations 2+, the bulk of re-sent context hits the cache (~10% cost). Financial overshoot is much smaller than raw token count suggests.
+2. **Typical depth is 1–2 iterations** — `search_files` → response or `load_files` → response. Chains hitting `max_tool_calls` are rare.
+3. **Overshoot tolerance (§5.8.1)** — the main design already handles reserve overruns; completed turns are not retroactively cancelled.
+
+**Operator tuning:** `tool_surcharge_tokens` (§5.5.6) can be configured per-model to account for multi-iteration overhead. Operators deploying Anthropic models should set a higher `tool_surcharge_tokens` than for OpenAI to absorb the expected overshoot.
+
+**P2: precise reserve formula.** A more accurate reserve accounting for `max_tool_calls` multiplier and cache hit rates is deferred to P2. The current approach (single-call reserve + overshoot tolerance + operator tuning) is sufficient for P1.
 
 ---
 
@@ -783,7 +807,7 @@ Prompt caching mitigates tool loop re-send cost (~10% for cached content).
 ## 13. Open Questions
 
 1. **Extended Thinking** — Parse and ignore for now, or expose to users? Thinking tokens are billed as output tokens by Anthropic — the billing path must handle them from day one regardless of UI exposure decision. Ensure `output_tokens` in `Usage` includes thinking tokens.
-2. **Prompt caching billing** — `cache_creation` at 1.25x, `cache_read` at 0.1x. Reflect in credits?
+2. **Prompt caching differential billing** — Anthropic bills cache_read at ~0.1x and cache_creation at ~1.25x of normal input price. The adapter normalizes cache tokens into `input_tokens` for credits (see §6.1), so total token count is correct. But credits are charged at the flat `input_mult` rate — no discount for cache hits, no surcharge for cache writes. If we want accurate cost attribution, the credits formula needs cache-specific multipliers. Not blocking for Phase 1.
 3. **Rate limiting** — Anthropic 429 handling: OAGW retry sufficient or adapter-level backoff?
 4. **Microsoft Foundry SSE bug** — Resilient parser or fail fast?
 5. **Files API stability** — Beta on both platforms. How to handle breaking changes?
