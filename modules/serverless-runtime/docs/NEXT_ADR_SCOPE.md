@@ -2,7 +2,7 @@
 
 **Source:** Consistency review of `DESIGN.md` against `PRD.md`
 **Date:** 2026-01-21
-**Updated:** 2026-02-08 (comprehensive consistency and coverage audit)
+**Updated:** 2026-03-30
 
 ---
 
@@ -65,8 +65,15 @@
 ---
 
 ## 2. Next ADR Scope (Recommended)
+### ADR-2 (Completed): Serverless Workflow Specification as Workflow DSL
 
-### ADR-2: Security Model (P0 — Blocker)
+See [ADR-0002](ADR/0002-cpt-cf-serverless-runtime-adr-workflow-dsl.md).
+
+### ADR-3 (Completed): Temporal-based Workflow Engine
+
+See [ADR-0003](ADR/0003-cpt-cf-serverless-runtime-adr-temporal-workflow-engine.md).
+
+### ADR-4 (Next): Security Model (P0 — Blocker)
 
 **Scope:**
 
@@ -85,7 +92,7 @@
 
 **PRD Coverage:** BR-006, BR-013, BR-017, BR-023, BR-024, BR-025, BR-033, BR-034, BR-038, BR-039, BR-127, BR-130, PRD Risks
 
-### ADR-3: Runtime Capabilities SDK (P0 — High Priority)
+### ADR-5: Runtime Capabilities SDK (P0 — High Priority)
 
 **Scope:**
 
@@ -96,7 +103,7 @@
 
 **PRD Coverage:** BR-008, BR-040, BR-136
 
-### ADR-4: Debugging and Observability (P1)
+### ADR-6: Debugging and Observability (P1)
 
 **Scope:**
 
@@ -108,7 +115,7 @@
 
 **PRD Coverage:** BR-101, BR-102, BR-115, BR-120, BR-130
 
-### ADR-5: Advanced Workflow Patterns (P1)
+### ADR-7: Advanced Workflow Patterns (P1)
 
 **Scope:**
 
@@ -122,7 +129,7 @@
 
 **PRD Coverage:** BR-009, BR-026, BR-030, BR-104, BR-105, BR-108, BR-114
 
-### ADR-6: Deployment and Governance (P1)
+### ADR-8: Deployment and Governance (P1)
 
 **Scope:**
 
@@ -134,7 +141,7 @@
 
 **PRD Coverage:** BR-109, BR-117, BR-121, BR-122, BR-123
 
-### ADR-7: Error Taxonomy (P1)
+### ADR-9: Error Taxonomy (P1)
 
 **Scope:**
 
