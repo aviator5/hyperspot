@@ -5127,6 +5127,18 @@
             "bearerAuth": []
           }
         ],
+        "x-odata-orderby": {
+          "allowedFields": [
+            "id asc",
+            "id desc",
+            "name asc",
+            "name desc",
+            "country asc",
+            "country desc",
+            "created_at asc",
+            "created_at desc"
+          ]
+        },
         "x-odata-filter": {
           "allowedFields": {
             "country": [
@@ -5160,18 +5172,6 @@
               "in"
             ]
           }
-        },
-        "x-odata-orderby": {
-          "allowedFields": [
-            "id asc",
-            "id desc",
-            "name asc",
-            "name desc",
-            "country asc",
-            "country desc",
-            "created_at asc",
-            "created_at desc"
-          ]
         }
       },
       "post": {
@@ -5623,16 +5623,6 @@
             "bearerAuth": []
           }
         ],
-        "x-odata-orderby": {
-          "allowedFields": [
-            "id asc",
-            "id desc",
-            "email asc",
-            "email desc",
-            "created_at asc",
-            "created_at desc"
-          ]
-        },
         "x-odata-filter": {
           "allowedFields": {
             "created_at": [
@@ -5658,6 +5648,16 @@
               "in"
             ]
           }
+        },
+        "x-odata-orderby": {
+          "allowedFields": [
+            "id asc",
+            "id desc",
+            "email asc",
+            "email desc",
+            "created_at asc",
+            "created_at desc"
+          ]
         }
       },
       "post": {
