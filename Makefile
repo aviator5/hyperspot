@@ -677,4 +677,13 @@ build:
 
 # Run all necessary quality checks and tests and then build the release binary
 all: build check test-sqlite e2e-local openapi
-	@echo "consider to run 'make test-db' as well"
+	@echo ""
+	@echo "============================================================="
+	@echo "  CONTGRATULATIONS! All 'make all' tasks have been completed!"
+	@echo ""
+	@echo "  Next suggestions:"
+	@echo "    - make test-db        # run full DB integration tests"
+	@echo "    - make mini-chat-up   # deploy and try the mini-chat demo"
+	@echo ""
+	@echo "  Tip: run 'git status' to inspect changes."
+	@echo "============================================================="
