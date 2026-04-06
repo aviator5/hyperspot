@@ -49,7 +49,7 @@ STANDARDS ALIGNMENT:
 
 <!-- /toc -->
 
-`p1` - **ID**: `cpt-cf-serverless-runtime-adr-temporal-workflow-engine`
+**ID**: `cpt-cf-serverless-runtime-adr-temporal-workflow-engine`
 ## Context and Problem Statement
 
 The Serverless Runtime domain model defines a pluggable adapter architecture (`cpt-cf-serverless-runtime-principle-pluggable-adapters`) where execution adapters implement the abstract `ServerlessRuntime` trait. The platform needs a workflow engine that:

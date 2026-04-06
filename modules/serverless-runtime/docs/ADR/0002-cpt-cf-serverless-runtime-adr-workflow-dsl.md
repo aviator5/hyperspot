@@ -45,7 +45,7 @@ STANDARDS ALIGNMENT:
 
 <!-- /toc -->
 
-`p1` - **ID**: `cpt-cf-serverless-runtime-adr-workflow-dsl`
+**ID**: `cpt-cf-serverless-runtime-adr-workflow-dsl`
 ## Context and Problem Statement
 
 The Serverless Runtime needs a workflow definition language that workflow authors use to express orchestration logic — sequential steps, conditional branching, loops, parallel execution, error handling, and sub-workflow composition. This language defines how workflows are authored, validated, and submitted to the platform.
