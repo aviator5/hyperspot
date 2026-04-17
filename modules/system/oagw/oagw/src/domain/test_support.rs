@@ -269,6 +269,32 @@ impl TenantResolverClient for MockTenantResolverClient {
         })
     }
 
+    async fn get_root_tenant(
+        &self,
+        ctx: &SecurityContext,
+    ) -> Result<TenantInfo, TenantResolverError> {
+        // Prefer a configured hierarchy root (parent_id == None); otherwise
+        // derive a synthesized root from the security context so the mock
+        // behaves like the real single-tenant-tr-plugin and stays consistent
+        // with `get_tenant` above.
+        if let Some((info, _)) = self
+            .tenants
+            .values()
+            .find(|(info, _)| info.parent_id.is_none())
+        {
+            return Ok(info.clone());
+        }
+        let id = TenantId(ctx.subject_tenant_id());
+        Ok(TenantInfo {
+            id,
+            name: format!("tenant-{}", &id.to_string()[..8]),
+            status: TenantStatus::Active,
+            tenant_type: None,
+            parent_id: None,
+            self_managed: false,
+        })
+    }
+
     async fn get_tenants(
         &self,
         ctx: &SecurityContext,

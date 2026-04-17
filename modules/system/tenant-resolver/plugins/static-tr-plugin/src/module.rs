@@ -50,12 +50,21 @@ impl Module for StaticTrPlugin {
             "Loaded plugin configuration"
         );
 
+        // Build the service first so configuration errors (single-root invariant,
+        // dangling parent_id, etc.) fail init before anything is published to
+        // types-registry or ClientHub.
+        let service = Arc::new(Service::from_config(&cfg)?);
+        self.service
+            .set(service.clone())
+            .map_err(|_| anyhow::anyhow!("{} module already initialized", Self::MODULE_NAME))?;
+
         // Generate plugin instance ID
         let instance_id = TenantResolverPluginSpecV1::gts_make_instance_id(
             "hyperspot.builtin.static_tenant_resolver.plugin.v1",
         );
 
-        // Register plugin instance in types-registry
+        // Register plugin instance in types-registry (only reached once the
+        // service is validated and wired).
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
         let instance = BaseModkitPluginV1::<TenantResolverPluginSpecV1> {
             id: instance_id.clone(),
@@ -67,12 +76,6 @@ impl Module for StaticTrPlugin {
 
         let results = registry.register(vec![instance_json]).await?;
         RegisterResult::ensure_all_ok(&results)?;
-
-        // Create service from config
-        let service = Arc::new(Service::from_config(&cfg));
-        self.service
-            .set(service.clone())
-            .map_err(|_| anyhow::anyhow!("{} module already initialized", Self::MODULE_NAME))?;
 
         // Register scoped client in ClientHub
         let api: Arc<dyn TenantResolverPluginClient> = service;
