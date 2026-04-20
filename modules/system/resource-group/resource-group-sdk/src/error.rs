@@ -24,7 +24,7 @@ pub enum ResourceGroupError {
     /// Removing allowed parents or disabling root placement would break
     /// existing group hierarchy relationships.
     #[error("Allowed parents violation: {message}")]
-    AllowedParentsViolation { message: String },
+    AllowedParentTypesViolation { message: String },
 
     /// Cannot delete a type because groups of this type still exist.
     #[error("Active references exist: {message}")]
@@ -34,7 +34,7 @@ pub enum ResourceGroupError {
     #[error("Conflict: {message}")]
     Conflict { message: String },
 
-    /// Parent type is not allowed by the type's `allowed_parents` configuration.
+    /// Parent type is not allowed by the type's `allowed_parent_types` configuration.
     #[error("Invalid parent type: {message}")]
     InvalidParentType { message: String },
 
@@ -46,7 +46,14 @@ pub enum ResourceGroupError {
     #[error("Limit violation: {message}")]
     LimitViolation { message: String },
 
-    /// Tenant scope incompatibility.
+    /// Cross-tenant link would be created.
+    ///
+    /// Each resource (identified by the pair `(resource_type, resource_id)`)
+    /// belongs to groups in exactly one tenant. Returned by
+    /// `ResourceGroupClient::add_membership` when the target group's tenant
+    /// differs from the tenant of any existing membership for the same
+    /// resource. The resource continues to exist — only the cross-tenant link
+    /// is rejected.
     #[error("Tenant incompatibility: {message}")]
     TenantIncompatibility { message: String },
 
@@ -81,9 +88,9 @@ impl ResourceGroupError {
         }
     }
 
-    /// Create an `AllowedParentsViolation` error.
-    pub fn allowed_parents_violation(message: impl Into<String>) -> Self {
-        Self::AllowedParentsViolation {
+    /// Create an `AllowedParentTypesViolation` error.
+    pub fn allowed_parent_types_violation(message: impl Into<String>) -> Self {
+        Self::AllowedParentTypesViolation {
             message: message.into(),
         }
     }

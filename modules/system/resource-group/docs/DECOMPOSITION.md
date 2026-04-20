@@ -1,4 +1,5 @@
 <!-- Created: 2026-04-07 by Constructor Tech -->
+<!-- Updated: 2026-04-20 by Constructor Tech -->
 
 # Decomposition: Resource Group (RG)
 
@@ -41,7 +42,7 @@ The Resource Group DESIGN is decomposed into seven features organized around the
 - **Depends On**: None
 
 - **Scope**:
-  - SDK crate (`resource-group-sdk`): `models.rs` (ResourceGroupType, ResourceGroup, ResourceGroupWithDepth, ResourceGroupMembership, Page, PageInfo, GtsTypePath), `api.rs` (ResourceGroupClient, ResourceGroupReadHierarchy traits), `error.rs` (ResourceGroupError taxonomy)
+  - SDK crate (`resource-group-sdk`): `models.rs` (ResourceGroupType, ResourceGroup, ResourceGroupWithDepth, ResourceGroupMembership, Page, PageInfo, GtsTypePath), `api.rs` (ResourceGroupClient, ResourceGroupReadHierarchy, ResourceGroupReadPluginClient traits), `error.rs` (ResourceGroupError taxonomy)
   - Module scaffold: `#[modkit::module]` annotated module, ClientHub registration for `dyn ResourceGroupClient` and `dyn ResourceGroupReadHierarchy`
   - Persistence adapter: SeaORM entity definitions for all 6 tables (gts_type, gts_type_allowed_parent, gts_type_allowed_membership, resource_group, resource_group_membership, resource_group_closure), DB migration scripts
   - Error mapping: DomainError to Problem (RFC-9457) mapping for all deterministic error categories (Validation, NotFound, TypeAlreadyExists, InvalidParentType, CycleDetected, ConflictActiveReferences, LimitViolation, TenantIncompatibility, ServiceUnavailable, Internal)
@@ -303,12 +304,12 @@ The Resource Group DESIGN is decomposed into seven features organized around the
 
 - **Scope**:
   - Integration read service: expose `ResourceGroupReadHierarchy` via ClientHub for AuthZ plugin consumption, returning hierarchy data without policy or SQL semantics
-  - Plugin gateway routing: built-in provider (local persistence path) vs vendor-specific provider (resolve plugin instance by configured vendor, delegate to `ResourceGroupReadHierarchy`) with SecurityContext passthrough
+  - Plugin gateway routing: built-in provider (local persistence path) vs vendor-specific provider (resolve plugin instance by configured vendor, delegate to `ResourceGroupReadPluginClient`) with SecurityContext passthrough
   - JWT authentication: standard AuthZ evaluation via `PolicyEnforcer.access_scope()` on all REST endpoints, `AccessScope` applied via SecureORM for tenant-scoped queries
   - MTLS authentication: client certificate verification against trusted CA bundle, endpoint allowlist (only `GET /groups/{group_id}/hierarchy`), AuthZ bypass for trusted system principals, system SecurityContext creation
   - MTLS configuration: `ca_cert`, `allowed_clients` (by certificate CN), `allowed_endpoints` (method + path pairs)
   - Tenant scope enforcement for ownership-graph profile: parent-child edges and membership writes validated for tenant-hierarchy compatibility, platform-admin provisioning exception for cross-tenant management, tenant-scoped reads via `SecurityContext.subject_tenant_id`
-  - Barrier as data: `metadata.barrier` stored in group metadata JSONB without enforcement by RG, returned in API responses within `metadata` object for consumption by Tenant Resolver and AuthZ
+  - Barrier as data: `metadata.self_managed` stored in group metadata JSONB without enforcement by RG, returned in API responses within `metadata` object for consumption by Tenant Resolver and AuthZ
   - In-process vs out-of-process: ClientHub direct call (monolith, no MTLS needed) vs MTLS-authenticated remote call (microservices)
   - SecurityContext propagation: `ctx` passed through gateway to selected provider without policy interpretation
 

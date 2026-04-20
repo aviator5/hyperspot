@@ -1,4 +1,4 @@
-<!-- Updated: 2026-04-07 by Constructor Tech -->
+<!-- Updated: 2026-04-20 by Constructor Tech -->
 
 # Rust SDK Contracts — Resource Group
 
@@ -178,7 +178,7 @@ pub trait ResourceGroupClient: Send + Sync {
     async fn get_group(&self, ctx: &SecurityContext, group_id: Uuid) -> Result<ResourceGroup, ResourceGroupError>;
     async fn list_groups(&self, ctx: &SecurityContext, query: ListQuery) -> Result<Page<ResourceGroup>, ResourceGroupError>;
     async fn update_group(&self, ctx: &SecurityContext, group_id: Uuid, request: UpdateGroupRequest) -> Result<ResourceGroup, ResourceGroupError>;
-    async fn delete_group(&self, ctx: &SecurityContext, group_id: Uuid, force: bool) -> Result<(), ResourceGroupError>;
+    async fn delete_group(&self, ctx: &SecurityContext, group_id: Uuid) -> Result<(), ResourceGroupError>;
 
     // ── Hierarchy ───────────────────────────────────────────────────
     async fn list_group_depth(&self, ctx: &SecurityContext, group_id: Uuid, query: ListQuery) -> Result<Page<ResourceGroupWithDepth>, ResourceGroupError>;
@@ -205,6 +205,22 @@ pub trait ResourceGroupReadHierarchy: Send + Sync {
         group_id: Uuid,
         query: ListQuery,
     ) -> Result<Page<ResourceGroupWithDepth>, ResourceGroupError>;
+}
+```
+
+## Plugin Trait — `ResourceGroupReadPluginClient`
+
+Gateway delegates to selected scoped plugin (vendor-specific provider path).
+
+```rust
+/// Plugin hierarchy read contract. Extends `ResourceGroupReadHierarchy`.
+#[async_trait]
+pub trait ResourceGroupReadPluginClient: ResourceGroupReadHierarchy {
+    async fn list_memberships(
+        &self,
+        ctx: &SecurityContext,
+        query: ListQuery,
+    ) -> Result<Page<ResourceGroupMembership>, ResourceGroupError>;
 }
 ```
 
@@ -249,7 +265,7 @@ let descendants = rg_hierarchy
 let group = rg
     .create_group(&ctx, CreateGroupRequest {
         id: None,
-        r#type: "gts.cf.core.rg.type.v1~y.system.tn.tenant.v1~".into(),
+        r#type: "gts.x.system.rg.type.v1~y.system.tn.tenant.v1~".into(),
         name: "Acme Corp".into(),
         parent_id: None,
         metadata: Default::default(),
@@ -263,3 +279,4 @@ let group = rg
 |-------|---------|-----------|---------------|
 | `ResourceGroupClient` | 14 (full CRUD: types, groups, memberships, hierarchy) | Domain services, Apps, Admins | `dyn ResourceGroupClient` |
 | `ResourceGroupReadHierarchy` | 1 (`list_group_depth`) | AuthZ plugin | `dyn ResourceGroupReadHierarchy` |
+| `ResourceGroupReadPluginClient` | 1 + inherited (`list_memberships` + `list_group_depth`) | Vendor-specific plugin gateway | Scoped plugin resolution |

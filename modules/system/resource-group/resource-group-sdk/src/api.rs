@@ -10,9 +10,8 @@ use uuid::Uuid;
 
 use crate::error::ResourceGroupError;
 use crate::models::{
-    CreateGroupRequest, CreateTypeRequest, PatchGroupRequest, ResourceGroup,
-    ResourceGroupMembership, ResourceGroupType, ResourceGroupWithDepth, UpdateGroupRequest,
-    UpdateTypeRequest,
+    CreateGroupRequest, CreateTypeRequest, ResourceGroup, ResourceGroupMembership,
+    ResourceGroupType, ResourceGroupWithDepth, UpdateGroupRequest, UpdateTypeRequest,
 };
 
 /// Client trait for resource-group type management.
@@ -93,27 +92,24 @@ pub trait ResourceGroupClient: Send + Sync {
         request: UpdateGroupRequest,
     ) -> Result<ResourceGroup, ResourceGroupError>;
 
-    /// Patch a resource group (partial update via PATCH).
-    async fn patch_group(
-        &self,
-        ctx: &SecurityContext,
-        id: Uuid,
-        request: PatchGroupRequest,
-    ) -> Result<ResourceGroup, ResourceGroupError>;
-
     /// Delete a resource group.
-    /// When `force` is false, fails with `ConflictActiveReferences` if child groups
-    /// or memberships exist. When `force` is true, recursively deletes the entire
-    /// subtree (all descendants and their memberships).
-    async fn delete_group(
+    ///
+    /// SDK deletes are non-cascade: the call fails with
+    /// `ConflictActiveReferences` if the group has child groups or memberships.
+    /// Cascade deletion is only available through the REST surface.
+    async fn delete_group(&self, ctx: &SecurityContext, id: Uuid)
+    -> Result<(), ResourceGroupError>;
+
+    /// Get descendants of a reference group (depth >= 0).
+    async fn get_group_descendants(
         &self,
         ctx: &SecurityContext,
-        id: Uuid,
-        force: bool,
-    ) -> Result<(), ResourceGroupError>;
+        group_id: Uuid,
+        query: &ODataQuery,
+    ) -> Result<Page<ResourceGroupWithDepth>, ResourceGroupError>;
 
-    /// List group hierarchy with relative depth from a reference group.
-    async fn list_group_depth(
+    /// Get ancestors of a reference group (depth <= 0).
+    async fn get_group_ancestors(
         &self,
         ctx: &SecurityContext,
         group_id: Uuid,
@@ -156,8 +152,16 @@ pub trait ResourceGroupClient: Send + Sync {
 /// depending on the full `ResourceGroupClient`.
 #[async_trait]
 pub trait ResourceGroupReadHierarchy: Send + Sync {
-    /// List group hierarchy with depth for a given group.
-    async fn list_group_depth(
+    /// Get descendants of a reference group (depth >= 0).
+    async fn get_group_descendants(
+        &self,
+        ctx: &SecurityContext,
+        group_id: Uuid,
+        query: &ODataQuery,
+    ) -> Result<Page<ResourceGroupWithDepth>, ResourceGroupError>;
+
+    /// Get ancestors of a reference group (depth <= 0).
+    async fn get_group_ancestors(
         &self,
         ctx: &SecurityContext,
         group_id: Uuid,

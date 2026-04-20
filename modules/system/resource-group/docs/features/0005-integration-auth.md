@@ -1,4 +1,5 @@
 <!-- Created: 2026-04-07 by Constructor Tech -->
+<!-- Updated: 2026-04-20 by Constructor Tech -->
 
 # Feature: Integration Read Port & Dual Authentication Modes
 
@@ -121,7 +122,7 @@ This feature bridges RG with the AuthZ ecosystem. The integration read port prov
 7. [x] - `p1` - **IF** endpoint not in allowlist → **RETURN** 403 Forbidden - `inst-mtls-7`
 8. [x] - `p1` - Create system SecurityContext (no AuthZ evaluation — trusted system principal) - `inst-mtls-8`
 9. [x] - `p1` - RG Hierarchy Service: execute list_group_depth(system_ctx, group_id, query) directly - `inst-mtls-9`
-10. [x] - `p1` - **RETURN** Page<ResourceGroupWithDepth> — hierarchy data with tenant_id per group, metadata including barrier - `inst-mtls-10`
+10. [x] - `p1` - **RETURN** Page<ResourceGroupWithDepth> — hierarchy data with tenant_id per group, metadata including `self_managed` - `inst-mtls-10`
 
 ### Plugin Gateway Routing
 
@@ -139,7 +140,7 @@ This feature bridges RG with the AuthZ ecosystem. The integration read port prov
    1. [x] - `p1` - Route to local persistence path: execute query against RG database - `inst-plugin-3a`
 4. [x] - `p1` - **IF** vendor-specific provider configured - `inst-plugin-4`
    1. [x] - `p1` - Resolve plugin instance by configured vendor via types-registry (scoped by GTS instance ID) - `inst-plugin-4a`
-   2. [x] - `p1` - Delegate to ResourceGroupReadHierarchy with SecurityContext passthrough - `inst-plugin-4b`
+   2. [x] - `p1` - Delegate to ResourceGroupReadPluginClient with SecurityContext passthrough - `inst-plugin-4b`
 5. [x] - `p1` - **RETURN** results from selected provider - `inst-plugin-5`
 
 ## 3. Processes / Business Logic (CDSL)
@@ -195,7 +196,7 @@ Not applicable. This feature configures authentication routing and integration r
 The system **MUST** implement an Integration Read Service that exposes `ResourceGroupReadHierarchy` via ClientHub for external consumers.
 
 **Required behavior**:
-- Expose `list_group_depth(ctx, group_id, query)` returning `Page<ResourceGroupWithDepth>` with hierarchy data including `tenant_id` per group and `metadata` (including `barrier` for applicable types)
+- Expose `list_group_depth(ctx, group_id, query)` returning `Page<ResourceGroupWithDepth>` with hierarchy data including `tenant_id` per group and `metadata` (including `self_managed` for applicable types)
 - Responses are policy-agnostic: no AuthZ decisions, no SQL fragments, no constraint objects
 - Plugin gateway routing: resolve configured provider (built-in vs vendor-specific), delegate with SecurityContext passthrough
 - In-process mode (monolith): direct ClientHub call, no network auth needed
@@ -252,13 +253,13 @@ The system **MUST** enforce tenant-hierarchy-compatible writes in ownership-grap
 - Membership writes validated against target group's tenant scope
 - Platform-admin provisioning exception: privileged calls may bypass caller tenant scoping for cross-tenant management, but data invariants (parent-child type compat, tenant hierarchy rules) remain strict
 - Tenant-scoped reads: in AuthZ query path, `SecurityContext.subject_tenant_id` determines effective tenant scope
-- Barrier as data: `metadata.barrier` stored in group metadata JSONB, returned in API responses within `metadata` object. RG does not filter, restrict, or alter query results based on barrier value.
+- Barrier as data: `metadata.self_managed` stored in group metadata JSONB, returned in API responses within `metadata` object. RG does not filter, restrict, or alter query results based on barrier value.
 
 **Implements**:
 - `cpt-cf-resource-group-algo-integration-auth-tenant-scope-enforcement`
 
 **Touches**:
-- DB: `resource_group` (tenant_id validation, metadata.barrier storage)
+- DB: `resource_group` (tenant_id validation, metadata.self_managed storage)
 
 ### Unit Test Coverage for Integration Auth
 
@@ -273,7 +274,7 @@ In-source `#[cfg(test)]` tests covering auth-mode decision and tenant-scope enfo
 ## 6. Acceptance Criteria
 
 - [x] AuthZ plugin resolves `dyn ResourceGroupReadHierarchy` from ClientHub and successfully calls `list_group_depth`
-- [x] Integration read responses include `tenant_id` per group and `metadata` (including `barrier`) but no AuthZ decision fields
+- [x] Integration read responses include `tenant_id` per group and `metadata` (including `self_managed`) but no AuthZ decision fields
 - [x] JWT request to any RG endpoint goes through AuthN → AuthZ (PolicyEnforcer) → AccessScope → SecureORM pipeline
 - [x] MTLS request to `/groups/{group_id}/hierarchy` bypasses AuthZ and returns hierarchy data
 - [x] MTLS request to any other endpoint (e.g., `POST /groups`) returns 403 Forbidden
@@ -283,7 +284,7 @@ In-source `#[cfg(test)]` tests covering auth-mode decision and tenant-scope enfo
 - [x] SecurityContext is passed through gateway to provider without policy interpretation
 - [x] Parent-child edge in ownership-graph profile with incompatible tenants is rejected with TenantIncompatibility
 - [x] Platform-admin provisioning call bypasses caller tenant scoping but still validates data invariants
-- [x] Group with `metadata.barrier = true` is stored and returned in API responses — RG does not filter based on barrier
+- [x] Group with `metadata.self_managed = true` is stored and returned in API responses — RG does not filter based on barrier
 - [x] In monolith deployment, AuthZ plugin uses ClientHub direct call (no MTLS needed)
 - [x] In microservice deployment, AuthZ plugin uses MTLS-authenticated remote call to hierarchy endpoint
 
@@ -318,7 +319,7 @@ In-source `#[cfg(test)]` tests covering auth-mode decision and tenant-scope enfo
 |----|----------|--------|
 | TC-READ-01 | `list_group_depth` response | Contains `tenant_id` and `metadata` per group; no AuthZ decision fields |
 | TC-READ-02 | Plugin gateway with built-in provider configured | Routes to local persistence path |
-| TC-READ-03 | Plugin gateway with vendor-specific provider configured | Delegates to `ResourceGroupReadHierarchy` |
+| TC-READ-03 | Plugin gateway with vendor-specific provider configured | Delegates to `ResourceGroupReadPluginClient` |
 
 ---
 

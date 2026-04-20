@@ -13,6 +13,7 @@
 
 pub mod api;
 pub mod error;
+pub mod gts;
 pub mod models;
 
 // OData filter field definitions (feature-gated)
@@ -24,6 +25,6 @@ pub use api::{ResourceGroupClient, ResourceGroupReadHierarchy};
 pub use error::ResourceGroupError;
 pub use models::{
     CreateGroupRequest, CreateTypeRequest, GroupHierarchy, GroupHierarchyWithDepth, GtsTypePath,
-    PatchGroupRequest, ResourceGroup, ResourceGroupMembership, ResourceGroupType,
-    ResourceGroupWithDepth, UpdateGroupRequest, UpdateTypeRequest,
+    ResourceGroup, ResourceGroupMembership, ResourceGroupType, ResourceGroupWithDepth,
+    UpdateGroupRequest, UpdateTypeRequest,
 };
