@@ -136,7 +136,9 @@ Requirements that significantly influence architecture decisions.
 | `cpt-cf-serverless-runtime-adr-jsonrpc-mcp-protocol-surfaces` | JSON-RPC 2.0 and MCP protocol surfaces for direct function invocation and AI agent tool integration |
 | `cpt-cf-serverless-runtime-adr-workflow-dsl` | CNCF Serverless Workflow Specification v1.0.0 adopted as the vendor-neutral, declarative JSON/YAML workflow DSL — decoupled from the execution engine |
 | `cpt-cf-serverless-runtime-adr-temporal-workflow-engine` | Temporal chosen as the durable execution backend for the workflow engine adapter, interpreting the Serverless Workflow DSL atop Temporal primitives |
-| `cpt-cf-serverless-runtime-adr-thin-host` | Serverless-runtime module boundary: host owns Registry, Policy, REST, GTS validation, audit, and plugin dispatch; runtime plugins own invocation, scheduling, and event-trigger handling using their backend's native primitives |
+| `cpt-cf-serverless-runtime-adr-thin-host` | Serverless-runtime module boundary: host owns Registry, Tenant Policy, lightweight invocation index, REST, GTS validation, audit, and plugin dispatch; runtime plugins own invocation, scheduling, and event-trigger handling using their backend's native primitives |
+
+> **Alignment note:** `cpt-cf-serverless-runtime-adr-thin-host` is the current architectural direction. Some downstream sections in this document may still use legacy `sless-orchestrator` / `sless-runtime` terminology or describe host-owned orchestration. Those sections are pending rewrite and should be read as historical wording, not as a contradiction of the ADR above.
 
 ### 1.3 Architecture Layers
 
@@ -5195,5 +5197,5 @@ Open-source systems that overlap with parts of this design:
 ## 5. Traceability
 
 - **PRD**: [PRD.md](./PRD.md)
-- **ADRs**: [Callable Type Hierarchy](./ADR/0001-cpt-cf-serverless-runtime-adr-callable-type-hierarchy.md)
+- **ADRs**: [Callable Type Hierarchy](./ADR/0001-cpt-cf-serverless-runtime-adr-callable-type-hierarchy.md), [Thin Host Module / Fat Runtime Plugins](./ADR/0004-cpt-cf-serverless-runtime-adr-thin-host.md)
 - **Features**: TBD

@@ -108,14 +108,14 @@ The host owns only genuinely cross-cutting concerns. Each runtime plugin is a se
 
 ```
 modules/serverless-runtime/
-├── serverless-runtime-sdk/        # Contract crate — RuntimeAdapter, SlessOrchestratorClient,
+├── serverless-runtime-sdk/        # Contract crate — RuntimeAdapter, ServerlessRuntimeClient,
 │                                  # domain types, error taxonomy, conformance harness hooks
-└── serverless-runtime/            # Host impl — Registry, Tenant Policy, REST, GTS validation,
-    │                              # audit, plugin dispatch
-    └── plugins/
-        ├── temporal-plugin/       # First adapter — uses Temporal for durability
-        ├── lambda-plugin/         # (future) — uses Step Functions + EventBridge
-        └── …                      # Further backends, one plugin each
+├── serverless-runtime/            # Host impl — Registry, Tenant Policy, REST, GTS validation,
+│                                  # audit, plugin dispatch
+└── plugins/
+    ├── temporal-plugin/           # First adapter — uses Temporal for durability
+    ├── lambda-plugin/             # (future) — uses Step Functions + EventBridge
+    └── …                          # Further backends, one plugin each
 ```
 
 **Backend-durability survey**: for each committed or realistic backend, does the backend need host-owned durability primitives, or does it bring them itself?
@@ -172,7 +172,7 @@ A stateful `sless-orchestrator` module owns Registry, Invocation Engine, Schedul
 ## More Information
 
 **PR 1279 reference**:
-- Pull request: https://github.com/cyberfabric/core/pull/1279
+- Pull request: https://github.com/cyberfabric/cyberfabric-core/pull/1279
 - Source commit: [`1a5ae2b7`](https://github.com/cyberfabric/cyberfabric-core/commit/1a5ae2b7) — `docs(serverless-runtime): GTS renames, sibling type hierarchy, schema fixes`
 - Merge commit: [`efdef7d0`](https://github.com/cyberfabric/cyberfabric-core/commit/efdef7d0)
 
