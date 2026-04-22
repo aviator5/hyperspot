@@ -56,7 +56,7 @@ In Cyber Ware's architecture:
 - **Resource Owner Subject** - Optional subject bound to a resource instance for per-subject scoping (e.g., "my tasks"). Relationship semantics are domain-specific (creator, assignee, etc.) and do not imply administrative control.
 - **Resource** - Object being accessed. Every resource belongs to a tenant and may optionally have a subject owner. Identified by type (GTS ID) and instance ID.
 - **Resource Group** - Optional container for resources, used for access control. See [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md).
-- **Permission** - `{ resource_type, action }` - allowed operation identifier.
+- **Permission** - `{ resource_type, action }` - allowed operation identifier. Canonical base GTS type: `gts.cf.modkit.authz.permission.v1~`. See [PERMISSION_GTS_TYPE.md](./PERMISSION_GTS_TYPE.md) for the full schema, instance naming convention, and scenario examples.
 - **Access Constraints** - Structured predicates returned by the PDP for query-time enforcement. NOT policies (stored vendor-side) or "grants" (OAuth flows, Zanzibar tuples), but compiled, time-bound enforcement artifacts computed at evaluation time.
 - **Security Context** - Result of successful authentication containing subject identity, tenant information, and optionally the original bearer token. Flows from authentication to authorization. Required fields: `subject_id`, `subject_tenant_id`, `token_scopes`. Optional fields: `subject_type`, `bearer_token`.
 - **Token Scopes** - Capability restrictions extracted from the access token. Act as a "ceiling" on what an application can do, regardless of user's actual permissions. See [Token Scopes](#token-scopes).
@@ -1495,4 +1495,5 @@ These questions require further design work.
 - [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
 - [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
 - [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md) — Authorization usage scenarios
+- [PERMISSION_GTS_TYPE.md](./PERMISSION_GTS_TYPE.md) — Canonical permission GTS type (`gts.cf.modkit.authz.permission.v1~`), schema, instance naming, scenarios
 - [Cyber Ware GTS (Global Type System)](../../../modules/system/types-registry/)

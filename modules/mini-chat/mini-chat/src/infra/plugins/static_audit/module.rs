@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use modkit::Module;
 use modkit::client_hub::ClientScope;
 use modkit::context::ModuleCtx;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use tracing::info;
 use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
@@ -53,18 +53,16 @@ impl Module for StaticMiniChatAuditPlugin {
             .set(service.clone())
             .map_err(|_| anyhow::anyhow!("{} module already initialized", Self::MODULE_NAME))?;
 
-        let instance_id =
-            MiniChatAuditPluginSpecV1::gts_make_instance_id("cf.core._.static_mini_chat_audit.v1");
+        // Build registration payload and instance id for this plugin.
+        let (instance_id, instance_json) =
+            PluginV1::<MiniChatAuditPluginSpecV1>::build_registration(
+                "cf.core._.static_mini_chat_audit.v1",
+                VENDOR,
+                PRIORITY,
+            )?;
 
+        // Publish to types-registry.
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<MiniChatAuditPluginSpecV1> {
-            id: instance_id.clone(),
-            vendor: VENDOR.to_owned(),
-            priority: PRIORITY,
-            properties: MiniChatAuditPluginSpecV1,
-        };
-        let instance_json = serde_json::to_value(&instance)?;
-
         let results = registry.register(vec![instance_json]).await?;
         RegisterResult::ensure_all_ok(&results)?;
 

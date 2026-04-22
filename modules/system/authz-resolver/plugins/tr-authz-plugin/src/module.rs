@@ -7,7 +7,7 @@ use authz_resolver_sdk::{AuthZResolverPluginClient, AuthZResolverPluginSpecV1};
 use modkit::Module;
 use modkit::client_hub::ClientScope;
 use modkit::context::ModuleCtx;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use tenant_resolver_sdk::TenantResolverClient;
 use tracing::info;
 use types_registry_sdk::{RegisterResult, TypesRegistryClient};
@@ -58,7 +58,7 @@ impl Module for TrAuthZPlugin {
 
         // Register plugin instance in types-registry
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<AuthZResolverPluginSpecV1> {
+        let instance = PluginV1::<AuthZResolverPluginSpecV1> {
             id: instance_id.clone(),
             vendor: cfg.vendor.clone(),
             priority: cfg.priority,

@@ -87,6 +87,11 @@ opentelemetry = { workspace = true }
 # Local dependencies
 modkit = { workspace = true }
 modkit-canonical-errors = { workspace = true, features = ["axum"] }
+modkit-gts = { workspace = true }
+# Direct dep needed because `gts_instance!` expansions reference
+# `::gts::*` paths (the compile-time `<S as GtsSchema>::SCHEMA_ID` prefix
+# assert plus `GtsInstanceId::new(...)`).
+gts = { workspace = true }
 modkit-db = { workspace = true, features = ["sqlite", "pg", "preview-outbox"] }
 modkit-db-macros = { workspace = true }
 modkit-security = { workspace = true }
@@ -103,5 +108,8 @@ k8s-openapi = { workspace = true, features = ["latest"], optional = true }
 chrono = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
 temp-env = { workspace = true }
+# End-to-end test of permission registration goes through a real
+# TypesRegistryService instance seeded from the canonical inventory.
+types-registry = { workspace = true }
 
 

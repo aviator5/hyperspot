@@ -24,7 +24,7 @@ fn test_instance_id() -> String {
     )
 }
 
-/// Build the JSON content for a `BaseModkitPluginV1`<CredStorePluginSpecV1>
+/// Build the JSON content for a `PluginV1`<CredStorePluginSpecV1>
 /// instance that `choose_plugin_instance` can successfully parse.
 fn plugin_content(gts_id: &str, vendor: &str) -> serde_json::Value {
     serde_json::json!({

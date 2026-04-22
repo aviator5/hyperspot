@@ -38,7 +38,6 @@ api_gateway = { package = "cyberware-api-gateway", path = "../../modules/system/
 api_egress = { package = "cyberware-oagw", path = "../../modules/system/oagw/oagw" }
 grpc_hub = { package = "cyberware-grpc-hub", path = "../../modules/system/grpc-hub" }
 module_orchestrator = { package = "cyberware-module-orchestrator", path = "../../modules/system/module-orchestrator" }
-types = { path = "../../modules/system/types" }
 types_registry = { package = "cyberware-types-registry", path = "../../modules/system/types-registry/types-registry" }
 tenant-resolver = { package = "cyberware-tenant-resolver", path = "../../modules/system/tenant-resolver/tenant-resolver" }
 authn-resolver = { package = "cyberware-authn-resolver", path = "../../modules/system/authn-resolver/authn-resolver" }

@@ -33,6 +33,8 @@ members = [
     "libs/modkit-auth",
     "libs/modkit-canonical-errors",
     "libs/modkit-canonical-errors-macro",
+    "libs/modkit-gts",
+    "libs/modkit-gts-macro",
     "libs/modkit-http",
     "libs/modkit-sdk",
     "libs/modkit-odata-macros",
@@ -67,8 +69,6 @@ members = [
     "examples/oop-modules/calculator/calculator",
     "modules/system/types-registry/types-registry-sdk",
     "modules/system/types-registry/types-registry",
-    "modules/system/types-sdk",
-    "modules/system/types",
     "modules/simple-user-settings/simple-user-settings-sdk",
     "modules/simple-user-settings/simple-user-settings",
     "modules/system/tenant-resolver/tenant-resolver-sdk",
@@ -229,6 +229,8 @@ modkit-db = { package = "cyberware-modkit-db", version = "0.8.2", path = "libs/m
 modkit-db-macros = { package = "cyberware-modkit-db-macros", version = "0.6.2", path = "libs/modkit-db-macros" }
 modkit-errors = { package = "cyberware-modkit-errors", version = "0.7.0", path = "libs/modkit-errors" }
 modkit-errors-macro = { package = "cyberware-modkit-errors-macro", version = "0.6.3", path = "libs/modkit-errors-macro" }
+modkit-gts = { package = "cyberware-modkit-gts", version = "0.1.0", path = "libs/modkit-gts" }
+modkit-gts-macro = { package = "cyberware-modkit-gts-macro", version = "0.1.0", path = "libs/modkit-gts-macro" }
 modkit-macros = { package = "cyberware-modkit-macros", version = "0.6.2", path = "libs/modkit-macros" }
 modkit-node-info = { package = "cyberware-modkit-node-info", version = "0.6.4", path = "libs/modkit-node-info" }
 modkit-odata = { package = "cyberware-modkit-odata", version = "0.8.0", path = "libs/modkit-odata" }
@@ -240,6 +242,9 @@ modkit-utils = { package = "cyberware-modkit-utils", version = "0.6.3", path = "
 
 cyberware-system-sdks = { version = "0.1.35", path = "libs/system-sdks" }
 cyberware-system-sdk-directory = { version = "0.1.35", path = "libs/system-sdks/sdks/directory" }
+
+# system modules
+types-registry = { package = "cyberware-types-registry", version = "0.1.22", path = "modules/system/types-registry/types-registry" }
 
 # system modules SDKs
 account-management-sdk = { package = "cyberware-account-management-sdk", version = "0.1.1", path = "modules/system/account-management/account-management-sdk" }
@@ -443,6 +448,7 @@ jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc
 # Configuration management
 figment = { version = "0.10", features = ["yaml", "env"] }
 inventory = "0.3"
+const_format = "0.2"
 
 # File system utilities
 tempfile = "3"

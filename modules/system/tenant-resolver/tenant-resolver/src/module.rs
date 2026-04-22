@@ -6,9 +6,8 @@ use async_trait::async_trait;
 use modkit::Module;
 use modkit::context::ModuleCtx;
 use modkit::contracts::SystemCapability;
-use tenant_resolver_sdk::{TenantResolverClient, TenantResolverPluginSpecV1};
+use tenant_resolver_sdk::TenantResolverClient;
 use tracing::info;
-use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
 use crate::config::TenantResolverConfig;
 use crate::domain::{Service, TenantResolverLocalClient};
@@ -16,12 +15,13 @@ use crate::domain::{Service, TenantResolverLocalClient};
 /// Tenant Resolver module.
 ///
 /// This module:
-/// 1. Registers the plugin schema in types-registry
-/// 2. Discovers plugin instances via types-registry
-/// 3. Routes requests to the selected plugin based on vendor configuration
+/// 1. Discovers plugin instances via types-registry
+/// 2. Routes requests to the selected plugin based on vendor configuration
 ///
-/// Plugin discovery is lazy: happens on first API call after types-registry
-/// is ready.
+/// The `TenantResolverPluginSpecV1` schema itself reaches `types-registry`
+/// automatically via the `modkit-gts` link-time inventory — no per-init
+/// registration is needed. Plugin discovery is lazy: happens on first API
+/// call after types-registry is ready.
 #[modkit::module(
     name = "tenant-resolver",
     deps = ["types-registry"],
@@ -51,27 +51,6 @@ impl Module for TenantResolver {
         let cfg: TenantResolverConfig = ctx.config_or_default()?;
         tracing::Span::current().record("vendor", cfg.vendor.as_str());
         info!(vendor = %cfg.vendor);
-
-        // Register plugin schema in types-registry
-        let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let schema_str = TenantResolverPluginSpecV1::gts_schema_with_refs_as_string();
-        let mut schema_json: serde_json::Value = serde_json::from_str(&schema_str)?;
-        // Workaround for a bug in gts-macros: derived (child) schemas generated via
-        // gts_schema_with_refs_allof() omit "additionalProperties": false at the top level,
-        // even when the base schema declares it. The types-registry rejects this as loosening
-        // the base constraint. Patch it here until gts-macros is fixed upstream.
-        if let Some(obj) = schema_json.as_object_mut() {
-            obj.insert(
-                "additionalProperties".to_owned(),
-                serde_json::Value::Bool(false),
-            );
-        }
-        let results = registry.register(vec![schema_json]).await?;
-        RegisterResult::ensure_all_ok(&results)?;
-        info!(
-            schema_id = %TenantResolverPluginSpecV1::gts_schema_id(),
-            "Registered plugin schema in types-registry"
-        );
 
         // Create service
         let hub = ctx.client_hub();
