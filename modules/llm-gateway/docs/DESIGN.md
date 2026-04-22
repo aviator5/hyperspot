@@ -565,7 +565,7 @@ Key streaming semantics:
 
 **Technology**: ModKit SDK trait (`LlmGatewayHookPluginClient`), resolved via ClientHub scoped clients following CyberFabric plugin architecture (see `docs/MODKIT_PLUGINS.md`)
 
-**GTS Schema ID**: `gts.x.core.modkit.plugin.v1~x.llmgw.hook_plugin.v1~`
+**GTS Schema ID**: `gts.cf.modkit.plugins.plugin.v1~cf.llmgw.hook_plugin.v1~`
 
 The Hook Plugin interface is defined in `llm-gateway-sdk` as a plugin client trait. The LLM Gateway registers the plugin schema in the types-registry; each hook plugin implementation registers its own instance and scoped client. The gateway resolves the active plugin via `choose_plugin_instance` using the configured vendor and lowest priority value.
 
@@ -588,8 +588,8 @@ The Hook Plugin interface is defined in `llm-gateway-sdk` as a plugin client tra
 
 **Plugin discovery and selection**:
 
-- LLM Gateway registers the GTS plugin schema (`gts.x.core.modkit.plugin.v1~x.llmgw.hook_plugin.v1~`) during module `init()`.
-- Each hook plugin registers a GTS instance and scoped client under a stable instance ID of the form `gts.x.core.modkit.plugin.v1~x.llmgw.hook_plugin.v1~<vendor>.<pkg>.hook_plugin.v1`.
+- LLM Gateway registers the GTS plugin schema (`gts.cf.modkit.plugins.plugin.v1~cf.llmgw.hook_plugin.v1~`) during module `init()`.
+- Each hook plugin registers a GTS instance and scoped client under a stable instance ID of the form `gts.cf.modkit.plugins.plugin.v1~cf.llmgw.hook_plugin.v1~<vendor>.<pkg>.hook_plugin.v1`.
 - Gateway uses `choose_plugin_instance` to select the plugin matching the configured vendor with the lowest priority value.
 - Plugin unavailability (client not found after resolution) causes the request to fail with a `hook_unavailable` error — hooks are not bypassed silently.
 

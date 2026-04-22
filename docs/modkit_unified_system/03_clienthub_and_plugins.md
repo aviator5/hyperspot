@@ -58,7 +58,7 @@ For plugin-like scenarios where multiple implementations of the same interface c
 use modkit::client_hub::ClientScope;
 
 // Plugin registers with a scope (e.g., GTS instance ID)
-let scope = ClientScope::gts_id("gts.x.core.modkit.plugin.v1~vendor.pkg.my_module.plugin.v1~acme.test._.plugin.v1");
+let scope = ClientScope::gts_id("gts.cf.modkit.plugins.plugin.v1~vendor.pkg.my_module.plugin.v1~acme.test._.plugin.v1");
 ctx.client_hub().register_scoped::<dyn MyPluginClient>(scope, plugin_impl);
 
 // Main module resolves the selected plugin
@@ -169,12 +169,12 @@ pub trait MyModulePluginClient: Send + Sync {
 ```rust
 // <module>-sdk/src/gts.rs
 use gts_macros::struct_to_gts_schema;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 
 #[struct_to_gts_schema(
     dir_path = "schemas",
-    base = BaseModkitPluginV1,
-    schema_id = "gts.x.core.modkit.plugin.v1~x.y.my_module.plugin.v1~",
+    base = PluginV1,
+    schema_id = "gts.cf.modkit.plugins.plugin.v1~cf.y.my_module.plugin.v1~",
     description = "My Module plugin specification",
     properties = ""
 )]
@@ -219,7 +219,7 @@ impl Module for MyModule {
 ```rust
 // plugins/<vendor>-plugin/src/module.rs
 use modkit::client_hub::ClientScope;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 
 #[modkit::module(
     name = "vendor-a-plugin",
@@ -236,7 +236,7 @@ impl Module for VendorAPlugin {
 
         // Register INSTANCE in types-registry (schema is already registered by main module)
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<MyModulePluginSpecV1> {
+        let instance = PluginV1::<MyModulePluginSpecV1> {
             id: instance_id.clone(),
             vendor: cfg.vendor.clone(),
             priority: cfg.priority,

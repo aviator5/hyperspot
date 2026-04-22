@@ -274,7 +274,7 @@ use modkit_macros::struct_to_gts_schema;
 /// GTS schema type for runtime adapter plugin instances.
 /// Each adapter registers an instance of this type in the types-registry.
 #[struct_to_gts_schema(
-    base = "gts.x.core.modkit.plugin.v1~",
+    base = "gts.cf.modkit.plugins.plugin.v1~",
     id = "gts.x.core.sless.adapter_plugin.v1~",
     description = "Serverless runtime adapter plugin specification",
     properties = ""
@@ -295,7 +295,7 @@ impl Module for StarlarkAdapterPlugin {
 
         // Register instance in types-registry
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<SlessAdapterPluginSpecV1> {
+        let instance = PluginV1::<SlessAdapterPluginSpecV1> {
             id: instance_id.clone(),
             vendor: "core".into(),
             priority: 0,

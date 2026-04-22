@@ -145,7 +145,7 @@ graph TB
 
 - [ ] `p1` - **ID**: `cpt-cf-srr-rdb-component-plugin`
 
-  - **Plugin Entry Point**: Implements `ResourceStoragePluginClient`. Registers as a scoped client in ClientHub with GTS instance ID `gts.x.core.modkit.plugin.v1~x.cf.simple_resource_registry.plugin.v1~x.core._.relational_db.v1`. Declares `PluginCapabilities { odata_support: true, search_support: false }`.
+  - **Plugin Entry Point**: Implements `ResourceStoragePluginClient`. Registers as a scoped client in ClientHub with GTS instance ID `gts.cf.modkit.plugins.plugin.v1~cf.core.simple_resource_registry.plugin.v1~cf.core._.relational_db.v1`. Declares `PluginCapabilities { odata_support: true, search_support: false }`.
 
 - [ ] `p1` - **ID**: `cpt-cf-srr-rdb-component-odata-translator`
 

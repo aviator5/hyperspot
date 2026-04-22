@@ -18,3 +18,7 @@ pub mod config;
 pub mod domain;
 #[doc(hidden)]
 pub mod infra;
+
+/// Link-time GTS content shipped by the mini-chat module (permission
+/// instances today; future content goes here too).
+pub(crate) mod gts;

@@ -6,8 +6,9 @@ use async_trait::async_trait;
 use modkit::api::OpenApiRegistry;
 use modkit::contracts::SystemCapability;
 use modkit::{Module, ModuleCtx, RestApiCapability};
+use modkit_gts::{all_inventory_instances, all_inventory_schemas};
 use tracing::{debug, info};
-use types_registry_sdk::TypesRegistryClient;
+use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
 use crate::config::TypesRegistryConfig;
 use crate::domain::local_client::TypesRegistryLocalClient;
@@ -23,11 +24,21 @@ use crate::infra::InMemoryGtsRepository;
 /// - `system` — Core infrastructure module, initialized early in startup
 /// - `rest` — Exposes REST API endpoints
 ///
-/// ## Note
+/// ## Link-time inventory seeding
 ///
-/// Core GTS types (like `BaseModkitPluginV1`) are now registered by the
-/// `types` module (`modules/system/types`), not here. This maintains proper
-/// separation of concerns and avoids circular dependencies.
+/// At startup, this module seeds its own registry with every GTS schema
+/// and well-known instance submitted to the process-wide `modkit-gts`
+/// inventory — the `InventorySchema` / `InventoryInstance` collectors
+/// populated by `#[gts_schema]` / `gts_instance!` from any linked crate.
+/// The seeding happens via the internal `TypesRegistryService::register`
+/// (no `ClientHub` round-trip) before the client is published, so
+/// downstream consumers always see the base types at first access.
+///
+/// `modkit-gts` is a content-agnostic aggregator: types-registry code
+/// never references specific type names — it simply calls
+/// `all_inventory_schemas()` / `all_inventory_instances()`. New entries
+/// are picked up automatically as soon as a contributing crate is in
+/// the dependency graph.
 #[modkit::module(
     name = "types-registry",
     capabilities = [system, rest]
@@ -56,6 +67,27 @@ impl Module for TypesRegistryModule {
         let gts_config = cfg.to_gts_config();
         let repo = Arc::new(InMemoryGtsRepository::new(gts_config));
         let service = Arc::new(TypesRegistryService::new(repo, cfg));
+
+        // Seed the process-wide modkit-gts inventory (auto-discovered via
+        // `inventory` at link time). Content-agnostic: types-registry never
+        // names specific types — it calls aggregators. Runs before the
+        // client is published so downstream consumers always see the base
+        // types on first access.
+        let inventory_schemas = all_inventory_schemas()
+            .map_err(|e| anyhow::anyhow!("Failed to collect GTS schemas: {e}"))?;
+        let inventory_instances = all_inventory_instances()
+            .map_err(|e| anyhow::anyhow!("Failed to collect GTS instances: {e}"))?;
+        let schema_count = inventory_schemas.len();
+        let instance_count = inventory_instances.len();
+        let mut inventory_entries = inventory_schemas;
+        inventory_entries.extend(inventory_instances);
+        debug!(
+            schema_count,
+            instance_count, "Seeding GTS inventory into types-registry"
+        );
+        let seed_results = service.register(inventory_entries);
+        RegisterResult::ensure_all_ok(&seed_results)
+            .map_err(|e| anyhow::anyhow!("Failed to register GTS inventory: {e}"))?;
 
         self.service
             .set(service.clone())

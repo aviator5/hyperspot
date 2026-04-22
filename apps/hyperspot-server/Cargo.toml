@@ -35,7 +35,6 @@ api_gateway = { package = "cf-api-gateway", path = "../../modules/system/api-gat
 api_egress = { package = "cf-oagw", path = "../../modules/system/oagw/oagw" }
 grpc_hub = { package = "cf-grpc-hub", path = "../../modules/system/grpc-hub" }
 module_orchestrator = { package = "cf-module-orchestrator", path = "../../modules/system/module-orchestrator" }
-types = { path = "../../modules/system/types" }
 types_registry = { package = "cf-types-registry", path = "../../modules/system/types-registry/types-registry" }
 tenant-resolver = { package = "cf-tenant-resolver", path = "../../modules/system/tenant-resolver/tenant-resolver" }
 authn-resolver = { package = "cf-authn-resolver", path = "../../modules/system/authn-resolver/authn-resolver" }

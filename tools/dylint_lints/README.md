@@ -300,9 +300,9 @@ Where each segment = vendor.org.package.type.version
 
 **Examples:**
 ```text
-gts.x.core.modkit.plugin.v1~                              # Schema (type definition)
-gts.x.core.modkit.plugin.v1~vendor.pkg.module.plugin.v1~  # Instance (chained)
-gts.hx.core.errors.err.v1~hx.odata.errors.invalid.v1      # Error code
+gts.cf.modkit.plugins.plugin.v1~                             # Schema (type definition)
+gts.cf.modkit.plugins.plugin.v1~vendor.pkg.module.plugin.v1  # Instance (chained)
+gts.hx.core.errors.err.v1~hx.odata.errors.invalid.v1         # Error code
 ```
 
 **Validation Rules:**

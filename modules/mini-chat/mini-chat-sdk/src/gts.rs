@@ -1,5 +1,5 @@
-use gts_macros::struct_to_gts_schema;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
+use modkit_gts::gts_schema;
 
 /// GTS type definition for mini-chat policy plugin instances.
 ///
@@ -10,12 +10,11 @@ use modkit::gts::BaseModkitPluginV1;
 /// # Instance ID Format
 ///
 /// ```text
-/// gts.x.core.modkit.plugin.v1~<vendor>.<package>.mini_chat_model_policy.plugin.v1~
+/// gts.cf.modkit.plugins.plugin.v1~<vendor>.<package>.mini_chat_model_policy.plugin.v1~
 /// ```
-#[struct_to_gts_schema(
-    dir_path = "schemas",
-    base = BaseModkitPluginV1,
-    schema_id = "gts.x.core.modkit.plugin.v1~x.core.mini_chat_model_policy.plugin.v1~",
+#[gts_schema(
+    base = PluginV1,
+    schema_id = "gts.cf.modkit.plugins.plugin.v1~cf.core.mini_chat_model_policy.plugin.v1~",
     description = "Mini-Chat Policy plugin specification",
     properties = ""
 )]
@@ -26,12 +25,11 @@ pub struct MiniChatModelPolicyPluginSpecV1;
 /// # Instance ID Format
 ///
 /// ```text
-/// gts.x.core.modkit.plugin.v1~<vendor>.<package>.mini_chat_audit.plugin.v1~
+/// gts.cf.modkit.plugins.plugin.v1~<vendor>.<package>.mini_chat_audit.plugin.v1~
 /// ```
-#[struct_to_gts_schema(
-    dir_path = "schemas",
-    base = BaseModkitPluginV1,
-    schema_id = "gts.x.core.modkit.plugin.v1~x.core.mini_chat_audit.plugin.v1~",
+#[gts_schema(
+    base = PluginV1,
+    schema_id = "gts.cf.modkit.plugins.plugin.v1~cf.core.mini_chat_audit.plugin.v1~",
     description = "Mini-Chat Audit plugin specification",
     properties = ""
 )]

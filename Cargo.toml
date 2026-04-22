@@ -34,6 +34,8 @@ members = [
     "libs/modkit-auth",
     "libs/modkit-canonical-errors",
     "libs/modkit-canonical-errors-macro",
+    "libs/modkit-gts",
+    "libs/modkit-gts-macro",
     "libs/modkit-http",
     "libs/modkit-sdk",
     "libs/modkit-odata-macros",
@@ -66,8 +68,6 @@ members = [
     "examples/oop-modules/calculator/calculator",
     "modules/system/types-registry/types-registry-sdk",
     "modules/system/types-registry/types-registry",
-    "modules/system/types-sdk",
-    "modules/system/types",
     "modules/simple-user-settings/simple-user-settings-sdk",
     "modules/simple-user-settings/simple-user-settings",
     "modules/system/tenant-resolver/tenant-resolver-sdk",
@@ -222,6 +222,8 @@ modkit-http = { package = "cf-modkit-http", version = "0.6.3", path = "libs/modk
 modkit-auth = { package = "cf-modkit-auth", version = "0.6.3", path = "libs/modkit-auth" }
 modkit-canonical-errors = { package = "cf-modkit-canonical-errors", version = "0.7.0", path = "libs/modkit-canonical-errors" }
 modkit-canonical-errors-macro = { package = "cf-modkit-canonical-errors-macro", version = "0.6.1", path = "libs/modkit-canonical-errors-macro" }
+modkit-gts = { package = "cf-modkit-gts", version = "0.1.0", path = "libs/modkit-gts" }
+modkit-gts-macro = { package = "cf-modkit-gts-macro", version = "0.1.0", path = "libs/modkit-gts-macro" }
 modkit-db = { package = "cf-modkit-db", version = "0.7.2", path = "libs/modkit-db" }
 modkit-db-macros = { package = "cf-modkit-db-macros", version = "0.6.2", path = "libs/modkit-db-macros" }
 modkit-errors = { package = "cf-modkit-errors", version = "0.7.0", path = "libs/modkit-errors" }
@@ -237,6 +239,9 @@ modkit-utils = { package = "cf-modkit-utils", version = "0.6.3", path = "libs/mo
 
 cf-system-sdks = { version = "0.1.34", path = "libs/system-sdks" }
 cf-system-sdk-directory = { version = "0.1.34", path = "libs/system-sdks/sdks/directory" }
+
+# system modules
+types-registry = { package = "cf-types-registry", version = "0.1.18", path = "modules/system/types-registry/types-registry" }
 
 # system modules SDKs
 types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.1.5", path = "modules/system/types-registry/types-registry-sdk" }
@@ -439,6 +444,7 @@ jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc
 # Configuration management
 figment = { version = "0.10", features = ["yaml", "env"] }
 inventory = "0.3"
+const_format = "0.2"
 
 # File system utilities
 tempfile = "3"

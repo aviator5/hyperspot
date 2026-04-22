@@ -3,11 +3,10 @@
 use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
-use credstore_sdk::{CredStoreClientV1, CredStorePluginSpecV1};
+use credstore_sdk::CredStoreClientV1;
 use modkit::contracts::SystemCapability;
 use modkit::{Module, ModuleCtx};
 use tracing::info;
-use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
 use crate::config::CredStoreConfig;
 use crate::domain::{CredStoreLocalClient, Service};
@@ -15,10 +14,13 @@ use crate::domain::{CredStoreLocalClient, Service};
 /// `CredStore` gateway module.
 ///
 /// This module:
-/// 1. Registers the `CredStorePluginSpecV1` schema in types-registry
-/// 2. Discovers plugin instances via types-registry (lazy, first-use)
-/// 3. Routes secret operations through the selected plugin
-/// 4. Registers `Arc<dyn CredStoreClientV1>` in `ClientHub` for consumers
+/// 1. Discovers plugin instances via types-registry (lazy, first-use)
+/// 2. Routes secret operations through the selected plugin
+/// 3. Registers `Arc<dyn CredStoreClientV1>` in `ClientHub` for consumers
+///
+/// The `CredStorePluginSpecV1` schema itself reaches `types-registry`
+/// automatically via the `modkit-gts` link-time inventory — no per-init
+/// registration is needed.
 #[modkit::module(
     name = "credstore",
     deps = ["types-registry"],
@@ -43,17 +45,6 @@ impl Module for CredStoreModule {
         let cfg: CredStoreConfig = ctx.config_or_default()?;
         tracing::Span::current().record("vendor", cfg.vendor.as_str());
         info!(vendor = %cfg.vendor);
-
-        // Register plugin schema in types-registry
-        let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let schema_str = CredStorePluginSpecV1::gts_schema_with_refs_as_string();
-        let schema_json: serde_json::Value = serde_json::from_str(&schema_str)?;
-        let results = registry.register(vec![schema_json]).await?;
-        RegisterResult::ensure_all_ok(&results)?;
-        info!(
-            schema_id = %CredStorePluginSpecV1::gts_schema_id(),
-            "Registered CredStore plugin schema in types-registry"
-        );
 
         // Create domain service
         let hub = ctx.client_hub();

@@ -1,7 +1,7 @@
 // Created: 2026-04-16 by Constructor Tech
 //! GTS schema definitions for the Resource Group type system.
 
-use gts_macros::struct_to_gts_schema;
+use modkit_gts::gts_schema;
 
 /// GTS base type schema for Resource Group types.
 ///
@@ -33,9 +33,7 @@ use gts_macros::struct_to_gts_schema;
 /// ```text
 /// gts.cf.core.rg.type.v1~
 /// ```
-#[struct_to_gts_schema(
-    dir_path = "schemas",
-    base = true,
+#[gts_schema(
     schema_id = "gts.cf.core.rg.type.v1~",
     description = "Resource Group base type — defines placement and tenant scope traits",
     properties = "id,can_be_root,allowed_parent_types,allowed_membership_types"

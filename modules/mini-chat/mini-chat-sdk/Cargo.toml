@@ -30,5 +30,6 @@ schemars = { workspace = true }
 gts = { workspace = true }
 gts-macros = { workspace = true }
 modkit = { workspace = true }
+modkit-gts = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

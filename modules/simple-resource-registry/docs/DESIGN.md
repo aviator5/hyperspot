@@ -423,7 +423,7 @@ The storage plugin system follows the standard ModKit plugin pattern:
 Plugin discovery uses the standard pattern:
 
 ```
-GTS plugin instance ID: gts.x.core.modkit.plugin.v1~x.cf.simple_resource_registry.plugin.v1~<vendor>.<plugin_name>._.plugin.v1
+GTS plugin instance ID: gts.cf.modkit.plugins.plugin.v1~cf.core.simple_resource_registry.plugin.v1~<vendor>.<plugin_name>._.plugin.v1
 ```
 
 **Plugin API Trait** (defined in SDK crate):

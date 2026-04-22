@@ -1240,6 +1240,7 @@ version = "0.3.10"
 dependencies = [
  "async-trait",
  "cf-modkit",
+ "cf-modkit-gts",
  "cf-modkit-security",
  "gts",
  "gts-macros",
@@ -1277,6 +1278,7 @@ version = "0.3.0"
 dependencies = [
  "async-trait",
  "cf-modkit",
+ "cf-modkit-gts",
  "cf-modkit-security",
  "gts",
  "gts-macros",
@@ -1317,6 +1319,7 @@ version = "0.1.18"
 dependencies = [
  "async-trait",
  "cf-modkit",
+ "cf-modkit-gts",
  "cf-modkit-security",
  "cf-tenant-resolver-sdk",
  "gts",
@@ -1399,11 +1402,13 @@ dependencies = [
  "cf-modkit",
  "cf-modkit-db",
  "cf-modkit-db-macros",
+ "cf-modkit-gts",
  "cf-modkit-macros",
  "cf-modkit-odata",
  "cf-modkit-security",
  "cf-modkit-utils",
  "cf-oagw-sdk",
+ "cf-types-registry",
  "cf-types-registry-sdk",
  "chrono",
  "futures",
@@ -1440,6 +1445,7 @@ version = "0.10.0"
 dependencies = [
  "async-trait",
  "cf-modkit",
+ "cf-modkit-gts",
  "gts",
  "gts-macros",
  "schemars 1.2.1",
@@ -1463,6 +1469,7 @@ dependencies = [
  "axum",
  "cf-modkit-db",
  "cf-modkit-errors",
+ "cf-modkit-gts",
  "cf-modkit-macros",
  "cf-modkit-odata",
  "cf-modkit-sdk",
@@ -1512,7 +1519,6 @@ dependencies = [
  "urlencoding",
  "utoipa",
  "uuid",
- "zip 2.4.2",
 ]
 
 [[package]]
@@ -1641,6 +1647,31 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "cf-modkit-gts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cf-modkit-gts-macro",
+ "const_format",
+ "gts",
+ "gts-macros",
+ "inventory",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cf-modkit-gts-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
  "syn 2.0.117",
 ]
 
@@ -1986,6 +2017,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cf-modkit",
+ "cf-modkit-gts",
  "cf-modkit-odata",
  "cf-modkit-odata-macros",
  "cf-modkit-sdk",
@@ -2217,6 +2249,7 @@ version = "0.3.0"
 dependencies = [
  "async-trait",
  "cf-modkit",
+ "cf-modkit-gts",
  "cf-modkit-odata",
  "cf-modkit-security",
  "gts",
@@ -2236,6 +2269,7 @@ dependencies = [
  "async-trait",
  "axum",
  "cf-modkit",
+ "cf-modkit-gts",
  "cf-modkit-macros",
  "cf-types-registry-sdk",
  "gts",
@@ -2492,6 +2526,27 @@ dependencies = [
  "getrandom 0.2.17",
  "once_cell",
  "tiny-keccak",
+]
+
+[[package]]
+name = "const_format"
+version = "0.2.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4481a617ad9a412be3b97c5d403fef8ed023103368908b9c50af598ff467cc1e"
+dependencies = [
+ "const_format_proc_macros",
+ "konst",
+]
+
+[[package]]
+name = "const_format_proc_macros"
+version = "0.2.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d57c2eccfb16dbac1f4e61e206105db5820c9d26c3c472bc17c774259ef7744"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -4064,7 +4119,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "types",
  "users-info",
 ]
 
@@ -4502,6 +4556,21 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "konst"
+version = "0.2.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "128133ed7824fcd73d6e7b17957c5eb7bacb885649bd8c69708b2331a10bcefb"
+dependencies = [
+ "konst_macro_rules",
+]
+
+[[package]]
+name = "konst_macro_rules"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
 name = "kube"
@@ -5898,7 +5967,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91bb5030596a3d442c0866ac68afe29c14ba558e77c726dcdf7016b0dbb359d9"
 dependencies = [
  "arrayvec",
- "hashbrown 0.12.3",
+ "hashbrown 0.16.1",
  "parking_lot",
  "rand 0.8.5",
 ]
@@ -6242,7 +6311,7 @@ version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343d3bd7056eda839b03204e68deff7d1b13aba7af2b2fd16890697274262ee7"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -8764,34 +8833,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
-name = "types"
-version = "0.6.1"
-dependencies = [
- "anyhow",
- "arc-swap",
- "async-trait",
- "cf-modkit",
- "cf-modkit-macros",
- "cf-modkit-security",
- "cf-types-registry-sdk",
- "inventory",
- "tracing",
- "types-sdk",
-]
-
-[[package]]
-name = "types-sdk"
-version = "0.6.2"
-dependencies = [
- "async-trait",
- "cf-modkit-odata",
- "cf-modkit-security",
- "thiserror 2.0.18",
- "time",
- "uuid",
-]
-
-[[package]]
 name = "ucd-trie"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9027,7 +9068,6 @@ dependencies = [
  "clap",
  "tokio",
  "tracing",
- "types",
  "users-info",
 ]
 

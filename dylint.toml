@@ -52,8 +52,6 @@ excluded_paths = [
     "modules/system/module-orchestrator",
     "modules/system/nodes-registry",
     "modules/system/oagw",
-    "modules/system/types",
     "modules/system/types-registry",
-    "modules/system/types-sdk",
     "modules/system/usage-collector",
 ]
