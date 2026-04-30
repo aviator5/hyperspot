@@ -9,6 +9,123 @@ release-plz updates this file in the Release PR.
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/cyberfabric/cyberfabric-core/releases/tag/cf-tr-authz-plugin-v0.1.0) - 2026-04-30
+
+### Added
+
+- *(authz, tenant-resolver)* add AuthZ + TR plugin crates [2/6] (by @ffedoroff)
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- *(resource-group)* integration tests for service layer [5/6] (by @ffedoroff)
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+* @ffedoroff
+
+## [0.1.18](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-tr-plugin-v0.1.17...cf-static-tr-plugin-v0.1.18) - 2026-04-30
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+
+## [0.1.15](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-credstore-plugin-v0.1.14...cf-static-credstore-plugin-v0.1.15) - 2026-04-30
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+
+## [0.1.17](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-authz-plugin-v0.1.16...cf-static-authz-plugin-v0.1.17) - 2026-04-30
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+
+## [0.2.8](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-authn-plugin-v0.2.7...cf-static-authn-plugin-v0.2.8) - 2026-04-30
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+
+## [0.1.19](https://github.com/cyberfabric/cyberfabric-core/compare/cf-single-tenant-tr-plugin-v0.1.18...cf-single-tenant-tr-plugin-v0.1.19) - 2026-04-30
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+
+## [0.1.0](https://github.com/cyberfabric/cyberfabric-core/releases/tag/cf-rg-tr-plugin-v0.1.0) - 2026-04-30
+
+### Added
+
+- *(resource-group, rg-tr-plugin)* batch tenant reads via list_groups (by @ffedoroff)
+- *(authz, tenant-resolver)* add AuthZ + TR plugin crates [2/6] (by @ffedoroff)
+
+### Other
+
+- release (by @github-actions[bot]) - #1732
+- *(resource-group)* integration tests for service layer [5/6] (by @ffedoroff)
+- release (by @github-actions[bot]) - #1600
+
+### Contributors
+
+* @github-actions[bot]
+* @ffedoroff
+
+## [0.6.7](https://github.com/cyberfabric/cyberfabric-core/compare/cf-modkit-v0.6.6...cf-modkit-v0.6.7) - 2026-04-30
+
+### Other
+
+- Merge pull request #1738 from asmith987/refactor/migrate-to-canonical-errors-pt1 (by @Artifizer) - #1738
+- Merge pull request #1732 from cyberfabric/release-plz-2026-04-28T09-32-57Z (by @Artifizer) - #1732
+
+### Contributors
+
+* @Artifizer
+
+## [0.7.1](https://github.com/cyberfabric/cyberfabric-core/compare/cf-modkit-canonical-errors-v0.7.0...cf-modkit-canonical-errors-v0.7.1) - 2026-04-30
+
+### Added
+
+- seed initial canonical-errors migration
+
+### Other
+
+- release (by @github-actions[bot]) - #1600
+- bump the Rust version to 1.95.0 (by @fluiderson) - #1586
+
+### Contributors
+
+* @github-actions[bot]
+* @fluiderson
+
 ## [0.7.1](https://github.com/cyberfabric/cyberfabric-core/compare/cf-modkit-canonical-errors-v0.7.0...cf-modkit-canonical-errors-v0.7.1) - 2026-04-30
 
 ### Other
