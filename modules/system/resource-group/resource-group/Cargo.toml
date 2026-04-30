@@ -2,11 +2,14 @@
 [package]
 name = "cf-resource-group"
 version = "0.1.0"
-publish = false
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Resource Group module: hierarchical resource group management with GTS type system"
+repository.workspace = true
+readme = "README.md"
+keywords = ["cyberfabric", "cyberfabric-system", "resource-group"]
+categories = ["web-programming"]
 
 [lints]
 workspace = true
@@ -17,7 +20,7 @@ odata = []
 
 [dependencies]
 # SDK - public API, models, and errors
-resource-group-sdk = { package = "cf-resource-group-sdk", path = "../resource-group-sdk", features = ["odata"] }
+resource-group-sdk = { package = "cf-resource-group-sdk", version = "0.1.0", path = "../resource-group-sdk", features = ["odata"] }
 
 # Core dependencies
 anyhow = { workspace = true }

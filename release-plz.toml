@@ -205,6 +205,16 @@ changelog_update = false
 git_release_enable = false
 
 [[package]]
+name = "cf-resource-group-sdk"
+changelog_update = false
+git_release_enable = false
+
+[[package]]
+name = "cf-resource-group"
+changelog_update = false
+git_release_enable = false
+
+[[package]]
 name = "cf-tenant-resolver-sdk"
 changelog_update = false
 git_release_enable = false
