@@ -546,8 +546,8 @@ Store and retrieve files and media for LLM Gateway (input-media assets, generate
 - [ ] p3 - encryption, retention, and lifecycle policies
 - [ ] p4 - compliance exports and legal hold support
 #### More details
-- [PRD](../modules/file-storage/docs/PRD.md)
-- [Design](../modules/file-storage/docs/DESIGN.md)
+- TODO: PRD link
+- TODO: Design link
 - [API](../modules/file-storage/README.md)
 - TODO: SDK link
 
