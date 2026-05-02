@@ -32,61 +32,71 @@ All interaction between modules and between modules and their plugins happens st
 ## Modules Categories
 
 All modules can be divided into several categories:
-- **Business Logic Modules** - modules implementing main SaaS service logic that can be build on top of HyperSpot
-- **Shared Modules** - these are the building blocks for supporting functionality for SaaS services development, including Generative AI and Shared Control Plane modules
+- **API Ingress** - the public ingress layer for external traffic; currently represented by API gateway
+- **Business Logic Modules** - modules implementing the main SaaS service logic built on top of HyperSpot
+- **Gen AI Modules** - foundational generative AI capabilities such as chat, model management, agents, memory, search, crawling, scheduling, and MCP integration
+- **Serverless** - functions/workflows, runtimes, durable state, settings, and cluster coordination modules
+- **Core Functionality** - shared platform capabilities such as audit, usage collection, jobs, registries, file handling, quotas, notifications, analytics, and approvals
 - **Core Platform Integration Modules** - interfaces for other modules and adapters for real Core Platform services (see below)
-- **Core Platform Services** - external services that implement Core Platform functionality, such as tenancy management, access policies, licensing, etc.
+- **Core Platform Services** - external services that implement Core Platform functionality, such as tenancy management, access policies, licensing, credentials, and outbound egress control
 
 The **Core Platform Integration Modules** layer abstracts integration with core platform services, such as IdP, policy management, licensing, and credentials management that is out of scope of HyperSpot. This keeps HyperSpot reusable: it can run as a standalone platform, or it can integrate into an existing enterprise platform by wiring adapters to the platform’s services.
 
 ## Dependency rules
 - Authentication/authorization: all **external HTTP** traffic is enforced by `api-gateway` middleware, and secure ORM access is scoped by `SecurityContext`. In-process calls must propagate `SecurityContext` and use SDK/clients; bypassing middlewares is not permitted for gateway paths.
-- Generative AI Modules MAY depend on Shared Control Plane Modules
-- Generative AI Modules MUST NOT depend on Core Platform Services directly
-- Control Plane Modules MUST NOT depend on GenAI Modules
+- Business Logic Modules MAY depend on Gen AI Modules, Serverless modules, and Core Functionality modules through stable contracts
+- Gen AI Modules MAY depend on Serverless modules and Core Functionality modules
 - Only integration/adapters talk to external components
 - No “cross-category sideways” deps except through contracts.
 - No circular dependencies allowed
 
-## API Gateway Modules
+## API Ingress
 
 API Gateway is the single public entry point into HyperSpot for all external clients. It terminates protocols, exposes versioned REST APIs with OpenAPI documentation, and applies a consistent middleware stack for authentication, authorization hooks, rate limiting, validation, and observability. API Gateway is responsible for request shaping and policy enforcement, but contains no business logic.
 
 Once a request is validated, it is routed to the appropriate module via stable contracts. All domain decisions and state changes occur downstream, allowing gateway to remain simple, auditable, and scalable while internal modules evolve independently.
 
 Every external request MUST pass through:
-API Gateway → Auth Resolver → Policy Engine → License Resolver → Execution Module → Tenancy Check → Audit/Usage → Response
+API Gateway → Auth Resolver → Policy Manager → License Resolver → Execution Module → Tenant Resolver → Audit / Usage Collector → Response
 
-### API gateway
+### API Gateway
 #### Responsibility
 Provide the single public API entrypoint for HyperSpot, including request routing, auth hooks, versioned REST surface, and OpenAPI publication.
 #### High Level Scenarios
-- [ ] p1 - route versioned HTTP APIs to modules and expose OpenAPI
-- [ ] p1 - enforce request limits, timeouts, and basic middleware
-- [ ] p2 - unified authn/z + license checks at gateway
+- [x] p1 - route versioned HTTP APIs to modules and expose OpenAPI
+- [x] p1 - enforce request limits, timeouts, and basic middleware
+- [x] p2 - unified authn/z + license checks at gateway
 - [ ] p3 - streaming endpoints (SSE) for long-running operations
 - [ ] p4 - multi-region routing and traffic shaping policies
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
+- [API](../modules/system/api-gateway/README.md)
 - TODO: SDK link
 
-## Generative AI Modules
+## Business Logic Modules
 
-**Generative AI Modules** provide the core AI capabilities of HyperSpot and represent the primary value layer for building AI-powered SaaS applications. These modules encapsulate domain-specific GenAI functionality such as conversational orchestration, model inference, retrieval-augmented generation (RAG), agent execution, prompt management, and tool invocation. They are responsible for transforming user intent and contextual data into AI-generated outputs while enforcing platform-level constraints such as tenancy, security, policy, and usage limits.
+**Business Logic Modules** are the primary user-facing SaaS capabilities built on top of HyperSpot. They compose Gen AI Modules, Serverless modules, Core Functionality modules, and Core Platform integrations into domain-specific product workflows while keeping product semantics isolated from shared platform infrastructure.
 
-These modules are designed to be highly composable and extensible: they rely on shared platform services (e.g., settings, usage tracking, audit) and integrate with external AI providers or local runtimes through well-defined gateways. Generative AI Modules do not directly manage enterprise governance concerns (licensing, identity, credentials); instead, they delegate those responsibilities to control plane modules and core platform adapters to remain focused on AI behavior and orchestration logic.
+The architecture diagram uses placeholder business modules `A-E` to illustrate that multiple independent product domains can coexist on the same platform contracts. Each business module owns its domain models, user journeys, and business rules, while shared platform modules provide reusable execution, AI, governance, and integration capabilities.
+
+## Gen AI Modules
+
+**Gen AI Modules** provide the core AI capabilities of CyberFabric and represent the primary value layer for building AI-powered SaaS applications. These modules encapsulate domain-specific GenAI functionality such as conversational orchestration, model inference, retrieval-augmented generation (RAG), agent execution, prompt management, and tool invocation. They are responsible for transforming user intent and contextual data into AI-generated outputs while enforcing platform-level constraints such as tenancy, security, policy, and usage limits.
+
+These modules are designed to be highly composable and extensible: they rely on Serverless and Core Functionality modules (e.g., settings, jobs, usage collection, audit) and integrate with external AI providers or local runtimes through well-defined gateways. Gen AI Modules do not directly manage enterprise governance concerns (licensing, identity, credentials); instead, they delegate those responsibilities to shared platform modules and core platform adapters to remain focused on AI behavior and orchestration logic.
 
 ### Execution flow overview
 1. Chat Engine / API-triggered entry
-2. Configuration & assets (Settings, Prompts, Models)
-3. Retrieval (RAG, Search, Data Connectors)
-4. Execution (LLM Gateway, MCP, Tools)
-5. Orchestration (Agents, Agent Runtime)
-6. Persistence & feedback (Memory, Usage, Audit)
+2. Configuration & assets (Settings Service, Prompts Registry, Models Registry)
+3. Retrieval & discovery (Web Search Gateway, URL Crawler, Local Search Index)
+4. Execution & tools (LLM Gateway, MCP Registry, Model Provider Controller)
+5. Agent orchestration (AI Agents Registry, Serverless Gateway, Serverless Runtimes)
+6. Persistence & feedback (Agent Memory, Usage Collector, Audit)
 
-### Chat engine
+The principal diagram visualizes the primary Gen AI modules. `Prompts Registry`, `Model Runtime Controller`, and `Local Search Index` are supporting modules kept in this document even though they are omitted from the top-level diagram for readability.
+
+### Chat Engine
 #### Responsibility
 Provide conversational capabilities (chat messages, conversation history) as a core GenAI building block for SaaS applications.
 #### High Level Scenarios
@@ -97,12 +107,12 @@ Provide conversational capabilities (chat messages, conversation history) as a c
 - [ ] p4 - conversation evaluation and quality metrics integration
 - [ ] p5 - enterprise-grade auditability and policy enforcement across conversations
 #### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
+- [PRD](../modules/chat-engine/docs/PRD.md)
+- [Design](../modules/chat-engine/docs/DESIGN.md)
+- [API](../modules/chat-engine/api/README.md)
 - TODO: SDK link
 
-### Model Registry
+### Models Registry
 #### Responsibility
 Maintain a catalog of available models with tenant-level availability and approval workflow.
 #### High Level Scenarios
@@ -115,11 +125,11 @@ Maintain a catalog of available models with tenant-level availability and approv
 - [ ] p4 - model lifecycle tracking (deprecated, archived)
 #### More details
 - [PRD](../modules/model-registry/docs/PRD.md)
-- TODO: Scenarios link
-- TODO: API link
+- [Design](../modules/model-registry/docs/DESIGN.md)
+- [API](../modules/model-registry/README.md)
 - TODO: SDK link
 
-### Prompts registry
+### Prompts Registry
 #### Responsibility
 Manage versioned prompt assets (system prompts, templates, chains) with governance and rollout controls.
 #### High Level Scenarios
@@ -129,8 +139,55 @@ Manage versioned prompt assets (system prompts, templates, chains) with governan
 - [ ] p4 - A/B rollout and progressive delivery of prompt versions
 - [ ] p5 - safety, policy, and compliance validation on prompt publish
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
+- TODO: API link
+- TODO: SDK link
+
+### AI Agents Registry
+#### Responsibility
+Maintain agent definitions, skills, tool bindings, and orchestration policies as reusable AI application assets.
+#### High Level Scenarios
+- [ ] p1 - create agents with basic tool invocation
+- [ ] p2 - multi-step planning and tool chaining
+- [ ] p3 - policy-aware tool access and tenant scoping
+- [ ] p4 - agent evaluation, monitoring, and safety guardrails
+- [ ] p5 - enterprise-grade agent governance and lifecycle management
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### Web Search Gateway
+#### Responsibility
+Provide a unified abstraction over web search providers, with consistent response shapes for downstream retrieval and agents.
+#### High Level Scenarios
+- [ ] p1 - execute web search queries and return normalized results
+- [ ] p2 - search traffic interception and hooks for custom policies
+- [ ] p2 - provider plugins with per-tenant configuration
+- [ ] p3 - pluggable search providers
+- [ ] p3 - safe browsing policies and content filtering
+- [ ] p4 - query rewriting and enrichment via LLM Gateway
+- [ ] p5 - compliance and audit trails for outbound searches
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### MCP Registry
+#### Responsibility
+Register and expose MCP-compatible tools and services as first-class capabilities for agents and automation.
+#### High Level Scenarios
+- [ ] p1 - connect to MCP servers and register/list available tools
+- [ ] p2 - enforce auth and tenant scoping on MCP tool calls
+- [ ] p3 - intercept or transform MCP traffic for policy and observability
+- [ ] p4 - tool discovery, caching, and capability matching
+- [ ] p5 - governed tool marketplaces and tenant allowlists
+#### More details
+- TODO: PRD link
+- TODO: Design link
 - TODO: API link
 - TODO: SDK link
 
@@ -144,7 +201,7 @@ Provide unified access to multiple LLM providers with multimodal support, tool c
 - [ ] p1 - multimodal input/output (vision, audio, video, documents)
 - [ ] p1 - tool/function calling with schema resolution
 - [ ] p1 - structured output with schema validation
-- [ ] p1 - model discovery (delegation to Model Registry)
+- [ ] p1 - model discovery (delegation to Models Registry)
 - [ ] p2 - provider fallback on failure
 - [ ] p2 - retry with exponential backoff
 - [ ] p2 - request/response interceptors (hook plugins)
@@ -158,102 +215,322 @@ Provide unified access to multiple LLM providers with multimodal support, tool c
 - [ ] p4 - audit events (audit plugin)
 #### More details
 - [PRD](../modules/llm-gateway/docs/PRD.md)
-- TODO: Scenarios link
+- [Design](../modules/llm-gateway/docs/DESIGN.md)
+- [API](../modules/llm-gateway/README.md)
+- [SDK](../modules/llm-gateway/llm-gateway-sdk/)
+
+### Model Provider Controller
+#### Responsibility
+Defines own provider agnostic APIs for working with models.
+#### High level scenarios
+- [ ] p1 - model browsing
+- [ ] p1 - inference API
+- [ ] p1 - embedding API
+- [ ] p1 - responses API
+- [ ] p2 - model provider capabilities detection
+#### More details
+- TODO: PRD link
+- TODO: Design link
 - TODO: API link
 - TODO: SDK link
 
-### Local LLM management gateway
+### Model Runtime Controller
 #### Responsibility
-Manage local model lifecycle (download, storage, loading, and runtime wiring) to support on-device/on-prem deployments.
+Manage model provider integrations and local model lifecycle, including download, storage, loading, and runtime wiring.
 #### High Level Scenarios
 - [ ] p1 - download and store models via pluggable backends
 - [ ] p2 - manage model cache, versions, and disk quotas
 - [ ] p2 - traffic tunneling for distributed inference
-- [ ] p3 - start/stop local runtimes and expose endpoints to LLM gateway
+- [ ] p3 - start or stop local runtimes and expose endpoints to LLM Gateway
 - [ ] p4 - hardware-aware configuration (GPU/CPU, quantization profiles)
 - [ ] p5 - fleet management for distributed on-prem deployments
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### MCP gateway
+### Agent Memory
 #### Responsibility
-Integrate MCP-compatible tools and services as first-class capabilities for agents and automation.
+Persist and retrieve agent memory (short-term and long-term) to enable personalization, continuity, and automation.
 #### High Level Scenarios
-- [ ] p1 - connect to MCP servers and list available tools
-- [ ] p2 - enforce auth and tenant scoping on MCP tool calls
-- [ ] p3 - intercept/transform MCP traffic for policy and observability
-- [ ] p4 - tool discovery, caching, and capability matching
-- [ ] p5 - governed tool marketplaces and tenant allowlists
+- [ ] p1 - store and retrieve episodic memory entries
+- [ ] p1 - tenant isolation and proper access checks
+- [ ] p2 - vector or key-value backends and retrieval strategies
+- [ ] p3 - privacy controls and TTLs
+- [ ] p4 - memory governance and redaction workflows
+- [ ] p5 - enterprise portability and compliance exports
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### Web Search Gateway
+### URL Crawler
 #### Responsibility
-Provide a unified abstraction over web search providers, with consistent response shapes for downstream RAG/agents.
+Fetch and normalize remote web content for search, grounding, and knowledge-ingestion workflows.
 #### High Level Scenarios
-- [ ] p1 - execute web search queries and return normalized results
-- [ ] p2 - search traffic interception and hooks for custom policies
-- [ ] p2 - provider plugins with per-tenant configuration
-- [ ] p3 - pluggable search providers
-- [ ] p3 - safe browsing policies and content filtering
-- [ ] p4 - query rewriting and enrichment via LLM gateway
-- [ ] p5 - compliance and audit trails for outbound searches
+- [ ] p1 - fetch and normalize HTML pages and linked assets
+- [ ] p2 - respect robots.txt, per-host throttling, and crawl policies
+- [ ] p2 - extract metadata, canonical URLs, and content chunks
+- [ ] p3 - support incremental recrawls, change detection, and deduplication
+- [ ] p4 - support authenticated crawling with tenant-scoped credentials
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
+- TODO: API link
+- TODO: SDK link
+
+### Model Scheduler
+#### Responsibility
+Schedule model execution across providers and runtimes based on capability, budget, latency, and capacity.
+#### High Level Scenarios
+- [ ] p1 - select an eligible model endpoint for a request
+- [ ] p2 - queue and dispatch asynchronous model jobs
+- [ ] p3 - route by cost, latency, and capability policies
+- [ ] p4 - support capacity-aware failover and load balancing
+- [ ] p5 - apply placement policies for local, on-prem, and remote providers
+#### More details
+- TODO: PRD link
+- TODO: Design link
 - TODO: API link
 - TODO: SDK link
 
 ### Local Search Index
 #### Responsibility
-Provide fast local indexing and retrieval over ingested content for search and RAG, independent of external providers.
+Provide fast local indexing and retrieval over ingested content for search and grounding workflows, independent of external providers.
 #### High Level Scenarios
-- [ ] p1 - index documents and run keyword/vector queries
+- [ ] p1 - index documents and run keyword or vector queries
 - [ ] p1 - Qdrant provider support
 - [ ] p1 - multi-tenant isolation
 - [ ] p2 - hybrid search and relevance tuning
-- [ ] p2 - other pluggable index backends (e.g., Meilisearch)
+- [ ] p2 - other pluggable index backends (e.g. Meilisearch)
 - [ ] p3 - incremental updates and delete propagation
 - [ ] p4 - enterprise-scale sharding
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### RAG
+## Serverless
+
+**Serverless** modules provide functions/workflows execution, runtime management, durable state primitives, settings, and cross-instance coordination primitives. In the current target architecture this category includes Serverless Gateway, Serverless Runtimes, Settings Service, Durable Objects, and Cluster Plane.
+
+This layer is reusable by both Business Logic Modules and Gen AI Modules. It exposes stable contracts for function execution and runtime orchestration while delegating identity, licensing, credentials, quotas, and other governance concerns to Core Functionality and Core Platform Integration modules.
+
+### Serverless Gateway
 #### Responsibility
-Orchestrate retrieval-augmented generation: chunking strategies, retrieval, context assembly, and grounded generation.
+Provide workflow orchestration and serverless-style functions for automation, integrations, and agentic pipelines.
 #### High Level Scenarios
-- [ ] p1 - retrieve relevant chunks and assemble prompts
-- [ ] p1 - configurable chunking, ranking, and citation support
-- [ ] p2 - multi-store retrieval (local index + external connectors)
-- [ ] p3 - evaluation workflows for grounding, faithfulness, and latency
-- [ ] p4 - governed enterprise RAG with policies, audit, and per-tenant controls
+- [ ] p1 - define and execute workflows and basic functions
+- [ ] p2 - scheduled triggers and event-driven execution
+- [ ] p3 - integration with Durable Objects for durable execution
+- [ ] p4 - visual workflows
+- [ ] p5 - reusable workflow marketplaces
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### File Parser Gateway
+### Serverless Runtimes
 #### Responsibility
-Parse and extract structured content from user files for downstream indexing, RAG, and business workflows.
+Provide actual runtimes for function and workflow execution.
 #### High Level Scenarios
-- [ ] p1 - parse common document types (DOCX, PPTX, PDF, Markdown, HTML, text) and extract text/metadata
-- [ ] p2 - plugin parsers (embedded, Apache Tika, custom)
+- [ ] p1 - Starlark workflows and functions
+- [ ] p2 - Python workflows and functions
+- [ ] p3 - declarative workflows (serverless workflows)
+- [ ] p4 - per-runtime isolation and resource policies
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### Settings Service
+#### Responsibility
+Provide typed configuration and preferences at tenant/user scope, supporting feature flags and customization.
+#### High Level Scenarios
+- [ ] p1 - CRUD settings per tenant and per user
+- [ ] p1 - schema validation and versioning
+- [ ] p2 - settings inheritance rules
+- [ ] p3 - feature flags and rollout controls
+- [ ] p3 - events generation per setting creation/update/deletion
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### Durable Objects
+#### Responsibility
+Provide durable state primitives and generic CRUD storage for typed resources that do not warrant a dedicated module, using a fixed schema envelope (identity, ownership, timestamps) and a flexible JSON payload governed by GTS type definitions.
+#### High Level Scenarios
+- [ ] p1 - create, read, update, and soft-delete typed resources with tenant isolation and GTS type-based access control
+- [ ] p1 - OData $filter/$orderby and cursor-based pagination on schema fields
+- [ ] p1 - GTS type existence validation via Types Registry
+- [ ] p1 - pluggable storage backend (Relational Database plugin via SecureORM as default)
+- [ ] p1 - configurable soft-delete retention with background purge task
+- [ ] p2 - batch CRUD operations (POST /resources:batch, POST /resources:batch-get) per DNA BATCH.md
+- [ ] p2 - per-resource-type lifecycle notification events (created/updated/deleted) via Events Broker
+- [ ] p2 - per-resource-type audit events via Audit Module
+- [ ] p3 - alternative storage plugins (search engines, vendor-provided backends) with per-type routing
+- [ ] p4 - on-change events and serverless functions or workflows invocation
+- [ ] p4 - full-text search API with search-capable plugin support
+#### More details
+- [PRD](../modules/simple-resource-registry/docs/PRD.md)
+- [Design](../modules/simple-resource-registry/docs/DESIGN.md)
+- TODO: API link
+- TODO: SDK link
+
+### Cluster Plane
+#### Responsibility
+Provide platform-wide cross-instance coordination primitives with uniform semantics across backends, including distributed cache, leader election, distributed locks, and service discovery.
+#### High Level Scenarios
+- [ ] p1 - expose distributed cache with versioned values, TTLs, compare-and-swap operations, and reactive watch notifications
+- [ ] p1 - provide leader election and distributed locks for cross-instance coordination with bounded failover and TTL-based safety
+- [ ] p1 - provide service discovery with instance registration, serving intent, metadata filtering, and topology watch notifications
+- [ ] p2 - validate consumer capability requirements against operator-selected backends at startup and fail loudly on mismatches
+- [ ] p2 - support per-primitive backend routing with convenient cache-backed defaults for unbound primitives
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+## Core Functionality
+
+**Core Functionality** modules provide the cross-cutting platform capabilities required to run CyberFabric as a secure, observable, and operationally consistent system. They implement system-wide concerns such as notifications, approvals, analytics, auditability, usage collection, background job execution, eventing, node discovery, file handling, quotas, and type registration.
+
+Core Functionality modules provide reusable operational services that Business Logic, Gen AI, and Serverless modules consume through stable contracts, ensuring consistency, compliance, and operational correctness across the platform.
+
+### Emails Storage
+#### Responsibility
+Store and retrieve outbound or inbound email payloads, templates, attachments, and delivery metadata for notification and compliance workflows.
+#### High Level Scenarios
+- [ ] p1 - store email messages and attachments
+- [ ] p2 - track delivery status and message threading metadata
+- [ ] p3 - support retention, search, and compliance export for email records
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### Notifications Service
+#### Responsibility
+Deliver user and system notifications across channels such as email, in-app, webhooks, and push adapters.
+#### High Level Scenarios
+- [ ] p1 - create and deliver notifications to users and tenants
+- [ ] p2 - template-based multi-channel delivery rules
+- [ ] p3 - delivery status tracking, retries, and preference handling
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### Approvals
+#### Responsibility
+Manage approval requests, reviewers, decisions, and audit trails for governed platform and business workflows.
+#### High Level Scenarios
+- [ ] p1 - create approval requests and capture approve or reject decisions
+- [ ] p2 - support multi-step and role-based approval chains
+- [ ] p3 - enforce reminders, SLAs, and escalation rules
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### Jobs Manager
+#### Responsibility
+Run and coordinate background jobs (download/upload, benchmarks, parsing, indexing, workflows) with retries and scheduling.
+#### High Level Scenarios
+- [ ] p1 - enqueue and execute jobs with status tracking
+- [ ] p1 - jobs suspend/resume
+- [ ] p2 - retry policies, backoff, and dead-letter handling
+- [ ] p3 - scheduling and periodic jobs
+- [ ] p4 - distributed workers and horizontal scale
+- [ ] p5 - SLA management and priority queues per tenant
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- TODO: API link
+- TODO: SDK link
+
+### File Parser
+#### Responsibility
+Parse and extract structured content from user files for downstream indexing, search, and business workflows.
+#### High Level Scenarios
+- [x] p1 - parse common document types (DOCX, PPTX, PDF, Markdown, HTML, text) and extract text/metadata
+- [x] p2 - plugin parsers (embedded, Apache Tika, custom)
 - [ ] p3 - streaming parsing for large files
 - [ ] p4 - entity extraction and enrichment hooks
 - [ ] p5 - compliance controls and redaction pipelines
 #### More details
+- [PRD](../modules/file-parser/docs/PRD.md)
+- [Design](../modules/file-parser/docs/DESIGN.md)
+- [API](../modules/file-parser/README.md)
+- TODO: SDK link
+
+### Analytics
+#### Responsibility
+Provide metrics collection, aggregation, monitoring views, and operational analysis primitives.
+#### High Level Scenarios
+- [ ] p1 - collect metrics
+- [ ] p1 - metrics aggregates
+- [ ] p2 - custom filters and drilldowns
+- [ ] p3 - dashboards and trend analysis
+#### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
+- TODO: API link
+- TODO: SDK link
+
+### Nodes Registry
+#### Responsibility
+Maintain registry of CyberFabric nodes/deployments and their capabilities for discovery and operational management.
+#### High Level Scenarios
+- [x] p1 - register nodes and list node inventory
+- [ ] p2 - node health and heartbeat tracking
+- [ ] p3 - capability-aware routing and scheduling hints
+- [ ] p4 - multi-region topology awareness
+#### More details
+- TODO: PRD link
+- TODO: Design link
+- [API](../modules/system/nodes-registry/README.md)
+- [SDK](../modules/system/nodes-registry/nodes-registry-sdk/README.md)
+
+### Usage Collector
+#### Responsibility
+Measure platform usage (API calls, compute, storage) for quotas, billing, and internal capacity planning.
+#### High Level Scenarios
+- [ ] p1 - record usage events with tenant or resource attribution (push model)
+- [ ] p1 - comprehensive usage metrics API
+- [ ] p2 - pull model
+- [ ] p3 - aggregate reports and dashboards, data export
+- [ ] p4 - custom storages support (e.g. Clickhouse)
+#### More details
+- [PRD](../modules/system/usage-collector/docs/PRD.md)
+- [Design](../modules/system/usage-collector/docs/DESIGN.md)
+- TODO: API link
+- TODO: SDK link
+
+### Events Broker
+#### Responsibility
+Provide platform-wide event publishing and subscription for asynchronous workflows and loose coupling between modules.
+#### High Level Scenarios
+- [ ] p1 - publish and subscribe to typed events
+- [ ] p1 - integration with GTS and authz
+- [ ] p2 - support custom plugins for events persistency (per topic)
+- [ ] p2 - support in-memory filtering
+- [ ] p3 - provide delivery retries, dead-letter handling, and replay
+- [ ] p4 - enforce event-contract governance across modules
+#### More details
+- TODO: PRD link
+- TODO: Design link
 - TODO: API link
 - TODO: SDK link
 
@@ -269,107 +546,52 @@ Store and retrieve files and media for LLM Gateway (input-media assets, generate
 - [ ] p3 - encryption, retention, and lifecycle policies
 - [ ] p4 - compliance exports and legal hold support
 #### More details
-- [PRD](../modules/file-storage/docs/PRD.md)
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Data Access connectors
-#### Responsibility
-Connect to external data sources (DBs, SaaS APIs, file stores) to ingest and synchronize data for the platform.
-#### High Level Scenarios
-- [ ] p1 - define connector configs and run a basic pull/sync
-- [ ] p1 - secure credential usage via Credential Resolver adapter
-- [ ] p2 - incremental sync, change tracking, and scheduling hooks
-- [ ] p3 - connector health monitoring and retries/backoff
-- [ ] p4 - governed connector marketplace with tenant-scoped permissions
-#### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
+- [API](../modules/file-storage/README.md)
 - TODO: SDK link
 
-### AI Agents
+### Resource Groups
 #### Responsibility
-Provide the agents layer as a user-facing abstraction: agent definitions, tools, skills, and orchestration policies.
+Group related durable resources into lifecycle-linked collections for bulk access control, discovery, and operations.
 #### High Level Scenarios
-- [ ] p1 - create agents with basic tool invocation
-- [ ] p2 - multi-step planning and tool chaining
-- [ ] p3 - policy-aware tool access and tenant scoping
-- [ ] p4 - agent evaluation, monitoring, and safety guardrails
-- [ ] p5 - enterprise-grade agent governance and lifecycle management
+- [ ] p1 - create and manage resource groups
+- [ ] p2 - attach resources and query group membership
+- [ ] p3 - apply lifecycle and access policies at group level
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### AI Agents Runtime
+### Types Registry
 #### Responsibility
-Execute agent workloads in controlled runtimes (sandboxes), providing scheduling, isolation, and runtime observability.
+GTS schema-storage service for tool definitions and contracts.
 #### High Level Scenarios
-- [ ] p1 - execute a single agent run with tool calls
-- [ ] p2 - concurrency control, cancellation, and timeouts
-- [ ] p3 - runtime isolation profiles (resource limits, sandboxing)
-- [ ] p4 - distributed execution and scale-out
-- [ ] p5 - regulated execution with attestations and audit integration
+- [x] p1 - get schema by ID (for LLM Gateway tool resolution)
+- [x] p1 - batch get schemas
+- [x] p2 - validate, register and resolve types and instances by versioned identifiers
+- [ ] p2 - distribute GTS instances and schemas updates across modules safely via events generation
+- [ ] p3 - schemas and instances import/export in different formats (YAML, RAML)
 #### More details
+- [PRD](../modules/system/types-registry/docs/PRD.md)
 - TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
+- [API](../modules/system/types-registry/types-registry/README.md)
+- [SDK](../modules/system/types-registry/types-registry-sdk/README.md)
 
-### Agent Memory
+### Quota Enforcer
 #### Responsibility
-Persist and retrieve agent memory (short-term and long-term) to enable personalization, continuity, and automation.
+Track and enforce quotas, rate limits, and consumption policies across tenants, users, and workloads.
 #### High Level Scenarios
-- [ ] p1 - store and retrieve episodic memory entries
-- [ ] p1 - tenant isolation and proper access checks
-- [ ] p2 - vector/kv backends and retrieval strategies
-- [ ] p3 - privacy controls, and TTLs
-- [ ] p4 - memory governance and redaction workflows
-- [ ] p5 - enterprise portability and compliance exports
+- [ ] p1 - check and reserve quota before execution
+- [ ] p1 - enforce tenant, user, and workload limits
+- [ ] p2 - reconcile quota usage from Usage Collector
+- [ ] p3 - support soft and hard limit policies with alerts
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
-
-### Workflows & functions
-#### Responsibility
-Provide workflow orchestration and serverless-style functions for automation, integrations, and agentic pipelines.
-#### High Level Scenarios
-- [ ] p1 - define and execute workflows and basic functions
-- [ ] p2 - scheduled triggers and event-driven execution
-- [ ] p3 - integration with Jobs Manager for durable execution
-- [ ] p4 - visual workflows
-- [ ] p5 - reusable workflow marketplaces
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Settings Service
-#### Responsibility
-Provide typed configuration and preferences at tenant/user scope, supporting feature flags and customization.
-#### High Level Scenarios
-- [ ] p1 - CRUD settings per tenant and per user
-- [ ] p1 - schema validation and versioning
-- [ ] p2 - settings inheritance rules
-- [ ] p3 - feature flags and rollout controls
-- [ ] p3 - events generation per setting creation/update/deletion
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-## Shared Control Plane Modules
-
-**Shared Control Plane Modules** provide the cross-cutting governance and operational capabilities required to run HyperSpot as a secure, observable, and policy-driven system. They implement system-wide concerns such as auditing, usage tracking, policy enforcement, background job execution, eventing, settings management, and type registration. These modules define and enforce global invariants that apply uniformly across all workloads, regardless of which Generative AI modules or adapters are involved.
-
-Shared Control Plane Modules do not contain domain-specific or generative AI logic and are not directly exposed as end-user features. Instead, they act as the authoritative control layer that all execution paths must pass through, ensuring consistency, compliance, and operational correctness. By centralizing governance and orchestration in the control plane, HyperSpot enables higher-level modules to remain focused on business and AI behavior while inheriting uniform guarantees around security, observability, and usage enforcement.
 
 ### Audit
 #### Responsibility
@@ -381,134 +603,22 @@ Capture immutable audit events for security-relevant and business-relevant actio
 - [ ] p3 - compliance retention policies and legal hold
 - [ ] p4 - cross-tenant governance and anomaly detection signals
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### Events Broker
+### File Downloader
 #### Responsibility
-Provide an event bus for domain events and integration events across modules with durable delivery patterns.
+Fetch remote files and stage them for parsing, storage, and workflow execution under controlled policies.
 #### High Level Scenarios
-- [ ] p1 - publish and subscribe to basic events, replay
-- [ ] p2 - event filtering (CEL)
-- [ ] p3 - custom storage backend adapters (e.g. ELK, Kafka)
-- [ ] p4 - streaming analytics integrations
+- [ ] p1 - download remote files via HTTP and supported transports
+- [ ] p1 - validate size, content type, and checksums before staging
+- [ ] p2 - support retries, resume, and secure staging lifecycle
+- [ ] p3 - support authenticated downloads through Outbound API Interface or credentials integration
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Usage Tracker
-#### Responsibility
-Measure platform usage (API calls, compute, storage) for quotas, billing, and internal capacity planning.
-#### High Level Scenarios
-- [ ] p1 - record usage events with tenant or resource attribution (push model)
-- [ ] p1 - comprehensive usage metrics API
-- [ ] p2 - pull model
-- [ ] p3 - aggregate reports and dashboards, data export
-- [ ] p4 - custom storages support (e.g. Clickhouse)
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Jobs Manager
-#### Responsibility
-Run and coordinate background jobs (download/upload, benchmarks, parsing, indexing, workflows) with retries and scheduling.
-#### High Level Scenarios
-- [ ] p1 - enqueue and execute jobs with status tracking
-- [ ] p1 - jobs suspend/resume
-- [ ] p2 - retry policies, backoff, and dead-letter handling
-- [ ] p3 - scheduling and periodic jobs
-- [ ] p4 - distributed workers and horizontal scale
-- [ ] p5 - SLA management and priority queues per tenant
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Type Registry
-#### Responsibility
-GTS schema-storage service for tool definitions and contracts.
-#### High Level Scenarios
-- [ ] p1 - get schema by ID (for LLM Gateway tool resolution)
-- [ ] p1 - batch get schemas
-- [ ] p2 - validate, register and resolve types and instances by versioned identifiers
-- [ ] p2 - distribute GTS instances and schemas updates across modules safely via events generation
-- [ ] p3 - schemas and instances import/export in different formats (YAML, RAML)
-#### More details
-- [PRD](../modules/system/types-registry/docs/PRD.md)
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Process Manager
-#### Responsibility
-Manage platform processes and runtimes (in-process and out-of-process modules), including lifecycle, health, and orchestration.
-#### High Level Scenarios
-- [ ] p1 - start/stop module runtimes and report lifecycle state
-- [ ] p2 - resource limits control (CPU, memory)
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Nodes Registry
-#### Responsibility
-Maintain registry of HyperSpot nodes/deployments and their capabilities for discovery and operational management.
-#### High Level Scenarios
-- [x] p1 - register nodes and list node inventory
-- [ ] p2 - node health and heartbeat tracking
-- [ ] p3 - capability-aware routing and scheduling hints
-- [ ] p4 - multi-region topology awareness
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Monitoring
-#### Responsibility
-Provide monitoring primitives and integrations: health checks, alerts, and operational dashboards.
-#### High Level Scenarios
-- [ ] p1 - collect metrics
-- [ ] p1 - metrics aggregates
-- [ ] p2 - custom dashboards
-- [ ] p2 - alert hooks and incident signals
-- [ ] p3 - trace/log correlation across modules
-- [ ] p4 - SLOs and error budget tracking
-- [ ] p4 - Custom runtime-level metrics registration
-- [ ] p5 - automated remediation workflows
-#### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
-
-### Simple Resource Registry
-#### Responsibility
-Provide generic CRUD storage for typed resources that do not warrant a dedicated module, using a fixed schema envelope (identity, ownership, timestamps) and a flexible JSON payload governed by GTS type definitions.
-#### High Level Scenarios
-- [ ] p1 - create, read, update, and soft-delete typed resources with tenant isolation and GTS type-based access control
-- [ ] p1 - OData $filter/$orderby and cursor-based pagination on schema fields
-- [ ] p1 - GTS type existence validation via Types Registry
-- [ ] p1 - pluggable storage backend (Relational Database plugin via SecureORM as default)
-- [ ] p1 - configurable soft-delete retention with background purge task
-- [ ] p2 - batch CRUD operations (POST /resources:batch, POST /resources:batch-get) per DNA BATCH.md
-- [ ] p2 - per-resource-type lifecycle notification events (created/updated/deleted) via Events Broker
-- [ ] p2 - per-resource-type audit events via Audit Module
-- [ ] p3 - alternative storage plugins (search engines, vendor-provided backends) with per-type routing
-- [ ] p3 - resource groups for lifecycle-linked collections
-- [ ] p4 - full-text search API with search-capable plugin support
-#### More details
-- [PRD](../modules/simple-resource-registry/docs/PRD.md)
-- [Design](../modules/simple-resource-registry/docs/DESIGN.md)
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
@@ -522,14 +632,14 @@ The primary role of these adapter modules is decoupling: they allow HyperSpot to
 #### Responsibility
 Introduces an abstraction layer over tenant relationship services. The goal is to expose a single entry point for retrieving related tenants (parents, children, siblings) without coupling modules to a specific directory implementation.
 #### High Level Scenarios
-- [ ] p1 - resolve related tenant IDs (parent, children) based on given ID
-- [ ] p1 - integrated adapter for single-tenant and single-user use-case (desktop app)
+- [x] p1 - resolve related tenant IDs (parent, children) based on given ID
+- [x] p1 - integrated adapter for single-tenant and single-user use-case (desktop app)
 - [ ] p2 - tenant resolution cache with invalidation rules
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
+- [API](../modules/system/tenant-resolver/README.md)
+- [SDK](../modules/system/tenant-resolver/tenant-resolver-sdk/README.md)
 
 ### Auth Resolver
 #### Responsibility
@@ -539,10 +649,10 @@ Introduces an abstraction layer behind real token validation and claims extracti
 - [ ] p1 - integrated adapter for single-tenant and single-user use-case (desktop app)
 - [ ] p2 - tokens cache with invalidation rules
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
+- [API](../modules/system/authn-resolver/README.md)
+- [SDK](../modules/system/authn-resolver/authn-resolver-sdk/README.md)
 
 ### License Resolver
 #### Responsibility
@@ -554,41 +664,42 @@ Introduces an abstraction layer over the upstream License Manager service. The g
 - [ ] p2 - metrics collection for license acquisitions
 - [ ] p3 - audit with retention for license acquisitions
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### Credential Resolver
+### Credentials Store
 #### Responsibility
-Introduces an abstraction layer over the underlying Credential Store service. The goal is to provide a single entry point for credential retrieval.
+Introduces an abstraction layer over the upstream Credentials Store service. The goal is to provide a single entry point for storing, resolving, and injecting secrets without coupling feature code to a specific vault or secret-management backend.
 #### High Level Scenarios
-- [ ] p1 - store/retrieve secrets with tenant scoping
+- [ ] p1 - store and retrieve secrets with tenant scoping
 - [ ] p1 - adapter for single-user and single-tenant use-cases (desktop app)
-- [ ] p2 - metrics collection
-- [ ] p3 - audit with retention
+- [ ] p2 - cache credential metadata and resolve provider-specific bindings
+- [ ] p3 - audit secret access through stable adapter contracts
+- [ ] p4 - integrate with external vault backends (AWS Secrets Manager, HashiCorp Vault, etc.)
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### Outbound API gateway interface
+### Outbound API Interface
 #### Responsibility
-Introduces an abstraction layer behind real Outbound API gateway. Contains minimalistic logic as main goal is to provide a single entrypoint for outbound calls.
+Introduces an abstraction layer behind the real Outbound API Gateway. The main goal is to provide a single entrypoint for outbound calls.
 #### High Level Scenarios
-- [ ] p1 - define outbound endpoints and execute calls with tracing
+- [x] p1 - define outbound endpoints and execute calls with tracing
 - [ ] p2 - adapter for single-user and single-tenant use-cases (desktop app)
 - [ ] p2 - outbound calls metrics collection
 - [ ] p3 - minimalistic rate limiting
 - [ ] p4 - audit with retention for outbound calls
 #### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
+- [PRD](../modules/system/oagw/docs/PRD.md)
+- [Design](../modules/system/oagw/docs/DESIGN.md)
+- [API](../modules/system/oagw/oagw/README.md)
+- [SDK](../modules/system/oagw/oagw-sdk/README.md)
 
-## Core Platform Services (external)
+## Core Platform Services
 
 Core Platform Services are authoritative, enterprise-level services that may exist outside of HyperSpot and act as systems of record for critical governance domains such as accounts, identity, access policies, licensing, credentials, and outbound egress control. These components typically belong to an organization’s broader platform or SaaS ecosystem and may already be deployed, certified, and governed independently of HyperSpot.
 
@@ -606,8 +717,8 @@ Core platform service managing accounts and tenant relationships (system of reco
 - [ ] p4 - enterprise org structures and delegated administration
 - [ ] p5 - federation across multiple account systems
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
@@ -623,8 +734,8 @@ Core platform service managing authorization policies for resources and actions.
 - [ ] p4 - audit integration and policy analytics
 - [ ] p5 - advanced enterprise policy federation
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
@@ -638,25 +749,28 @@ Core platform service responsible for local license state, quota enforcement, fe
 - [ ] p3 - manage plan tiers and feature bundles
 - [ ] p4 - support offline/air-gapped license operation
 #### More details
+- TODO: PRD link
 - TODO: Design link
-- TODO: Scenarios link
 - TODO: API link
 - TODO: SDK link
 
-### Credential Store
+### Credentials Store
 #### Responsibility
-Core platform service managing credentials lifecycle and access control, coordinating with the Credential Store adapter.
+External or enterprise credential storage system that persists and protects secrets, while HyperSpot integrates with it through the Credentials Store module.
 #### High Level Scenarios
-- [ ] p1 - manage credential metadata and access policies
-- [ ] p2 - integrate with external vault backends (AWS Secrets Manager, HashiCorp Vault, etc.)
-- [ ] p3 - rotation workflows and secret health checks
-- [ ] p4 - delegated admin and approval workflows
+- [ ] p1 - store/retrieve secrets with tenant scoping
+- [ ] p1 - adapter for single-user and single-tenant use-cases (desktop app)
+- [ ] p2 - metrics collection
+- [ ] p3 - audit with retention
+- [ ] p4 - integrate with external vault backends (AWS Secrets Manager, HashiCorp Vault, etc.)
+- [ ] p5 - rotation workflows and secret health checks
+- [ ] p5 - delegated admin and approval workflows
 - [ ] p5 - enterprise compliance audit, reporting and attestations
 #### More details
-- TODO: Design link
-- TODO: Scenarios link
-- TODO: API link
-- TODO: SDK link
+- [PRD](../modules/credstore/docs/PRD.md)
+- [Design](../modules/credstore/docs/DESIGN.md)
+- [API](../modules/credstore/credstore/README.md)
+- [SDK](../modules/credstore/credstore-sdk/README.md)
 
 ### Outbound API Gateway
 #### Responsibility
@@ -665,15 +779,15 @@ Centralized gateway for external-API calls with credentials injection, reliabili
 - [ ] p1 - HTTP requests to external APIs
 - [ ] p1 - SSE streaming
 - [ ] p1 - WebSocket connections
-- [ ] p1 - credential injection via Credential Resolver
+- [ ] p1 - credential injection via Credentials Store
 - [ ] p2 - retry with exponential backoff
 - [ ] p2 - circuit breaker
 - [ ] p2 - rate limiting (per-target)
 - [ ] p2 - timeouts (connect, read, total)
 - [ ] p3 - audit with retention
 #### More details
-- TODO: PRD
-- TODO: Scenarios link
+- TODO: PRD link
+- TODO: Design link
 - TODO: API link
 - TODO: SDK link
 
@@ -709,14 +823,14 @@ sequenceDiagram
   end
 
   box "HyperSpot"
-    participant I as API gateway (api-gateway)
-    participant LIC as License resolver
+    participant I as API Gateway (api-gateway)
+    participant LIC as License Resolver
     participant M as Target module (REST handler)
     participant D as Domain service
     participant DB as DB (SecureConn)
-    participant EB as Events broker
+    participant EB as Events Broker
     participant AUD as Audit
-    participant UT as Usage tracker
+    participant UT as Usage Collector
   end
 
   C->>I: HTTP request (Authorization: Bearer, traceparent, x-request-id)
@@ -768,7 +882,7 @@ sequenceDiagram
   M->>D: Execute domain logic (ctx, command/query)
   D->>DB: SecureConn.find/insert/update (ctx applies tenant filter)
   DB-->>D: Scoped results (WHERE tenant_id IN ...)
-  D->>EB: Publish domain event (optional)
+  D->>EB: Publish event: chat.message.created {message_id, job_id}
   D->>AUD: Emit audit event (actor, tenant, resource, action)
   D->>UT: Record usage (tenant, operation, tokens/bytes)
   D-->>M: Domain result
@@ -808,11 +922,11 @@ sequenceDiagram
   end
 
   box "HyperSpot"
-    participant CE as Chat engine
-    participant SET as Settings service
+    participant CE as Chat Engine
+    participant SET as Settings Service
     participant TR as Types Registry
-    participant EGR as Outbound API gateway
-    participant CS as Credential Resolver
+    participant EGR as Outbound API Gateway
+    participant CS as Credentials Store
     participant AUD as Audit
   end
 
@@ -828,7 +942,7 @@ sequenceDiagram
     Note right of CE: Filter by hook_ids from settings
     TR-->>CE: Hook definitions[] {id, endpoint_url, auth_config, timeout_ms}
 
-    Note over CE,EGR: [ ] p3 - Step 3: Invoke hook via Outbound API gateway
+    Note over CE,EGR: [ ] p3 - Step 3: Invoke hook via Outbound API Gateway
     CE->>EGR: Invoke hook (endpoint_url, auth_config, payload)
     EGR->>CS: Resolve credentials (tenant_id, hook.auth_config)
     CS-->>EGR: Credential material (API key, OAuth token, mTLS cert)
@@ -844,7 +958,7 @@ sequenceDiagram
       CE->>CE: Abort processing
       CE-->>CE: Return error: {code: "hook_blocked", reason}
     else action == "override"
-      CE->>CE: Replace content with modified_content
+      CE->>CE: Use modified content
       CE->>CE: Continue processing with modified content
     else action == "allow"
       CE->>CE: Continue processing unchanged
@@ -904,7 +1018,7 @@ File upload stores the blob, then **Chat Engine orchestrates** job creation. The
 
 **Key architectural points:**
 - API gateway remains simple (middleware + routing only)
-- **Chat Engine** owns orchestration — it triggers the Jobs Manager
+- **Chat Engine** owns orchestration — it triggers the **Jobs Manager**
 - UI must wait for job completion before file content is usable
 
 ```mermaid
@@ -915,13 +1029,13 @@ sequenceDiagram
   participant C as Client UI
 
   box "HyperSpot"
-    participant I as API gateway
-    participant FS as File storage
-    participant CE as Chat engine
+    participant I as API Gateway
+    participant FS as File Storage
+    participant CE as Chat Engine
     participant HK as Hook invocation
-    participant JM as Jobs manager
+    participant JM as Jobs Manager
     participant DB as Chat DB
-    participant EB as Events broker
+    participant EB as Events Broker
   end
 
   U->>C: Attach file + type message
@@ -970,21 +1084,21 @@ sequenceDiagram
 
 ### Step 2/6 - File ingestion pipeline (background job)
 
-The **Jobs Manager** executes the file ingestion pipeline asynchronously, emitting progress events for UI tracking. When complete, **Chat Engine** proceeds with RAG retrieval.
+ The **Jobs Manager** executes the file ingestion pipeline asynchronously, emitting progress events for UI tracking. When complete, **Chat Engine** proceeds with RAG retrieval.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  box "HyperSpot"
-    participant JM as Jobs manager
-    participant FP as File parser gateway
-    participant FS as File storage
+ ```mermaid
+ sequenceDiagram
+ autonumber
+ box "HyperSpot"
+    participant JM as Jobs Manager
+    participant FP as File Parser
+    participant FS as File Storage
     participant HK as Hook invocation
-    participant LLM as LLM gateway (embeddings)
-    participant LSI as Local search index
-    participant EB as Events broker
-    participant CE as Chat engine
-    participant RAG as RAG gateway
+    participant LLM as LLM Gateway (embeddings)
+    participant LSI as Local Search Index
+    participant EB as Events Broker
+    participant CE as Chat Engine
+    participant RAG as RAG Gateway
   end
 
   Note over JM,FP: [ ] p2 - Background job execution (p2: progress events)
@@ -1011,7 +1125,7 @@ sequenceDiagram
   JM->>JM: Update job status: done
   JM->>EB: Emit progress: {status: "done", doc_id, chunk_count}
 
-  Note over CE,RAG: [ ] p2 - Chat engine proceeds with RAG retrieval
+  Note over CE,RAG: [ ] p2 - Chat Engine proceeds with RAG retrieval
   EB-->>CE: Event: file.ingestion.completed {message_id, doc_id}
   CE->>CE: Mark message ready for processing
 ```
@@ -1024,11 +1138,11 @@ Retrieve relevant context from indexed documents using hybrid search (vector + k
 sequenceDiagram
   autonumber
   box "HyperSpot"
-    participant CE as Chat engine
-    participant SET as Settings service
+    participant CE as Chat Engine
+    participant SET as Settings Service
     participant HK as Hook invocation
-    participant RAG as RAG gateway
-    participant LSI as Local search index
+    participant RAG as RAG Gateway
+    participant LSI as Local Search Index
   end
 
   Note over CE,SET: [ ] p1 - Load user/tenant configuration
@@ -1074,9 +1188,9 @@ When WebSearch is enabled, query external search engines for real-time informati
 sequenceDiagram
   autonumber
   box "HyperSpot"
-    participant CE as Chat engine
+    participant CE as Chat Engine
     participant HK as Hook invocation
-    participant WS as WebSearch gateway
+    participant WS as Web Search Gateway
   end
 
   Note over CE,WS: [ ] p4 - WebSearch (if enabled)
@@ -1119,12 +1233,12 @@ Prepare the full agent state before LLM invocation.
 sequenceDiagram
   autonumber
   box "HyperSpot"
-    participant CE as Chat engine
+    participant CE as Chat Engine
     participant TR as Types Registry
-    participant PR as Prompts registry
-    participant MR as Models registry
+    participant PR as Prompts Registry
+    participant MR as Models Registry
     participant AM as Agent Memory
-    participant UT as Usage tracker
+    participant UT as Usage Collector
   end
 
   Note over CE,TR: [ ] p4 - Resolve tool definitions from GTS (no MCP validation)
@@ -1183,15 +1297,15 @@ sequenceDiagram
   end
 
   box "HyperSpot"
-    participant CE as Chat engine
+    participant CE as Chat Engine
     participant HK as Hook invocation
-    participant LLM as LLM gateway
-    participant PM as Policy manager
-    participant MCP as MCP gateway
-    participant EGR as Outbound API gateway
-    participant CS as Credential Resolver
+    participant LLM as LLM Gateway
+    participant PM as Policy Manager
+    participant MCP as MCP Registry
+    participant EGR as Outbound API Gateway
+    participant CS as Credentials Store
     participant AUD as Audit
-    participant UT as Usage tracker
+    participant UT as Usage Collector
     participant DB as Chat DB
   end
 
@@ -1276,14 +1390,14 @@ sequenceDiagram
   participant C as Client UI
 
   box "HyperSpot"
-    participant I as API gateway
-    participant CE as Chat engine
-    participant LLM as LLM gateway
+    participant I as API Gateway
+    participant CE as Chat Engine
+    participant LLM as LLM Gateway
     participant DB as Chat DB
     participant AM as Agent Memory
-    participant EB as Events broker
+    participant EB as Events Broker
     participant AUD as Audit
-    participant UT as Usage tracker
+    participant UT as Usage Collector
   end
 
   Note over C,I: [ ] p1 - Client opens SSE connection
@@ -1428,15 +1542,15 @@ sequenceDiagram
   participant C as Client UI
 
   box "HyperSpot"
-    participant I as API gateway
-    participant CE as Chat engine
+    participant I as API Gateway
+    participant CE as Chat Engine
     participant HK as Hook invocation
     participant DB as Chat DB
-    participant SET as Settings service
+    participant SET as Settings Service
     participant TR as Types Registry
-    participant PR as Prompts registry
-    participant MR as Models registry
-    participant UT as Usage tracker
+    participant PR as Prompts Registry
+    participant MR as Models Registry
+    participant UT as Usage Collector
   end
 
   Note over C,CE: [ ] p1 - User sends message
