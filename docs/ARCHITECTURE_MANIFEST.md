@@ -243,6 +243,8 @@ Additional assembly lives in `apps/`, where executable applications compose modu
 
 ModKit is the central framework of this repository. It turns the module architecture into a reusable runtime discipline.
 
+### 7.1 Modkit capabilities
+
 The `cf-modkit` crate and adjacent libraries provide the common substrate on which the rest of the repository is built.
 
 What ModKit provides:
@@ -270,6 +272,37 @@ What ModKit provides:
 
 - [x] **Transport flexibility**
   - In-process, REST, and gRPC all fit the same modular model.
+
+### 7.2 Request Lifecycle
+
+CyberFabric defines how every authenticated request flows through a fixed platform-owned sequence before reaching module business logic. This pattern is typical for XaaS control plane services: the platform resolves cross-cutting concerns such as authentication, authorization, and license validation up front, and provides explicit placeholders where that processing can be customized through plugins or extensions defined with GTS, for example to add a new licenseable feature or a new user role.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant GW as API Gateway
+    participant AuthN as AuthN Resolver
+    participant AuthZ as AuthZ Resolver
+    participant Lic as License Resolver
+    participant Mod as Execution Module
+    participant UC as Usage Collector
+    participant DB as Database (SecureConn)
+    C->>GW: HTTP Request
+    GW->>AuthN: Validate token → SecurityContext
+    AuthN-->>GW: SecurityContext
+    GW->>AuthZ: Resolve AccessScope (PolicyEnforcer)
+    AuthZ-->>GW: AccessScope + row-level constraints
+    GW->>Lic: Validate license feature for route
+    Lic-->>GW: Allowed / Denied
+    GW->>Mod: Handler(SecurityContext, AccessScope)
+    Mod->>DB: SecureConn.scope_with(AccessScope)
+    DB-->>Mod: Scoped query results
+    Mod->>UC: Record usage event (async)
+    Mod-->>GW: Response
+    GW-->>C: HTTP Response
+```
+
+> The platform owns steps 1–4. Module code receives `SecurityContext` and `AccessScope` as injected parameters; it never performs token parsing or tenant resolution directly. Usage recording (step 8) is asynchronous and non-blocking on the response path. Step 4 (license validation) is currently implemented at the base-license level; per-feature entitlement is pending.
 
 ## 8. Module model
 
