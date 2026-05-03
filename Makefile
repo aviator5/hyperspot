@@ -259,10 +259,10 @@ gts-docs:
 		--exclude "**/helm/*/templates/*" \
 		docs modules libs examples
 
-## Validate GTS docs with vendor check (ensures all IDs use vendor "x")
+## Validate GTS docs with vendor check (ensures all IDs use vendor "cf", "vendor" or "example")
 gts-docs-vendor:
 	cargo run -p gts-docs-validator -- \
-		--vendor x \
+		--vendor cf,vendor,example,fabrikam \
 		--exclude "target/*" \
 		--exclude "docs/api/*" \
 		--exclude "modules/chat-engine/*" \
@@ -281,7 +281,7 @@ gts-docs-release:
 ## Validate GTS docs with vendor check (release build)
 gts-docs-vendor-release:
 	cargo run --release -p gts-docs-validator -- \
-		--vendor x \
+		--vendor cf,vendor,example,fabrikam \
 		--exclude "target/*" \
 		--exclude "docs/api/*" \
 		--exclude "modules/chat-engine/*" \
@@ -702,14 +702,14 @@ oop-example:
 	cargo run --bin cf-server --features oop-example,users-info-example,static-authn,static-authz,static-tenants,static-credstore -- --config config/quickstart.yaml run
 
 # Run all quality checks
-check: .setup-stamp fmt cypilot-validate clippy lychee security dylint-test dylint gts-docs test
+check: .setup-stamp fmt cypilot-validate clippy lychee security dylint-test dylint gts-docs-vendor test
 
 ci_test: fmt clippy
 
-ci_docs: lychee
+ci_docs: lychee gts-docs-vendor
 
 # Run CI pipeline locally, requires docker
-ci: fmt clippy test-no-macros test-macros test-db deny test-users-info-pg lychee dylint dylint-test
+ci: fmt clippy test-no-macros test-macros test-db deny test-users-info-pg lychee gts-docs-vendor dylint dylint-test
 
 # Build the cf-server release binary using a toolchain from the rust-toolchain.toml
 cargo-build:
