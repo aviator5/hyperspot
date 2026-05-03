@@ -30,6 +30,8 @@ The repository separates concerns into three layers:
 - **System modules** (`modules/system/`) provide control-plane and cross-cutting platform capabilities.
 - **Business and application modules** (`modules/`) implement end-user-facing service logic on top of the platform foundation.
 
+See more in: [docs/REPO_PLAYBOOK.md](REPO_PLAYBOOK.md)
+
 ## 2. Non-goals
 
 1. CyberFabric doesn't optimize for **minimalism** or the lowest barrier to entry
@@ -132,6 +134,8 @@ This gives the platform one error taxonomy across:
 - schema registration and contract validation
 
 **Why.** Standardized error categories reduce drift, make retry behavior machine-readable, and keep API, SDK, and transport layers aligned. The same architectural decision also enables generated documentation and stronger static enforcement of allowed error patterns.
+
+See more: [docs/arch/errors/DESIGN.md](arch/errors/DESIGN.md)
 
 ### 3.8. Dylint turns architecture into build-time policy
 
@@ -273,6 +277,8 @@ What ModKit provides:
 - [x] **Transport flexibility**
   - In-process, REST, and gRPC all fit the same modular model.
 
+See more: [docs/modkit_unified_system/README.md](modkit_unified_system/README.md)
+
 ### 7.2 Request Lifecycle
 
 CyberFabric defines how every authenticated request flows through a fixed platform-owned sequence before reaching module business logic. This pattern is typical for XaaS control plane services: the platform resolves cross-cutting concerns such as authentication, authorization, and license validation up front, and provides explicit placeholders where that processing can be customized through plugins or extensions defined with GTS, for example to add a new licenseable feature or a new user role.
@@ -359,7 +365,7 @@ Modules can also run as separate processes communicating via gRPC.
 
 Security in CyberFabric spans the language choice, module boundaries, DB access rules, policy enforcement, and CI controls. See [docs/security/SECURITY.md](security/SECURITY.md) for the full security architecture.
 
-Security foundations:
+### 10.1 Security foundations:
 
 - [x] **Rust safety baseline**
   - Memory safety, strong typing, and strict lint posture are part of the default development model.
@@ -384,6 +390,53 @@ Security foundations:
 
 - [x] **Static and CI security gates**
   - Clippy, custom Dylints, `cargo-deny`, CodeQL, fuzzing, and related scanners are part of the repo.
+
+### 10.2 Tenant Data Model
+
+CyberFabric's authorization model is built on explicit tenant-owned data boundaries. The tenant topology is a hierarchical single-root tree: every resource belongs to exactly one tenant, tenant isolation is the default posture, and parent-to-child visibility can be constrained by barriers such as `self_managed`. Authorization distinguishes the subject's home tenant from the context tenant used for an operation, and resource groups add an optional grouping layer for access control within tenant boundaries rather than replacing tenant ownership.
+
+- [x] Tenant topology is documented as a single-root hierarchy with parent/child relationships.
+- [x] Tenant ownership is a first-class authorization dimension, typically carried as `owner_tenant_id`.
+- [x] Barrier semantics exist for restricting parent visibility into subtrees.
+- [x] Resource groups are tenant-scoped and act as an additional access-control structure, not a replacement for tenant isolation.
+
+See more in: [arch/authorization/TENANT_MODEL.md](arch/authorization/TENANT_MODEL.md) and [arch/authorization/RESOURCE_GROUP_MODEL.md](arch/authorization/RESOURCE_GROUP_MODEL.md)
+
+### 10.3 Authorization and Role Model
+
+CyberFabric uses a PEP → PDP → `AccessScope` pipeline for authorization. Domain services act as the PEP: they receive `SecurityContext`, build an `AccessRequest`, and call `PolicyEnforcer`, which delegates to the AuthZ resolver client. The PDP returns a decision plus constraints, and those constraints are compiled into an `AccessScope` that the secure DB layer applies as scoped query conditions. In practice, this means module business logic does not embed policy engines or hard-code role semantics; it consumes platform authorization results expressed as tenant, resource, owner, and type filters.
+
+- [x] `modules/system/authz-resolver/` provides a PDP client abstraction via `authz-resolver-sdk`.
+- [x] `PolicyEnforcer` wraps `AuthZResolverClient`; domain services call `policy_enforcer.access_scope_with(ctx, resource_type, action, resource_id, properties)`.
+- [x] `AccessScope` carries four constraint dimensions: tenant, resource, owner, and type.
+- [x] `ScopableEntity` requires each DB entity to declare which column maps to each scope dimension.
+- [x] `pep_properties` defines `OWNER_TENANT_ID` and `RESOURCE_ID`, and these properties are used in current modules.
+- [x] `authz-resolver` plugs in via `ClientHub`; the platform does not hard-code a specific PDP.
+
+- [ ] A default `authz-resolver` implementation with a built-in role model.
+- [ ] Custom role definition by tenant admins.
+- [ ] Documentation for attaching existing policy managers to CyberFabric.
+- [ ] Documentation of which resource types and actions each system module exposes.
+- [ ] A platform-level role catalog with roles available out of the box.
+
+Example PEP call pattern from `modules/simple-user-settings/simple-user-settings/src/domain/service.rs`:
+
+```rust
+let scope = self
+    .policy_enforcer
+    .access_scope_with(
+        ctx,
+        &SETTINGS_RESOURCE,
+        actions::GET,
+        Some(user_id),
+        &AccessRequest::new().resource_property(pep_properties::OWNER_TENANT_ID, tenant_id),
+    )
+    .await?;
+```
+
+> The `authz-resolver-sdk` crate defines the enforcement interface used by PEPs, including `AuthZResolverClient`, `PolicyEnforcer`, request/response models, and constraint compilation helpers. The PDP implementation is pluggable: CyberFabric resolves it through `ClientHub` and plugin registration rather than bundling a single mandatory authorization engine in core.
+
+See more details in: [arch/authorization/DESIGN.md](arch/authorization/DESIGN.md)
 
 ## 11. API, type, and error contracts
 
@@ -425,13 +478,3 @@ The canonical error model stabilizes failure semantics, improves machine-readabi
 - [x] API Gateway exposes `/health` and `/healthz`.
 - [ ] Rate limiting — implemented in OAGW domain layer; API Gateway integration pending.
 - [x] The repo contains CI workflows and test infrastructure aligned with operational quality.
-
-## 13. Other references
-
-1. [docs/MODULES.md](MODULES.md)
-2. [docs/modkit_unified_system/README.md](modkit_unified_system/README.md)
-3. [docs/security/SECURITY.md](security/SECURITY.md)
-4. [docs/arch/authorization/DESIGN.md](arch/authorization/DESIGN.md)
-5. [docs/arch/errors/DESIGN.md](arch/errors/DESIGN.md)
-6. [docs/REPO_PLAYBOOK.md](REPO_PLAYBOOK.md)
-7. [docs/TESTING.md](TESTING.md)
