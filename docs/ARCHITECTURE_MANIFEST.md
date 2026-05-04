@@ -6,31 +6,11 @@
 
 ## 1. Overview
 
-CyberFabric is a set of libraries and modules for building **XaaS services**. It plays a role of **middleware** as it sits between low-level infrastructure and product-specific logic, providing reusable runtime foundations, platform system modules, and higher-level application modules that teams compose into service platforms.
+CyberFabric is a secure, modular XaaS development framework and middleware. It sits between low-level infrastructure and product-specific logic, providing reusable modkit, runtime foundations, and service-level modules that teams compose into services, applications and platforms.
 
 This repository contains the **Rust implementation**. The CyberFabric ecosystem may include additional repositories in other languages (e.g. C#, Go) sharing the same architecture patterns, API conventions, and security model.
 
-CyberFabric is not a standalone application. Target systems select a subset of these libraries and modules into their own service binaries. This library-oriented approach enables flexible deployments — from lightweight edge appliances to scalable cloud services — from the same codebase, choosing exactly the modules each deployment requires.
-
-**Key Philosophy:**
-- **Modular by Design**: Everything is a Module - composable, independent units with plugin patterns for pluggable workers
-- **Unified transport-agnostic module interfaces**: Support for both in-process and distributed deployment
-- **Secure-by-default execution**: multi-tenancy, access control, scoped data access
-- **Extensible at Every Level**: [GTS](https://github.com/globaltypesystem/gts-spec)-powered extension points for custom data types, business logic, and third-party integrations
-- **Typed API discipline**: generated OpenAPI and GTS specs, structured errors
-- **SaaS Ready**: Multi-tenancy, granular access control, usage tracking, and tenant customization built-in
-- **Cloud Operations Excellence**: Production-grade observability, database agnostic design, API best practices, and resilience patterns via ModKit
-- **Quality First**: 90%+ test coverage target with unit, integration, E2E, performance, and security testing
-- **Universal Deployment**: Single codebase runs on cloud, on-prem Windows/Linux workstation, or edge/mobile
-- **Developer Friendly**: AI-assisted code generation, automatic OpenAPI docs, DDD-light structure, and type-safe APIs
-
-The repository separates concerns into three layers:
-
-- **ModKit and platform libraries** (`libs/`) establish the runtime and development model.
-- **System modules** (`modules/system/`) provide control-plane and cross-cutting platform capabilities.
-- **Business and application modules** (`modules/`) implement end-user-facing service logic on top of the platform foundation.
-
-See more in: [docs/REPO_PLAYBOOK.md](REPO_PLAYBOOK.md)
+CyberFabric is not a ready-to-use service — it is a set of well-integrated libraries (modules) that XaaS vendors compose into their own products. Vendors decide which modules to include, how to combine them into services, and on what infrastructure to run. Every module owns its API surface and database, communicates with other modules via a Rust-native SDK that facades local vs. remote calls, and is fully infrastructure- and deployment-agnostic.
 
 ## 2. Non-goals
 
@@ -50,23 +30,12 @@ CyberFabric is not a replacement for cloud providers or infrastructure platforms
 
 These patterns describe the repository's architectural direction. Most are enforced in the codebase today; forward-looking items explicitly state that status.
 
-### 3.1. Cross-cutting concerns are explicit modules
 
-Authorization, authentication, tenancy, ingress, outbound traffic, type registries, and runtime orchestration are each implemented as a regular module with its own SDK, lifecycle, and API surface — not hidden inside the framework.
+### 3.1. Secure XaaS framework with defense-in-depth
 
-**How.** Each concern publishes a public interface in an SDK package. The implementation registers itself in `ClientHub` (the typed service locator). Consumers resolve the interface at runtime and never depend on the implementation package. Example: `authz-resolver-sdk` defines the authorization interface; consumer modules resolve it from `ClientHub` without importing the resolver's internals. The same pattern applies to `authn-resolver`, `tenant-resolver`, `types-registry`, `oagw`, etc.
+CyberFabric allows building XaaS services using ready-to-use building blocks, domain model elements, and APIs where security is structural, not opt-in. Every API handler enforces authentication, authorization, tenant isolation, and scoped database access by default. The platform owns the security data path — from token validation through policy enforcement to row-level database scoping — so module developers get multi-tenancy and granular access control without implementing it themselves.
 
-**Why.** Concerns can be swapped, tested in isolation, or deployed out-of-process without touching callers. The runtime assembles only the modules a given deployment needs.
-
-### 3.2. Contracts are separated from implementation
-
-Every module's public API lives in a dedicated SDK package (`<module>-sdk/`) containing only the interface definition, transport-agnostic models, and error types. The implementation depends on the SDK, never the other way around.
-
-**How.** The compiler enforces this boundary — implementation-private types are not in scope for consumers. REST endpoints use `OperationBuilder`, which requires each route to declare its method, path, auth posture, request/response schemas, and error types at registration time. `OpenApiRegistry` collects these declarations and generates `/openapi.json` automatically. Because metadata lives next to handler wiring (not in a separate spec file), it stays in sync with the code by construction.
-
-**Why.** Refactoring module internals is safe as long as the SDK interface stays compatible. Consumers can develop and test against SDK types alone. The OpenAPI spec is always consistent with the running code.
-
-### 3.3. Security is structural, not opt-in
+#### 3.1.1. Secure-by-default data path
 
 The architecture makes the insecure path harder than the secure one. Module developers get tenant-scoped, authorized database access by default.
 
@@ -81,25 +50,85 @@ The architecture makes the insecure path harder than the secure one. Module deve
 
 **Why.** There is no "unscoped" shortcut to accidentally use.
 
-### 3.4. Extensibility through addition, not modification
+#### 3.1.2. Architecture enforced at compile time
 
-New implementations and data types are added without changing existing modules.
+CyberFabric treats custom static analysis as a core architectural mechanism, not a best-effort coding aid. Architectural boundaries, API conventions, GTS usage rules, and security restrictions are enforced during builds through repository-specific Dylint rules.
 
-**How.** Two mechanisms:
-- **Plugin pattern** — A host module defines a plugin interface in its SDK and registers the plugin schema in the type registry. Plugin modules implement the interface and register as scoped clients in `ClientHub`, keyed by GTS instance ID. The host discovers plugins at runtime and routes to the selected one via a `vendor` config field. Adding a new backend (e.g. a custom auth provider) means writing a new plugin — the host and all its consumers stay unchanged.
-- **GTS type extensibility** — The [Global Type System](https://github.com/GlobalTypeSystem/gts-spec) provides versioned, schema-validated type definitions. New data types (event formats, document schemas, serverless workflows and functions, permissions, license types, custom attributes) can appear in the system without modifying existing endpoints or storage. In Rust, CyberFabric derives GTS definitions directly from source code types and then registers the resulting JSON Schemas in the Types Registry. That means event schemas, plugin contracts, and other typed contracts can be generated from Rust code in the same way OpenAPI is generated from route declarations, instead of being maintained as hand-written side artifacts.
+**How.** The workspace includes `tools/dylint_lints/`, a dedicated Dylint suite that checks contract-layer purity, DTO placement and schema derives, domain-layer isolation, direct SQL restrictions, versioned REST paths, mandatory `OperationBuilder` metadata, OData extension usage, GTS identifier correctness, and other cross-cutting rules. These lints run alongside the normal Rust toolchain and CI checks, which means architectural violations fail fast before review or runtime.
 
-**Why.** Third-party integrations are isolated with no dependency on platform internals beyond the SDK. Incompatible schema changes are caught at registration time. Host module tests remain stable when plugins are added or removed.
+This is a shift-left quality mechanism: the repository pushes correctness, consistency, and architecture conformance into compile-time and CI-time validation rather than relying only on code review.
 
-### 3.5. Module contracts are independent of deployment topology
+**Why.** In a large modular platform, architecture decays quickly if it lives only in markdown. Dylint makes the desired structure executable and keeps both human contributors and AI-assisted changes inside the intended design envelope.
 
-A module's interface, models, and errors look the same whether it runs in-process or as a separate service over REST API/gRPC.
+### 3.2. Three-tier module hierarchy
 
-**How.** For in-process execution, the module registers a local adapter in `ClientHub`. For out-of-process execution, a REST API/gRPC client implementing the same SDK interface is registered instead. Consumers resolve the interface the same way in both cases. A YAML config field (`runtime.type: local | oop`) switches between modes — no code changes required.
+CyberFabric organizes its codebase into three tiers:
 
-**Why.** Teams start with single-process composition for simplicity and move modules to separate processes when needed, without changing calling code. Integration tests use in-process mode for speed; production can use process isolation where required.
+- **Modkit** (`libs/`) — a set of libraries providing the low-level substrate: API middleware, DB access, error definitions, transport abstractions, security primitives, observability, macros, and shared utilities.
+- **System modules** (`modules/system/`) — Pre-built system modules that form the control plane: inbound/outbound API gateway, authn/authz resolvers, tenant resolver, resource groups, type registry, node registry, usage collection, and related cross-cutting services.
+- **Service modules** (`modules/`) — Ready-to-use and vendor-developed business modules built on top of the platform: serverless runtime, GenAI subsystems, event system, chat engine, file parser, and domain-specific services.
 
-### 3.6. Unified API style is part of the architecture, not per-module taste
+See: [MODULES.md](MODULES.md)
+
+#### 3.2.1. DDD-light layer isolation
+
+CyberFabric follows a DDD-light structure in which domain logic is kept free from transport and infrastructure details, while REST/gRPC adapters and infra layers handle boundary-specific concerns.
+
+**How.** The standard module layout separates SDK contracts, module bootstrap, domain logic, API adapters, and infrastructure. Domain types and services live under `domain/`, REST DTOs and route wiring stay in API-facing layers, and persistence/integration logic stays in infra. This boundary is reinforced not only by structure but also by custom Dylints and the `#[domain_model]` macro requirement for domain-layer types.
+
+**Why.** Business logic stays easier to test, reuse, and evolve because it is not entangled with HTTP, database, or framework details. At the same time, adapter code remains explicit about where transport translation and persistence concerns begin.
+
+#### 3.2.2. Declarative module discovery and composition
+
+CyberFabric composes systems by declaration and discovery rather than by hand-written assembly code. Modules declare capabilities and dependencies; the runtime discovers them, builds a dependency-ordered registry, and wires the system from those declarations.
+
+**How.** ModKit uses the `inventory` crate to collect module registrators across the workspace and feed them into `ModuleRegistry::discover_and_build()`. The resulting registry is topologically sorted from declared dependencies before the host runtime starts executing phases. This means a module contributes its capabilities once, in its own crate, and then becomes available to any host binary without bespoke composition glue.
+
+**Why.** This keeps composition scalable as the repository grows. Adding a module does not require editing a central switchboard, and dependency ordering becomes a platform guarantee rather than an application-specific convention.
+
+#### 3.2.3. Platform-owned module lifecycle
+
+CyberFabric modules do not invent their own startup and shutdown semantics. The platform defines an explicit lifecycle with ordered phases, barrier points, and dependency-aware teardown, and modules integrate into that lifecycle through capabilities.
+
+**How.** `HostRuntime` runs a shared sequence of phases including `pre_init`, DB migration, `init`, `post_init`, REST wiring, gRPC wiring, start/stop, and OoP orchestration. System modules run first where required, `post_init` is a barrier phase that begins only after all `init` hooks complete, and shutdown runs in reverse dependency order with a platform deadline for graceful stop. Cancellation tokens propagate through the runtime so background work cooperates with shutdown rather than outliving the host.
+
+**Why.** This gives all modules one predictable operational model. Contributors can rely on stable ordering guarantees, shared cancellation semantics, and consistent startup/shutdown behavior instead of encoding lifecycle assumptions ad hoc in each module.
+
+#### 3.2.4. Module-owned schema, runtime-owned privilege
+
+Persistence follows the same separation-of-concerns model as APIs and security: a module owns its schema and migrations, but the runtime owns privileged execution of those migrations and withholds raw privileged DB access from module code.
+
+**How.** Modules expose migrations through `DatabaseCapability::migrations()`. During the DB phase, `HostRuntime` resolves the underlying database handle from the runtime-managed `DbManager`, collects migrations from each module, and executes them through the migration runner. Module code typically works with `DBProvider`, `SecureConn`, or higher-level repository abstractions rather than direct privileged connections, while migration history is tracked per module.
+
+**Why.** Schema evolution remains modular and local to the owning module, but privilege stays centralized in the runtime. That reduces the chance of accidental cross-module interference and keeps persistence governance aligned with the repository's secure-by-default posture.
+
+### 3.3. Composable libraries, vendor-controlled deployment
+
+CyberFabric does not ship ready-to-use services. It ships a set of well-integrated libraries that vendors compose into their own service binaries. Each module is infrastructure-agnostic and deployment-agnostic, supporting three deployment shapes:
+
+- **Single-node** — all modules in one process. Suitable for edge devices, on-prem appliances, development, and testing.
+- **Multi-node** — modules distributed across processes or machines over REST API or gRPC, without container orchestration. Suitable for bare-metal on-prem or small-scale deployments.
+- **Kubernetes cluster** — modules as containerized services with full orchestration and cloud-native operations.
+
+Modules talk to each other through a Rust-native SDK that facades the communication interface (local vs. remote) and encapsulates internal logic. The platform provides DB-agnostic persistence (SeaORM-based) and infrastructure-agnostic cluster primitives (distributed cache, distributed locks, leader election, service discovery).
+
+#### 3.3.1. SDK-first contract separation
+
+Every module's public API lives in a dedicated SDK package (`<module>-sdk/`) containing only the interface definition, transport-agnostic models, and error types. The implementation depends on the SDK, never the other way around.
+
+**How.** The compiler enforces this boundary — implementation-private types are not in scope for consumers. REST endpoints use `OperationBuilder`, which requires each route to declare its method, path, auth posture, request/response schemas, and error types at registration time. `OpenApiRegistry` collects these declarations and generates `/openapi.json` automatically. Because metadata lives next to handler wiring (not in a separate spec file), it stays in sync with the code by construction.
+
+**Why.** Refactoring module internals is safe as long as the SDK interface stays compatible. Consumers can develop and test against SDK types alone. The OpenAPI spec is always consistent with the running code.
+
+#### 3.3.2. Infrastructure-agnostic deployment model
+
+CyberFabric separates service logic from service packaging. Module logic lives in libraries; final service binaries compose those libraries for a specific deployment shape.
+
+**How.** Module contracts are transport-agnostic: in-process modules register local adapters in `ClientHub`; out-of-process modules register REST/gRPC clients implementing the same SDK interface. A YAML config field (`runtime.type: local | oop`) switches modes without code changes. The platform provides DB-agnostic persistence through a SeaORM-based `SecureConn` abstraction and infrastructure-agnostic cluster primitives (distributed cache, distributed locks, leader election, service discovery) that resolve against operator-selected backends at startup.
+
+**Why.** This makes CyberFabric not just cloud-provider-agnostic, but deployment-topology-agnostic. Teams develop and test locally in single-node mode, deploy bare-metal services for on-prem or edge products, and scale to Kubernetes when needed — all from the same module code and contracts.
+
+#### 3.3.3. Consistent API syntax and semantics
 
 CyberFabric does not treat HTTP shape, query conventions, and API description as local stylistic choices. Modules follow one API style built around versioned paths, typed route registration, shared middleware, OpenAPI generation, and standard query patterns such as OData for filtering and ordering.
 
@@ -117,7 +146,7 @@ This produces one recognizable API dialect across modules:
 
 **Why.** Consumers, SDK authors, tests, docs, and gateway behavior all stay predictable. A module does not invent its own filtering language, pagination rules, or error envelope, so cross-module tooling and client generation remain feasible.
 
-### 3.7. Failure semantics use unified canonical errors
+#### 3.3.4. Canonical error taxonomy across transports
 
 CyberFabric is converging on one platform-wide error vocabulary instead of each module inventing its own transport-level failure categories. The canonical error model aligns with the 16 standard gRPC categories and maps them into REST via RFC-9457 `Problem` documents while preserving machine-readable type identity through GTS.
 
@@ -137,55 +166,47 @@ This gives the platform one error taxonomy across:
 
 See more: [docs/arch/errors/DESIGN.md](arch/errors/DESIGN.md)
 
-### 3.8. Dylint turns architecture into build-time policy
-
-CyberFabric treats custom static analysis as a core architectural mechanism, not a best-effort coding aid. Architectural boundaries, API conventions, GTS usage rules, and security restrictions are enforced during builds through repository-specific Dylint rules.
-
-**How.** The workspace includes `tools/dylint_lints/`, a dedicated Dylint suite that checks contract-layer purity, DTO placement and schema derives, domain-layer isolation, direct SQL restrictions, versioned REST paths, mandatory `OperationBuilder` metadata, OData extension usage, GTS identifier correctness, and other cross-cutting rules. These lints run alongside the normal Rust toolchain and CI checks, which means architectural violations fail fast before review or runtime.
-
-This is a shift-left quality mechanism: the repository pushes correctness, consistency, and architecture conformance into compile-time and CI-time validation rather than relying only on code review.
-
-**Why.** In a large modular platform, architecture decays quickly if it lives only in markdown. Dylint makes the desired structure executable and keeps both human contributors and AI-assisted changes inside the intended design envelope.
-
-### 3.9. Runtime composition is declarative and discovered
-
-CyberFabric composes systems by declaration and discovery rather than by hand-written assembly code. Modules declare capabilities and dependencies; the runtime discovers them, builds a dependency-ordered registry, and wires the system from those declarations.
-
-**How.** ModKit uses the `inventory` crate to collect module registrators across the workspace and feed them into `ModuleRegistry::discover_and_build()`. The resulting registry is topologically sorted from declared dependencies before the host runtime starts executing phases. This means a module contributes its capabilities once, in its own crate, and then becomes available to any host binary without bespoke composition glue.
-
-**Why.** This keeps composition scalable as the repository grows. Adding a module does not require editing a central switchboard, and dependency ordering becomes a platform guarantee rather than an application-specific convention.
-
-### 3.10. Lifecycle orchestration is part of the architecture
-
-CyberFabric modules do not invent their own startup and shutdown semantics. The platform defines an explicit lifecycle with ordered phases, barrier points, and dependency-aware teardown, and modules integrate into that lifecycle through capabilities.
-
-**How.** `HostRuntime` runs a shared sequence of phases including `pre_init`, DB migration, `init`, `post_init`, REST wiring, gRPC wiring, start/stop, and OoP orchestration. System modules run first where required, `post_init` is a barrier phase that begins only after all `init` hooks complete, and shutdown runs in reverse dependency order with a platform deadline for graceful stop. Cancellation tokens propagate through the runtime so background work cooperates with shutdown rather than outliving the host.
-
-**Why.** This gives all modules one predictable operational model. Contributors can rely on stable ordering guarantees, shared cancellation semantics, and consistent startup/shutdown behavior instead of encoding lifecycle assumptions ad hoc in each module.
-
-### 3.11. Modules own schema; the runtime owns privileged persistence operations
-
-Persistence follows the same separation-of-concerns model as APIs and security: a module owns its schema and migrations, but the runtime owns privileged execution of those migrations and withholds raw privileged DB access from module code.
-
-**How.** Modules expose migrations through `DatabaseCapability::migrations()`. During the DB phase, `HostRuntime` resolves the underlying database handle from the runtime-managed `DbManager`, collects migrations from each module, and executes them through the migration runner. Module code typically works with `DBProvider`, `SecureConn`, or higher-level repository abstractions rather than direct privileged connections, while migration history is tracked per module.
-
-**Why.** Schema evolution remains modular and local to the owning module, but privilege stays centralized in the runtime. That reduces the chance of accidental cross-module interference and keeps persistence governance aligned with the repository's secure-by-default posture.
-
-### 3.12. Domain logic stays pure; adapters carry transport and infrastructure concerns
-
-CyberFabric follows a DDD-light structure in which domain logic is kept free from transport and infrastructure details, while REST/gRPC adapters and infra layers handle boundary-specific concerns.
-
-**How.** The standard module layout separates SDK contracts, module bootstrap, domain logic, API adapters, and infrastructure. Domain types and services live under `domain/`, REST DTOs and route wiring stay in API-facing layers, and persistence/integration logic stays in infra. This boundary is reinforced not only by structure but also by custom Dylints and the `#[domain_model]` macro requirement for domain-layer types.
-
-**Why.** Business logic stays easier to test, reuse, and evolve because it is not entangled with HTTP, database, or framework details. At the same time, adapter code remains explicit about where transport translation and persistence concerns begin.
-
-### 3.13. Clustered coordination is the next platform primitive
+#### 3.3.5. Distributed coordination primitives
 
 The next major architectural addition is a unified cluster coordination capability for distributed CyberFabric deployments. The intent is to make cross-instance coordination a first-class platform concern rather than something each module reinvents with ad-hoc locks, local registries, or deployment-specific glue.
 
 **How.** The cluster module is intended to provide four platform-level primitives behind stable contracts: distributed cache, leader election, distributed locks, and service discovery. Consumer modules will declare what they need and the platform will resolve those primitives against operator-selected backends. The design direction already visible in repository docs is that backends may vary by primitive, capability requirements will be validated at startup, cache-backed defaults will exist for other primitives, and watch/lifecycle semantics will be standardized across the coordination surface.
 
 **Why.** Existing modules already show the need for shared coordination patterns such as node discovery, leader-elected background work, distributed rate limiting, and backend-dependent service location. Elevating these into one platform primitive keeps module contracts stable across deployment shapes and prevents each module from inventing incompatible coordination behavior.
+
+### 3.4. Pre-integrated XaaS backbone
+
+CyberFabric modules and their API handlers have deep integration with the typical XaaS platform backbone: multi-tenancy, licensing and quota management, usage collection, event systems, credential management, and so on. CyberFabric provides its own backbone modules for these concerns, but they are designed as replaceable — vendors can integrate with their existing backbone via the plugin system (e.g. connect an existing product catalog, provisioning system, or license enforcement engine) so the entire CyberFabric module fleet works with the vendor's own platform infrastructure.
+
+#### 3.4.1. Cross-cutting services as replaceable modules
+
+Authorization, authentication, tenancy, ingress, outbound traffic, type registries, and runtime orchestration are each implemented as a regular module with its own SDK, lifecycle, and API surface — not hidden inside the framework.
+
+**How.** Each concern publishes a public interface in an SDK package. The implementation registers itself in `ClientHub` (the typed service locator). Consumers resolve the interface at runtime and never depend on the implementation package. Example: `authz-resolver-sdk` defines the authorization interface; consumer modules resolve it from `ClientHub` without importing the resolver's internals. The same pattern applies to `authn-resolver`, `tenant-resolver`, `types-registry`, `oagw`, etc.
+
+**Why.** Concerns can be swapped, tested in isolation, or deployed out-of-process without touching callers. The runtime assembles only the modules a given deployment needs.
+
+### 3.5. Extensible domain model via Global Type System
+
+The majority of CyberFabric modules define an extensible domain model. Object metadata, types, and behavior can be customized through the [Global Type System (GTS)](https://github.com/globaltypesystem/gts-spec) — define new event types, user settings, LLM model attributes, permission schemas, and more without modifying existing modules or endpoints. CRUD API handlers can be further customized via API hooks and callbacks implemented as serverless functions and workflows, enabling vendors to inject domain-specific logic at well-defined extension points.
+
+#### 3.5.1. Open-closed extensibility via plugins
+
+New implementations are added without changing existing modules.
+
+**How.** A host module defines a plugin interface in its SDK and registers the plugin schema in the type registry. Plugin modules implement the interface and register as scoped clients in `ClientHub`, keyed by GTS instance ID. The host discovers plugins at runtime and routes to the selected one via a `vendor` config field. Adding a new backend (e.g. a custom auth provider) means writing a new plugin — the host and all its consumers stay unchanged.
+
+**Why.** Third-party integrations are isolated with no dependency on platform internals beyond the SDK. Host module tests remain stable when plugins are added or removed.
+
+#### 3.5.2. GTS type extensibility
+
+New data types are added without modifying existing modules or endpoints.
+
+**How.** The [Global Type System](https://github.com/GlobalTypeSystem/gts-spec) provides versioned, schema-validated type definitions. New data types (event formats, document schemas, serverless workflows and functions, permissions, license types, custom attributes) can appear in the system without modifying existing endpoints or storage. In Rust, CyberFabric derives GTS definitions directly from source code types and then registers the resulting JSON Schemas in the Types Registry. That means event schemas, plugin contracts, and other typed contracts can be generated from Rust code in the same way OpenAPI is generated from route declarations, instead of being maintained as hand-written side artifacts.
+
+**Why.** Incompatible schema changes are caught at registration time. The type surface grows without code changes to existing modules, and contracts stay machine-verifiable.
+
+See more in: [docs/REPO_PLAYBOOK.md](REPO_PLAYBOOK.md)
 
 ## 4. Why Rust
 
@@ -224,22 +245,19 @@ The monorepo model is a natural fit because CyberFabric is a co-evolving platfor
 
 ## 6. Repository structure
 
-The repository has three main architectural strata:
+The repository maps directly to the three-tier module hierarchy described in §3.2:
 
-- **`libs/` — ModKit and platform libraries**
-  - This is the foundation layer.
-  - It contains `modkit` and companion libraries for security, DB access, OData, gRPC transport, HTTP, canonical errors, node info, macros, and shared utilities.
-  - This layer defines the engineering rules that higher layers reuse.
+- **`libs/` — Modkit**
+  - Libraries providing the low-level substrate: API middleware, DB access, error definitions, transport abstractions, security primitives, observability, macros, and shared utilities.
+  - This layer defines the engineering rules and runtime substrate that higher tiers reuse.
 
-- **`modules/system/` — system modules**
-  - This is the platform control plane and shared infrastructure layer.
-  - It includes API ingress, module orchestration, authn/authz, tenancy, resource groups, types registry, nodes registry, outbound API gateway, and related cross-cutting services.
+- **`modules/system/` — System modules**
+  - Control-plane and cross-cutting system modules: API ingress, module orchestration, authn/authz, tenancy, resource groups, types registry, nodes registry, outbound API gateway, and related services.
   - These modules carry much of the architectural weight of the repository because they establish the runtime model and platform guarantees.
 
-- **`modules/` — business and application modules**
-  - Outside `modules/system/`, the broader `modules/` tree contains the end-user-facing service modules that deliver actual product functionality.
-  - This layer is expected to grow to dozens of modules covering areas such as GenAI, serverless, business logic, and core functionality (see [MODULES.md](MODULES.md) for the full inventory and roadmap).
-  - All business modules follow the same ModKit patterns, SDK conventions, and security model established by the platform layers.
+- **`modules/` — Service modules**
+  - Outside `modules/system/`, the broader `modules/` tree contains business and domain modules that deliver product functionality: serverless runtime, GenAI subsystems, event system, chat engine, file parser, and more (see [MODULES.md](MODULES.md) for the full inventory and roadmap).
+  - All service modules follow the same ModKit patterns, SDK conventions, and security model established by the modkit and system module tiers.
 
 Additional assembly lives in `apps/`, where executable applications compose modules into examples of runnable systems.
 

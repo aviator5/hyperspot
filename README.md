@@ -3,20 +3,28 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cyberfabric/cyberfabric-core/badge)](https://scorecard.dev/viewer/?uri=github.com/cyberfabric/cyberfabric-core)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12050/badge)](https://www.bestpractices.dev/projects/12050)
 
-**Cyber Fabric** is a modular, high-performance platform for building modern enterprise-grade SaaS services primarily in Rust. It provides a comprehensive framework for building scalable AI-powered applications with automatic REST API generation, comprehensive OpenAPI documentation, and a extremely flexible modular architecture.
+**Cyber Fabric** is a secure, modular XaaS development framework and middleware written primarily in Rust. It provides ready-to-use building blocks, domain model elements, and APIs with security-in-depth enforcement, multi-tenancy, and granular access control built into every layer.
 
-**Key Philosophy:**
-- **Modular by Design**: Everything is a Module - composable, independent units with gateway patterns for pluggable workers
-- **Extensible at Every Level**: [GTS](https://github.com/globaltypesystem/gts-spec)-powered extension points for custom data types, business logic, and third-party integrations
-- **SaaS Ready**: Multi-tenancy, granular access control, usage tracking, and tenant customization built-in
-- **Cloud Operations Excellence**: Production-grade observability, database agnostic design, API best practices, and resilience patterns via ModKit
-- **Spec-Driven Development**: [Industry-standard specification templates](docs/spec-templates/README.md) (PRD, Design, ADR, Feature, Upstream Reqs) define what gets built *before* code is written, ensuring traceability from requirements to implementation
-- **Shift Left**: Catch issues at the earliest possible stage — custom [dylint](tools/dylint_lints/) architectural lints enforce design rules at compile time, Clippy with denied warnings, integrated [E2E tests](#e2e-tests), fuzzing, and security audits run in CI before code reaches review
+CyberFabric is not a ready-to-use service — it is a set of well-integrated libraries (modules) that XaaS vendors compose into their own products. Vendors decide which modules to include, how to combine them into services, and on what infrastructure to run — from edge devices to Kubernetes clusters.
+
+**Five defining characteristics:**
+
+1. **Secure XaaS framework with defense-in-depth** — Every API handler enforces authentication, authorization, tenant isolation, and scoped DB access by default. Security is structural, not opt-in, validated at build time using integrated dynamic lints.
+
+2. **Three-tier module hierarchy** — *Modkit* (`libs/` — ModKit, DB access, error model, API middleware), *System modules* (`modules/system/` — API gateway, authn/authz, tenancy, resource groups, type registry), and *Service modules* (`modules/` — serverless runtime, GenAI subsystems, event system, and domain modules).
+
+3. **Composable libraries, vendor-controlled deployment** — Each module owns its API surface and database, communicates via a Rust-native SDK that facades local vs. remote calls, and is fully infrastructure-agnostic. Vendors choose which modules to bundle and whether to deploy single-process (edge/on-prem), multi-node (bare metal), or on Kubernetes.
+
+4. **Pre-integrated XaaS backbone** — Deep integration with multi-tenancy, licensing and quota management, usage collection, and event systems. CyberFabric provides its own backbone modules, but each can be replaced or integrated with existing vendor infrastructure via plugins (e.g. subscription management, product catalog, provisioning, or license enforcement).
+
+5. **Extensible domain model via Global Type System** — Modules expose extensible domain objects whose metadata and types are customizable through [GTS](https://github.com/globaltypesystem/gts-spec) — define new event types, user settings, LLM model attributes, etc. CRUD API handlers support customization via hooks and callbacks as serverless functions and workflows.
+
+**Engineering principles:**
+- **Spec-Driven Development**: [Specification templates](docs/spec-templates/README.md) (PRD, Design, ADR, Feature) define what gets built *before* code is written. Every module is well documented.
+- **Shift Left**: Custom [dylint](tools/dylint_lints/) architectural lints enforce design rules at compile time, alongside Clippy, [E2E tests](#e2e-tests), fuzzing, and security audits in CI
 - **Quality First**: 90%+ test coverage target with unit, integration, E2E, performance, and security testing
-- **Universal Deployment**: Single codebase runs on cloud, on-prem Windows/Linux workstation, or mobile
-- **Developer Friendly**: AI-assisted code generation, automatic OpenAPI docs, DDD-light structure, and type-safe APIs
-- **Core modules Written in Rust**: Optimize recurring engineering work with compile-time safety and deep static analysis (including project-specific lints) so more issues are prevented before review/runtime.
-- **Keep Monorepo while possible**: Keep core modules and contracts in one place to enable atomic refactors, consistent tooling/CI, and realistic local build + end-to-end testing; split only when scale forces it.
+- **Core in Rust**: Compile-time safety, deep static analysis including project-specific lints, so more issues are prevented before review/runtime
+- **Monorepo**: Core modules and contracts in one place for atomic refactors, consistent tooling/CI, and realistic local build + E2E testing
 
 See the full architecture [MANIFEST](docs/ARCHITECTURE_MANIFEST.md) for more details, including rationales behind Rust and Monorepo choice.
 
