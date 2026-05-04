@@ -1,6 +1,8 @@
 use std::sync::OnceLock;
 
 /// Error returned when the crypto provider cannot be installed.
+// `Clone` required by `OnceLock<Result<_>>` cache in `init_crypto_provider` —
+// the cached result is cloned on every call.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum CryptoProviderError {
     /// Another crypto provider was already installed (FIPS mode).
@@ -17,7 +19,9 @@ static INIT_RESULT: OnceLock<Result<(), CryptoProviderError>> = OnceLock::new();
 /// - **Standard mode**: installs the `aws-lc-rs` provider explicitly. This is
 ///   required because both `ring` and `aws-lc-rs` are compiled into the binary
 ///   (ring via `aliri`/`pingora-rustls`), and rustls 0.23 panics when it cannot
-///   auto-detect a single provider.
+///   auto-detect a single provider. Conflicts here are non-fatal: if another
+///   provider was installed first, it stays active, the conflict is logged at
+///   `warn!`, and `Ok(())` is returned.
 ///
 /// This **must** be called before any TLS configuration, HTTP client, database
 /// connection, or JWT operation is created.
@@ -47,10 +51,13 @@ pub fn init_crypto_provider() -> Result<(), CryptoProviderError> {
             #[cfg(not(feature = "fips"))]
             {
                 if let Err(prev) = rustls::crypto::aws_lc_rs::default_provider().install_default() {
+                    // Non-fatal: another provider is already active, TLS still works.
                     tracing::warn!(
                         previous_provider = ?prev,
                         "aws-lc-rs crypto provider not installed: another default provider was already set"
                     );
+                } else {
+                    tracing::info!("aws-lc-rs crypto provider installed");
                 }
             }
 
