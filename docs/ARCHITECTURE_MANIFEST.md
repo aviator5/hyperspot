@@ -45,7 +45,7 @@ The architecture makes the insecure path harder than the secure one. Module deve
 2. **Authentication** — API Gateway validates tokens and injects `SecurityContext` into every request. Modules never parse tokens.
 3. **Authorization** — Handlers call `PolicyEnforcer`, which queries the PDP plugin. The PDP returns a decision plus row-level constraints, compiled into an `AccessScope`.
 4. **Database scoping** — Modules access the database through `SecureConn`, which applies `AccessScope` as automatic WHERE clauses to implement tenant-level isolation and ABAC. Raw connections are not exposed.
-5. **Credentials storage** — all the credentials are stored in dedicated `credstore` module.
+5. **Credentials storage** — vendors can use the `credstore` module to manage secrets.
 6. **Outbound traffic** — External HTTP goes through `oagw`, which centralizes credential injection and egress policy.
 
 **Why.** There is no "unscoped" shortcut to accidentally use.
@@ -141,7 +141,7 @@ This produces one recognizable API dialect across modules:
 - Shared pagination/filter/order conventions
 - OData-style filtering for collection resources where applicable
 - Consistent auth, rate-limit, timeout, and observability behavior at the gateway
-- [ ] Rate limiting — implemented in OAGW domain layer; API Gateway integration pending.
+- [x] Rate limiting — governor-based rate limiter with policy headers and inflight semaphores is implemented in the API Gateway middleware stack (`modules/system/api-gateway/src/middleware/rate_limit.rs`). OAGW has a separate rate-limiting implementation for outbound traffic.
 - [~] License posture declaration — OperationBuilder declaration and base-license gate implemented; per-feature entitlement validation against license resolver pending.
 
 **Why.** Consumers, SDK authors, tests, docs, and gateway behavior all stay predictable. A module does not invent its own filtering language, pagination rules, or error envelope, so cross-module tooling and client generation remain feasible.
@@ -315,27 +315,25 @@ sequenceDiagram
     participant C as Client
     participant GW as API Gateway
     participant AuthN as AuthN Resolver
-    participant AuthZ as AuthZ Resolver
     participant Lic as License Resolver
     participant Mod as Execution Module
-    participant UC as Usage Collector
+    participant AuthZ as AuthZ Resolver
     participant DB as Database (SecureConn)
     C->>GW: HTTP Request
     GW->>AuthN: Validate token → SecurityContext
     AuthN-->>GW: SecurityContext
-    GW->>AuthZ: Resolve AccessScope (PolicyEnforcer)
-    AuthZ-->>GW: AccessScope + row-level constraints
     GW->>Lic: Validate license feature for route
     Lic-->>GW: Allowed / Denied
-    GW->>Mod: Handler(SecurityContext, AccessScope)
-    Mod->>DB: SecureConn.scope_with(AccessScope)
+    GW->>Mod: Handler(SecurityContext)
+    Mod->>AuthZ: PolicyEnforcer → AccessScope
+    AuthZ-->>Mod: AccessScope + row-level constraints
+    Mod->>DB: Entity::find().secure().scope_with(&scope)
     DB-->>Mod: Scoped query results
-    Mod->>UC: Record usage event (async)
     Mod-->>GW: Response
     GW-->>C: HTTP Response
 ```
 
-> The platform owns steps 1–4. Module code receives `SecurityContext` and `AccessScope` as injected parameters; it never performs token parsing or tenant resolution directly. Usage recording (step 8) is asynchronous and non-blocking on the response path. Step 4 (license validation) is currently implemented at the base-license level; per-feature entitlement is pending.
+> The API Gateway owns authentication (token → `SecurityContext`) and license validation. Module domain services own authorization: they call `PolicyEnforcer`, which queries the AuthZ Resolver and compiles the result into an `AccessScope`. The module then passes that scope to `SecureConn` for row-level database filtering. Module code never performs token parsing or tenant resolution directly. License validation is currently implemented at the base-license level; per-feature entitlement is pending. Usage collection (`modules/system/usage-collector/`) is planned but not yet implemented.
 
 ## 8. Module model
 
@@ -413,7 +411,7 @@ Security in CyberFabric spans the language choice, module boundaries, DB access 
   - OAGW (Outbound API Gateway) centralizes outbound HTTP policy, credential resolution, and egress hardening.
 
 - [x] **Credential handling architecture**
-  - `credstore` and secrecy-aware types are present for secret handling.
+  - `credstore` (`modules/credstore/`) and secrecy-aware types are present for secret handling.
 
 - [x] **Static and CI security gates**
   - Clippy, custom Dylints, `cargo-deny`, CodeQL, fuzzing, and related scanners are part of the repo.
@@ -470,7 +468,7 @@ See more details in: [arch/authorization/DESIGN.md](arch/authorization/DESIGN.md
 ### 11.1. REST and OpenAPI
 
 - [x] API Gateway builds a unified HTTP surface with health endpoints, middleware, auth, request IDs, tracing, timeouts, and docs endpoints.
-- [ ] Rate limiting — implemented in OAGW domain layer; API Gateway integration pending.
+- [x] Rate limiting — governor-based rate limiter with policy headers and inflight semaphores is implemented in the API Gateway middleware stack. OAGW has a separate rate-limiting implementation for outbound traffic.
 - [~] License posture declaration — OperationBuilder declaration and base-license gate implemented; per-feature entitlement validation against license resolver pending.
 - [x] `OpenApiRegistry` and `OperationBuilder` are implemented in ModKit.
 - [x] `/openapi.json` and `/docs` are served by the API gateway.
@@ -503,11 +501,11 @@ The canonical error model stabilizes failure semantics, improves machine-readabi
 - [x] OpenTelemetry tracing initialization exists in `libs/modkit/src/telemetry/`.
 - [x] API Gateway implements request IDs, tracing, timeout layers, body limits, and structured access logging.
 - [x] API Gateway exposes `/health` and `/healthz`.
-- [ ] Rate limiting — implemented in OAGW domain layer; API Gateway integration pending.
+- [x] Rate limiting — governor-based rate limiter is implemented in the API Gateway middleware stack. OAGW has a separate rate-limiting implementation for outbound traffic.
 - [x] The repo contains CI workflows and test infrastructure aligned with operational quality.
 
 ## 13. Testing architecture
 
-CyberFabric defines a dual-layer testing strategy with an explicit zero-overlap rule between tiers. **Unit and integration tests** run in-process against SQLite `:memory:` with mocked AuthZ, covering domain invariants, validation, error chains, DTO conversions, and seeding logic — no HTTP, no real database. **End-to-end tests** (pytest against a running `cf-server` with real Database) verify only integration seams that unit tests cannot see: JSON wire format, real AuthZ wiring, DB-specific SQL, and cross-module SDK boundaries. Each test must answer three gating questions — whether the bug requires real HTTP or a real DB dialect, and whether removing the test reduces confidence — before it is placed in either tier.
+CyberFabric defines a dual-layer testing strategy with an explicit zero-overlap rule between tiers. **Unit and integration tests** run in-process against SQLite `:memory:` with mocked AuthZ, covering domain invariants, validation, error chains, DTO conversions, and seeding logic — no HTTP, no real database. **End-to-end tests** (pytest against a running `cf-server` with real Database) verify only integration seams that unit tests cannot see: JSON wire format, real AuthZ wiring, DB-specific SQL, and cross-module SDK boundaries. Each unit test must pass three gating questions: (1) does it verify deterministic domain logic, (2) is it atomic and fast, and (3) does removing it reduce confidence in domain correctness.
 
 See more: [docs/modkit_unified_system/12_unit_testing.md](modkit_unified_system/12_unit_testing.md) and [docs/modkit_unified_system/13_e2e_testing.md](modkit_unified_system/13_e2e_testing.md)
