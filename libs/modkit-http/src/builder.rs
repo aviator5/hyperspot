@@ -30,6 +30,7 @@ type InnerService =
 pub struct HttpClientBuilder {
     config: HttpClientConfig,
     auth_layer: Option<Box<dyn FnOnce(InnerService) -> InnerService + Send>>,
+    metrics_layer: Option<Box<dyn FnOnce(InnerService) -> InnerService + Send>>,
 }
 
 impl HttpClientBuilder {
@@ -39,6 +40,7 @@ impl HttpClientBuilder {
         Self {
             config: HttpClientConfig::default(),
             auth_layer: None,
+            metrics_layer: None,
         }
     }
 
@@ -48,6 +50,7 @@ impl HttpClientBuilder {
         Self {
             config,
             auth_layer: None,
+            metrics_layer: None,
         }
     }
 
@@ -140,6 +143,26 @@ impl HttpClientBuilder {
         wrap: impl FnOnce(InnerService) -> InnerService + Send + 'static,
     ) -> Self {
         self.auth_layer = Some(Box::new(wrap));
+        self
+    }
+
+    /// Insert a metrics layer between the rate-limit and retry layers.
+    ///
+    /// Stack position: `… → RateLimit → **this layer** → Retry → Auth → Timeout → …`
+    ///
+    /// The layer sits outside the retry loop so it observes a single logical
+    /// request once, regardless of how many transport-level retries the retry
+    /// layer issues. If the use case is "count every attempt", the equivalent
+    /// observation can be made with [`with_otel`](Self::with_otel) (one span
+    /// per attempt) and a `tracing` → metrics bridge.
+    ///
+    /// Only one metrics layer can be set; a second call replaces the first.
+    #[must_use]
+    pub fn with_metrics_layer(
+        mut self,
+        wrap: impl FnOnce(InnerService) -> InnerService + Send + 'static,
+    ) -> Self {
+        self.metrics_layer = Some(Box::new(wrap));
         self
     }
 
@@ -259,18 +282,21 @@ impl HttpClientBuilder {
         // =======================================================================
         //
         // Request flow (outer → inner):
-        //   Buffer → OtelLayer → LoadShed/Concurrency → RetryLayer →
-        //   [AuthLayer?] → ErrorMapping → Timeout → UserAgent →
+        //   Buffer → OtelLayer → LoadShed/Concurrency → [MetricsLayer?] →
+        //   RetryLayer → [AuthLayer?] → ErrorMapping → Timeout → UserAgent →
         //   Decompression → FollowRedirect → hyper_client
         //
         // AuthLayer (if set via with_auth_layer) sits inside the retry
         // loop so each retry re-acquires credentials (e.g. refreshed
         // bearer token).
         //
+        // MetricsLayer (if set via with_metrics_layer) sits outside the
+        // retry loop so it observes one logical request, not per-attempt.
+        //
         // Response flow (inner → outer):
         //   hyper_client → FollowRedirect → Decompression → UserAgent →
         //   Timeout → ErrorMapping → [AuthLayer?] → RetryLayer →
-        //   LoadShed/Concurrency → OtelLayer → Buffer
+        //   [MetricsLayer?] → LoadShed/Concurrency → OtelLayer → Buffer
         //
         // Key semantics (reqwest-like):
         //  - send() returns Ok(Response) for ALL HTTP statuses (including 4xx/5xx)
@@ -331,6 +357,12 @@ impl HttpClientBuilder {
                 .layer(retry_layer)
                 .service(boxed_service);
             boxed_service = retry_service.boxed_clone();
+        }
+
+        // Apply metrics layer (between retry and rate-limit).
+        // Outside the retry loop: observes one logical request, not per-attempt.
+        if let Some(wrap) = self.metrics_layer {
+            boxed_service = wrap(boxed_service);
         }
 
         // Conditionally wrap with concurrency limit + load shedding
@@ -635,6 +667,42 @@ mod tests {
             .with_auth_layer(|svc| svc) // identity transform
             .build();
         assert!(client.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_metrics_layer() {
+        let client = HttpClientBuilder::new()
+            .with_metrics_layer(|svc| svc) // identity transform
+            .build();
+        assert!(client.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_metrics_layer_second_call_replaces_first() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count2 = call_count.clone();
+
+        // Second call should replace the first; only one layer is applied.
+        let client = HttpClientBuilder::new()
+            .with_metrics_layer(|_svc| {
+                // This closure should NOT be called (replaced by the second).
+                panic!("first metrics layer should have been replaced");
+            })
+            .with_metrics_layer(move |svc| {
+                call_count2.fetch_add(1, Ordering::SeqCst);
+                svc
+            })
+            .build();
+
+        assert!(client.is_ok());
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            1,
+            "second metrics layer must be applied exactly once"
+        );
     }
 
     #[tokio::test]

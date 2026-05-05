@@ -2,6 +2,7 @@
 // Should not trigger DE1101 - #[cfg(not(test))] is production-only code, not a test module
 #[cfg(not(test))]
 mod production_diagnostics {
+    #[allow(dead_code)]
     pub fn init() {}
 }
 

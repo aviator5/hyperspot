@@ -105,7 +105,7 @@ async def test_gts_ids_have_valid_format(oagw_base_url, oagw_headers):
                     f"Schema portion should have 5 segments: {gts_id}"
                 )
                 # Instance portion: either 5 segments (builtin) or bare UUID (dynamic)
-                # Builtin instances: x.core.oagw.<name>.v1
+                # Builtin instances: cf.core.oagw.<name>.v1
                 # Dynamic instances: <uuid> (e.g., routes, upstreams created at runtime)
                 instance_segments = instance_part.split(".")
                 is_builtin_format = len(instance_segments) == 5

@@ -483,6 +483,7 @@ fn strip_visibility(line: &str) -> &str {
 /// Extract the module name from an out-of-line mod declaration.
 /// `"mod foo_tests;"` → `Some("foo_tests")`
 /// `"pub(crate) mod foo_tests;"` → `Some("foo_tests")`
+#[cfg(test)]
 fn extract_mod_name(line: &str) -> Option<&str> {
     if !line.ends_with(';') {
         return None;

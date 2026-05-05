@@ -82,7 +82,6 @@ impl<'tcx> LateLintPass<'tcx> for De0801ApiEndpointVersion {
                         false
                     }
                 }
-                _ => false,
             };
 
             if is_operation_builder_http_method && let Some(path_arg) = args.first() {
@@ -209,7 +208,6 @@ fn type_contains_operation_builder(ty: &rustc_hir::Ty<'_>) -> bool {
                 segment.ident.name.as_str() == "OperationBuilder"
                     || type_contains_operation_builder(inner_ty)
             }
-            _ => false,
         },
         _ => false,
     }

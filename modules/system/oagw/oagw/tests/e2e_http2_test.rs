@@ -55,7 +55,7 @@ async fn start_h2_mock() -> (SocketAddr, Arc<H2MockState>, tokio::task::JoinHand
 
     let cert_der = CertificateDer::from(cert.cert.der().to_vec());
     let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-        cert.key_pair.serialize_der().to_vec(),
+        cert.signing_key.serialize_der().to_vec(),
     ));
 
     let mut tls_config = ServerConfig::builder()
@@ -204,7 +204,7 @@ async fn e2e_http2_upstream_round_trip() {
                     "scheme": "https"
                 }]
             },
-            "protocol": "gts.x.core.oagw.protocol.v1~x.core.oagw.http.v1",
+            "protocol": "gts.cf.core.oagw.protocol.v1~cf.core.oagw.http.v1",
             "alias": "e2e-h2",
             "enabled": true,
             "tags": []
@@ -277,7 +277,7 @@ async fn e2e_http2_upstream_get_no_body() {
                     "scheme": "https"
                 }]
             },
-            "protocol": "gts.x.core.oagw.protocol.v1~x.core.oagw.http.v1",
+            "protocol": "gts.cf.core.oagw.protocol.v1~cf.core.oagw.http.v1",
             "alias": "e2e-h2-get",
             "enabled": true,
             "tags": []
@@ -343,7 +343,7 @@ async fn e2e_http2_upstream_large_body() {
                     "scheme": "https"
                 }]
             },
-            "protocol": "gts.x.core.oagw.protocol.v1~x.core.oagw.http.v1",
+            "protocol": "gts.cf.core.oagw.protocol.v1~cf.core.oagw.http.v1",
             "alias": "e2e-h2-large",
             "enabled": true,
             "tags": []
@@ -417,7 +417,7 @@ async fn e2e_http2_upstream_sse_streaming() {
                     "scheme": "https"
                 }]
             },
-            "protocol": "gts.x.core.oagw.protocol.v1~x.core.oagw.http.v1",
+            "protocol": "gts.cf.core.oagw.protocol.v1~cf.core.oagw.http.v1",
             "alias": "e2e-h2-sse",
             "enabled": true,
             "tags": []

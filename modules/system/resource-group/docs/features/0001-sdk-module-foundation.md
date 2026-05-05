@@ -332,8 +332,8 @@ Other modules (`nodes-registry`, `types-registry`) place pure-logic tests direct
 
 #### TC-SDK-07: GtsTypePath::new() trims whitespace and lowercases [P2]
 - **Covers**: G36
-- **Input**: `"  GTS.X.System.RG.Type.V1~  "`
-- **Assert**: `Ok`, `as_str() == "gts.x.system.rg.type.v1~"` (`new` only normalizes case/whitespace; it does not rewrite the GTS namespace)
+- **Input**: `"  gts.cf.System.RG.Type.V1~  "`
+- **Assert**: `Ok`, `as_str() == "gts.cf.system.rg.type.v1~"` (`new` only normalizes case/whitespace; it does not rewrite the GTS namespace)
 
 #### TC-SDK-08: GtsTypePath::new() chained path (multi-segment) [P1]
 - **Covers**: G38
@@ -383,8 +383,8 @@ Other modules (`nodes-registry`, `types-registry`) place pure-logic tests direct
 - Boundary → Err("exceeds maximum length")
 
 #### TC-SDK-24: validate_type_code vs GtsTypePath normalization mismatch [P1]
-- `validate_type_code("  GTS.X.SYSTEM.RG.TYPE.V1~  ")` → fails (no trim/lowercase)
-- `GtsTypePath::new("  GTS.X.SYSTEM.RG.TYPE.V1~  ")` → succeeds (trims + lowercases)
+- `validate_type_code("  gts.cf.SYSTEM.RG.TYPE.V1~  ")` → fails (no trim/lowercase)
+- `GtsTypePath::new("  gts.cf.SYSTEM.RG.TYPE.V1~  ")` → succeeds (trims + lowercases)
 - Document this inconsistency and verify behavior
 
 #### TC-SDK-14: SDK model camelCase serialization [P1]

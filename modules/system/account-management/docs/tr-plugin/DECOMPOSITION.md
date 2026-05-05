@@ -38,12 +38,12 @@ This DECOMPOSITION covers the Tenant Resolver Plugin (`tr-plugin`) sub-system, a
   - Deterministic ordering: direct-parent-first for ancestors (driven by AM's `tenants.depth` column with `tenants.id` tie-break), SDK pre-order for descendants (bounded by `max_depth` and siblings ordered by `id`), with no application-layer hierarchy walk
   - Plugin registration with the Tenant Resolver gateway via `ClientHub` using the plugin's GTS instance identifier as scope (`cpt-cf-tr-plugin-fr-plugin-api`)
   - OpenTelemetry telemetry set covering Performance / Reliability / Security / Versatility vectors (`cpt-cf-tr-plugin-fr-observability`, `cpt-cf-tr-plugin-nfr-observability`, `cpt-cf-tr-plugin-nfr-audit-trail`)
-  - Bounded lazy reverse-lookup cache for `tenant_type_uuid -> tenant_type` (non-hierarchy data; does not cache visibility decisions)
+  - `tenant_type_uuid → tenant_type` reverse-hydration via `TypesRegistryClient` (caching for the mapping is owned by the registry client; the plugin maintains no parallel cache)
 
 - **Out of scope**:
   - **No closure writes** — the parent module (`cpt-cf-account-management-feature-tenant-hierarchy-management`) owns every write to `tenants` and `tenant_closure`, including the `barrier` and `descendant_status` columns (ADR-001 closure-ownership decision). The plugin holds only `SELECT` grants.
   - **No REST/gRPC wire API** — the plugin is strictly in-process behind the Tenant Resolver gateway; `cpt-cf-tr-plugin-constraint-no-wire-api` is a first-class constraint. The gateway owns all network-facing contracts.
-  - **No process-local caching of hierarchy data** — no in-memory cache of tenants, ancestors, descendants, or closure rows. Consistency is a transactional property of AM's writes, not of a plugin cache invalidation scheme. Only the non-hierarchy `tenant_type_uuid` reverse-lookup cache is allowed.
+  - **No process-local caching of any plugin-owned data** — no in-memory cache of tenants, ancestors, descendants, closure rows, or `tenant_type_uuid → tenant_type` mappings. Consistency is a transactional property of AM's writes, not of a plugin cache invalidation scheme; tenant-type reverse-hydration is delegated to `TypesRegistryClient`'s built-in cache.
   - Authorization decisions (AuthZ Resolver / gateway concern — whether a caller may use `BarrierMode::Ignore` or observe `suspended`/`deleted` tenants is not enforced here)
   - Tenant CRUD, mode change, status change, type validation (all AM-owned)
   - Multi-region reads and read-replica routing (v1 is single-region, primary-only; revisit per deployment profile)
@@ -92,7 +92,7 @@ This DECOMPOSITION covers the Tenant Resolver Plugin (`tr-plugin`) sub-system, a
 - **Domain Model Entities**:
   - `Tenant` (read-only view of AM's `tenants` row, projected to `TenantInfo` / `TenantRef` for SDK responses)
   - `TenantClosure` (read-only view of AM's platform-canonical `tenant_closure` table — `(ancestor_id, descendant_id, barrier, descendant_status)`)
-  - `TenantType` (reverse-lookup from `tenant_type_uuid` via Types Registry; bounded lazy cache)
+  - `TenantType` (reverse-lookup from `tenant_type_uuid` via `TypesRegistryClient`; the registry client owns the cache for that mapping, and the plugin maintains no parallel cache)
   - `BarrierMode` (SDK enum — `Respect` / `Ignore`; mapped to a single predicate on the canonical `barrier` column)
   - `TenantStatus` (SDK-visible domain: `Active` / `Suspended` / `Deleted`; provisioning is excluded by construction)
 
@@ -125,7 +125,7 @@ This DECOMPOSITION covers the Tenant Resolver Plugin (`tr-plugin`) sub-system, a
   - [ ] `p1` - `tenants` (AM-owned table; consumed via the dedicated read-only DB role — existence probes, bulk-by-ids, ancestor hydration JOINs; provisioning rows filtered out in the query-builder as defense-in-depth)
   - [ ] `p1` - `tenant_closure` (AM-owned table with the platform-canonical schema `(ancestor_id, descendant_id, barrier, descendant_status)`; consumed via the dedicated read-only DB role — all barrier and status semantics reduce to single predicates on this table)
   - [ ] `p3` - `cpt-cf-tr-plugin-db-schema` (DESIGN §3.7 — read-only schema & index coverage reference; no schema authored by this feature)
-  - [ ] `p1` - Plugin descriptor schema: `gts://gts.x.core.modkit.plugin.v1~x.core.tenant_resolver.plugin.v1~` ([`tr_plugin.v1.schema.json`](./schemas/tr_plugin.v1.schema.json))
+  - [ ] `p1` - Plugin descriptor schema: `gts://gts.cf.core.modkit.plugin.v1~cf.core.tenant_resolver.plugin.v1~` ([`tr_plugin.v1.schema.json`](./schemas/tr_plugin.v1.schema.json))
   - **No dbtables authored by this feature** — `tenants` and `tenant_closure` are owned and migrated by `cpt-cf-account-management-feature-tenant-hierarchy-management`.
 
 ---

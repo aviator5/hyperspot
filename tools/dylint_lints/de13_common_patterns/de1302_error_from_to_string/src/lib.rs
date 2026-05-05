@@ -126,10 +126,7 @@ impl<'tcx> LateLintPass<'tcx> for De1302ErrorFromToString {
         // Resolve the actual types from the type system.
         // For `impl From<X> for Y`: args[0] = Y (Self), args[1] = X (source type).
         let impl_def_id = item.owner_id.def_id;
-        let Some(impl_trait_ref) = cx.tcx.impl_trait_ref(impl_def_id) else {
-            return;
-        };
-        let impl_trait_ref = impl_trait_ref.instantiate_identity();
+        let impl_trait_ref = cx.tcx.impl_trait_ref(impl_def_id).instantiate_identity();
         let source_ty = impl_trait_ref.args.type_at(1); // X
         let target_ty = impl_trait_ref.args.type_at(0); // Y = Self
 
