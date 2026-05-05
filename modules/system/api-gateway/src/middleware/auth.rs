@@ -126,9 +126,15 @@ impl GatewayRoutePolicy {
             .is_some_and(|matcher| matcher.find(path));
 
         // Public routes should not be forced to auth by default
-        let needs_authn = is_authenticated || (self.require_auth_by_default && !is_public);
+        if is_public {
+            return AuthRequirement::None;
+        }
 
-        if needs_authn {
+        if is_authenticated {
+            return AuthRequirement::Required;
+        }
+
+        if self.require_auth_by_default {
             AuthRequirement::Required
         } else {
             AuthRequirement::None
@@ -449,6 +455,36 @@ mod tests {
 
         let result = policy.resolve(&Method::GET, "/users/123");
         assert_eq!(result, AuthRequirement::Required);
+    }
+
+    #[test]
+    fn explicit_public_overrides_wildcard_authenticated_fallback() {
+        // When a gateway registers a wildcard authenticated 404 the fallback
+        // like `/{*rest}` (used to convert anonymous 404s to 401s),
+        // is grab the public routes too, causing 401 on them
+        let mut public_matchers = HashMap::new();
+        let mut public_matcher = PublicRouteMatcher::new();
+        public_matcher.insert("/v1/auth/config").unwrap();
+        public_matchers.insert(Method::GET, public_matcher);
+
+        let mut route_matchers = HashMap::new();
+        let mut auth_matcher = RouteMatcher::new();
+        auth_matcher.insert("/{*rest}").unwrap();
+        route_matchers.insert(Method::GET, auth_matcher);
+
+        let policy = build_test_policy(route_matchers, public_matchers, true);
+
+        assert_eq!(
+            policy.resolve(&Method::GET, "/v1/auth/config"),
+            AuthRequirement::None,
+            "explicit public must win over wildcard authenticated fallback"
+        );
+        // Sanity: a path that only matches the wildcard fallback still requires auth.
+        assert_eq!(
+            policy.resolve(&Method::GET, "/some/other/path"),
+            AuthRequirement::Required,
+            "wildcard authenticated still applies to non-public paths"
+        );
     }
 
     #[test]
