@@ -1080,17 +1080,18 @@ The host crate has no backend-specific external dependencies. Each plugin docume
 The invocation flow follows the state machine defined in the InvocationStatus section (3.1). The key sequence is:
 
 1. Caller sends `POST /invocations` with function ID, mode, and params
-2. Host dispatch boundary applies cross-cutting concerns: authentication and tenant resolution, transport decoding, GTS schema validation, tenant policy enforcement (quota, runtime allowlist), rate-limiting (rate-limiter plugin), Idempotency-Key dedup, audit aggregation
-3. If response cache is active and the request matches a live entry, host returns the cached result without dispatching
-4. Host resolves the runtime plugin via `ClientHub::get_scoped` keyed by the function's plugin GTS type and dispatches through the SDK plugin trait
-5. Plugin Invocation Engine validates the request, applies mode handling (sync / async), and handles dry-run (synthetic response, no side effects)
-6. Plugin creates its `InvocationRecord` in `queued`, assigns an `invocation_id`, and emits a status notification to the host event port — which lands a row in `invocation_index`
-7. Plugin executes the function:
+2. Host dispatch boundary applies, in order: authentication and tenant resolution, transport decoding, GTS schema validation, function-existence and callable-status checks, params-schema validation, tenant policy enforcement (quota, runtime allowlist), rate-limiting (rate-limiter plugin), Idempotency-Key dedup, audit aggregation
+3. **Dry-run short-circuit**: if `dry_run: true`, the host returns the synthetic `InvocationResult` (see [Dry-Run Behavior](#dry-run-behavior)) **after** the validation checks in step 2 (function existence, callable status, params schema, tenant quota) and **before** rate-limiting, Idempotency-Key dedup, response-cache lookup, and plugin dispatch — dry-run never reaches the plugin and never consumes a rate-limit token, dedup slot, or cache entry
+4. If response cache is active and the request matches a live entry, host returns the cached result without dispatching
+5. Host resolves the runtime plugin via `ClientHub::get_scoped` keyed by the function's plugin GTS type and dispatches through the SDK plugin trait
+6. Plugin Invocation Engine applies mode handling (sync / async)
+7. Plugin creates its `InvocationRecord` in `queued`, assigns an `invocation_id`, and emits a status notification to the host event port — which lands a row in `invocation_index`
+8. Plugin executes the function:
    - `sync`: plugin returns the result inline; host forwards it to the caller
    - `async`: plugin returns `invocation_id` immediately and runs the invocation off-call
-8. Throughout execution, plugin emits status transitions and timeline events to the host event port; host updates `invocation_index` accordingly
-9. On retryable failure: plugin applies the retry policy; on exhaustion, transitions to `failed`
-10. On failure with compensation configured (Workflow invocations only — Function has no compensation handlers): plugin transitions to `compensating`, constructs `CompensationContext`, invokes the compensation handler
+9. Throughout execution, plugin emits status transitions and timeline events to the host event port; host updates `invocation_index` accordingly
+10. On retryable failure: plugin applies the retry policy; on exhaustion, transitions to `failed`
+11. On failure with compensation configured (Workflow invocations only — Function has no compensation handlers): plugin transitions to `compensating`, constructs `CompensationContext`, invokes the compensation handler
 
 #### Compensation Flow
 

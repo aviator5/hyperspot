@@ -61,9 +61,11 @@ pub enum InvocationStatus {
     DeadLettered,
 }
 
-/// Function kind derived from GTS chain (not stored, computed from function_id).
-/// In the 2-tier hierarchy, all types contain `function.v1~` in the chain;
-/// workflows additionally contain `workflow.v1~`. Check workflow first.
+/// Callable kind derived from the GTS chain (not stored, computed from
+/// `function_id`). `Function` and `Workflow` are sibling base types — neither
+/// derives from the other — so the chain contains exactly one of
+/// `function.v1~` or `workflow.v1~` at the base position; both branches are
+/// matched independently.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FunctionKind {
     Function,
@@ -71,9 +73,9 @@ pub enum FunctionKind {
 }
 
 impl FunctionKind {
-    /// Determines function kind by checking the GTS chain for known base types.
-    /// Workflow is checked first because all types contain `function.v1~` in the
-    /// new 2-tier hierarchy (function base → workflow derived).
+    /// Determines callable kind by matching the sibling base type in the GTS
+    /// chain. The two branches are mutually exclusive in the sibling-type
+    /// model; check order is therefore irrelevant.
     pub fn from_gts_id(function_id: &str) -> Option<Self> {
         if function_id.contains("cf.core.sless.workflow.") {
             Some(FunctionKind::Workflow)
@@ -600,13 +602,35 @@ pub trait ServerlessRuntimeClient: Send + Sync {
         function_id: &FunctionId,
     ) -> Result<(), RuntimeErrorPayload>;
 
-    // --- Invocations (host-indexed aggregate queries) ---
+    // --- Invocations ---
     //
-    // Single-record fetches and timelines flow through `RuntimeAdapter`; the host
-    // surface returns rows from the host-owned `invocation_index` table populated
-    // by the thin event port below. `start_invocation` / `control_invocation` are
-    // routed by the host to the resolved `RuntimeAdapter` and are intentionally
-    // not part of this trait.
+    // `start_invocation` and `control_invocation` are the public entry points for
+    // REST/JSON-RPC/MCP handlers. The host implementation applies cross-cutting
+    // concerns at the dispatch boundary (auth, tenant policy, GTS validation,
+    // rate limiting, Idempotency-Key dedup, response cache, dry-run short-circuit
+    // — see `cpt-cf-serverless-runtime-seq-invocation-flow`) and then routes to
+    // the resolved `RuntimeAdapter`. Handlers MUST NOT bypass this trait by
+    // resolving the adapter directly.
+    //
+    // `list_invocations` / `get_invocation` are served from the host-owned
+    // `invocation_index` populated via the plugin event port. The returned
+    // `InvocationRecord` carries only the index-resident fields (id, function_id,
+    // tenant, status, timestamps, error summary); transport, observability, and
+    // full timeline data require `RuntimeAdapter::get_invocation` /
+    // `RuntimeAdapter::get_invocation_timeline`.
+
+    async fn start_invocation(
+        &self,
+        ctx: &SecurityContext,
+        request: InvocationRequest,
+    ) -> Result<InvocationResult, RuntimeErrorPayload>;
+
+    async fn control_invocation(
+        &self,
+        ctx: &SecurityContext,
+        invocation_id: &InvocationId,
+        action: InvocationControlAction,
+    ) -> Result<InvocationRecord, RuntimeErrorPayload>;
 
     async fn list_invocations(
         &self,
@@ -853,12 +877,39 @@ pub trait RuntimeAdapter: Send + Sync {
         invocation_id: &InvocationId,
     ) -> Result<Vec<InvocationTimelineEvent>, RuntimeErrorPayload>;
 
-    // --- Schedules (plugin owns the schedule itself) ---
+    // --- Schedules ---
+    //
+    // The plugin owns the live schedule (cron evaluation, missed-policy handling,
+    // concurrency policies) using its backend's native facilities. The host
+    // delegates the full schedule lifecycle that affects backend state — create,
+    // patch, pause, resume, delete — to the adapter. Read-only listings and
+    // history queries (`list_schedules`, `get_schedule`, `list_schedule_invocations`)
+    // remain host-side and are served from host-owned metadata and the
+    // `invocation_index`.
 
     async fn create_schedule(
         &self,
         ctx: &SecurityContext,
         schedule: Schedule,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn patch_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
+        patch: SchedulePatch,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn pause_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn resume_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
     ) -> Result<Schedule, RuntimeErrorPayload>;
 
     async fn delete_schedule(

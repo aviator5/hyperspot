@@ -52,7 +52,7 @@ STANDARDS ALIGNMENT:
 **ID**: `cpt-cf-serverless-runtime-adr-temporal-workflow-engine`
 ## Context and Problem Statement
 
-The Serverless Runtime domain model defines a pluggable adapter architecture (`cpt-cf-serverless-runtime-principle-pluggable-adapters`) where runtime plugins implement the `RuntimeAdapter` trait. This ADR covers the **Temporal adapter** — one of multiple possible adapter implementations (others include Starlark, WASM, cloud FaaS). The Temporal adapter needs a workflow engine that:
+The Serverless Runtime domain model defines a pluggable runtime architecture (`cpt-cf-serverless-runtime-principle-pluggable-adapters` — the traceability ID retains the legacy `adapters` slug; the design now consistently uses "runtime plugin" for the module and `RuntimeAdapter` for the trait it implements). This ADR covers the **Temporal runtime plugin** — one of multiple possible runtime plugin implementations (others include Starlark, WASM, cloud FaaS). The Temporal runtime plugin needs a workflow engine that:
 
 1. **Interprets workflow definitions** authored in the Serverless Workflow Specification DSL ([ADR-0003](0003-cpt-cf-serverless-runtime-adr-workflow-dsl.md)) — parsing task definitions, evaluating expressions, managing data flow between steps, and controlling execution flow (branching, loops, error handling).
 2. **Executes workflows durably** — persisting state across service restarts, providing automatic checkpointing, retry, compensation, and long-running workflow support lasting days to months.
@@ -130,7 +130,7 @@ Temporal is an open-source durable execution platform that provides workflow orc
 | Neutral | Multi-tenancy | Tenant isolation handled at application/DB layer; Temporal namespaces available for additional logical separation if needed |
 | Good | Active community and ecosystem | Regular releases, SDKs in multiple languages, Slack community, conference presence |
 | Neutral | Temporal Server infrastructure | Requires deploying and operating Temporal Server (with its own persistence), but only when the plugin is enabled |
-| Neutral | Worker-based execution model | Per-execution resource limits (memory, CPU) are not enforced at the adapter level — relies on worker pool sizing and Temporal Server rate limiting |
+| Neutral | Worker-based execution model | Per-execution resource limits (memory, CPU) are not enforced at the runtime plugin level — relies on worker pool sizing and Temporal Server rate limiting |
 | Bad | Operational complexity | Temporal Server adds infrastructure overhead (server cluster, persistence backend, monitoring) |
 | Bad | Deterministic execution constraints | Engine implementation code must follow Temporal's deterministic replay rules (no side effects in workflow code); this affects engine developers, not workflow authors who write declarative YAML |
 | Bad | Custom engine layer required | Temporal does not natively interpret the Serverless Workflow Specification; a custom DSL interpreter layer adds development and maintenance complexity |
@@ -248,8 +248,8 @@ This decision directly addresses the following requirements and design elements:
 * `cpt-cf-serverless-runtime-nfr-scalability` — Horizontal scaling via sharded history/matching services
 * `cpt-cf-serverless-runtime-nfr-tenant-isolation` — Application-layer tenant scoping prevents cross-tenant interference
 * `cpt-cf-serverless-runtime-nfr-composition-deps` — Child workflow and activity dependency management
-* `cpt-cf-serverless-runtime-principle-pluggable-adapters` (DESIGN) — Engine registers as ModKit plugin with GTS adapter type
-* `cpt-cf-serverless-runtime-principle-impl-agnostic` (DESIGN) — Engine is one of multiple possible adapter implementations
+* `cpt-cf-serverless-runtime-principle-pluggable-adapters` (DESIGN) — Engine registers as a ModKit runtime plugin bound to its GTS plugin type
+* `cpt-cf-serverless-runtime-principle-impl-agnostic` (DESIGN) — Engine is one of multiple possible runtime plugin implementations
 * `cpt-cf-serverless-runtime-principle-gts-identity` (DESIGN) — Temporal workflow IDs derived from GTS instance addresses
 * `cpt-cf-serverless-runtime-principle-unified-callable` (DESIGN) — Functions and workflows invoked through the same trait
 * `cpt-cf-serverless-runtime-usecase-resource-provisioning` — Multi-step provisioning with saga rollback
