@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::domain::models::{ChatPatch, NewChat};
 use axum::Extension;
 use axum::extract::Path;
+use modkit::api::canonical_prelude::*;
 use modkit::api::odata::OData;
-use modkit::api::prelude::*;
 use modkit_security::SecurityContext;
 use uuid::Uuid;
 

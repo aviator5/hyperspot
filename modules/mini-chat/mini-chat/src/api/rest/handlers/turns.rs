@@ -5,7 +5,7 @@ use axum::extract::Path;
 use axum::response::sse::KeepAlive;
 use axum::response::{IntoResponse, Response, Sse};
 use axum::{Extension, Json};
-use modkit::api::prelude::*;
+use modkit::api::canonical_prelude::*;
 use modkit_security::SecurityContext;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -14,7 +14,7 @@ use tracing::{Instrument, info, warn};
 use utoipa::ToSchema;
 
 use super::messages::SseRelay;
-use crate::domain::service::{MutationError, StreamError};
+use crate::api::rest::error::MiniChatChatError;
 use crate::domain::stream_events::StreamEvent;
 use crate::infra::db::entity::chat_turn::TurnState;
 use crate::module::AppServices;
@@ -55,7 +55,7 @@ pub(crate) async fn get_turn(
         .turns
         .get(&ctx, chat_id, request_id)
         .await
-        .map_err(|e| mutation_error_to_problem(&e))?;
+        .map_err(Problem::from)?;
 
     Ok(Json(TurnStatusResponse {
         request_id: turn.request_id,
@@ -80,7 +80,7 @@ pub(crate) async fn delete_turn(
     svc.turns
         .delete(&ctx, chat_id, request_id)
         .await
-        .map_err(|e| mutation_error_to_problem(&e))?;
+        .map_err(Problem::from)?;
 
     Ok(no_content().into_response())
 }
@@ -98,7 +98,7 @@ pub(crate) async fn retry_turn(
 ) -> Response {
     let mutation = match svc.turns.retry(&ctx, chat_id, request_id).await {
         Ok(m) => m,
-        Err(e) => return mutation_error_to_problem(&e).into_response(),
+        Err(e) => return Problem::from(e).into_response(),
     };
 
     start_mutation_stream(&svc, ctx, chat_id, mutation).await
@@ -124,12 +124,10 @@ pub(crate) async fn edit_turn(
     Json(body): Json<EditTurnRequest>,
 ) -> Response {
     if body.content.trim().is_empty() {
-        return Problem::new(
-            StatusCode::BAD_REQUEST,
-            "Bad Request",
-            "Edit content must not be empty",
-        )
-        .into_response();
+        return MiniChatChatError::invalid_argument()
+            .with_field_violation("content", "Edit content must not be empty", "EMPTY_CONTENT")
+            .create()
+            .into_response();
     }
 
     let mutation = match svc
@@ -138,7 +136,7 @@ pub(crate) async fn edit_turn(
         .await
     {
         Ok(m) => m,
-        Err(e) => return mutation_error_to_problem(&e).into_response(),
+        Err(e) => return Problem::from(e).into_response(),
     };
 
     start_mutation_stream(&svc, ctx, chat_id, mutation).await
@@ -164,8 +162,7 @@ async fn start_mutation_stream(
         Ok(r) => r,
         Err(e) => {
             warn!(error = %e, model = %chat_model, "model resolution failed for mutation stream");
-            return Problem::new(StatusCode::BAD_REQUEST, "Bad Request", e.to_string())
-                .into_response();
+            return Problem::from(e).into_response();
         }
     };
 
@@ -198,7 +195,7 @@ async fn start_mutation_stream(
         .await
     {
         Ok(handle) => handle,
-        Err(e) => return stream_error_to_response(&e),
+        Err(e) => return CanonicalError::from(e).into_response(),
     };
 
     let monitor_span = tracing::Span::current();
@@ -215,108 +212,4 @@ async fn start_mutation_stream(
     Sse::new(relay)
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(30)))
         .into_response()
-}
-
-/// Map `MutationError` to HTTP problem response.
-///
-/// Caller is expected to be within an instrumented span that carries
-/// `chat_id` and `turn_request_id` fields.
-fn mutation_error_to_problem(err: &MutationError) -> Problem {
-    match err {
-        MutationError::ChatNotFound { .. } => {
-            Problem::new(StatusCode::NOT_FOUND, "chat_not_found", "Chat not found")
-        }
-        MutationError::TurnNotFound { .. } => {
-            Problem::new(StatusCode::NOT_FOUND, "turn_not_found", "Turn not found")
-        }
-        MutationError::Forbidden => {
-            warn!("access denied for turn mutation");
-            Problem::new(StatusCode::FORBIDDEN, "forbidden", "Access denied")
-        }
-        MutationError::InvalidTurnState { state } => Problem::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_turn_state",
-            format!("Turn is in {state:?} state; only terminal turns can be mutated"),
-        ),
-        MutationError::NotLatestTurn => Problem::new(
-            StatusCode::CONFLICT,
-            "not_latest_turn",
-            "Only the most recent turn can be mutated",
-        ),
-        MutationError::GenerationInProgress => Problem::new(
-            StatusCode::CONFLICT,
-            "generation_in_progress",
-            "Another generation is already in progress for this chat",
-        ),
-        MutationError::Internal { message } => {
-            warn!(error_message = %message, "turn mutation internal error");
-            Problem::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Error",
-                "An internal error occurred",
-            )
-        }
-    }
-}
-
-/// Caller is expected to be within an instrumented span that carries
-/// `chat_id` and `turn_request_id` fields.
-#[allow(clippy::cognitive_complexity)]
-fn stream_error_to_response(err: &StreamError) -> Response {
-    match err {
-        StreamError::QuotaExhausted {
-            error_code,
-            http_status,
-            quota_scope,
-        } => {
-            info!(error_code = %error_code, http_status = *http_status, quota_scope = %quota_scope, "quota exhausted, mutation rejected");
-            let status =
-                StatusCode::from_u16(*http_status).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
-            // TODO(P2): include `quota_scope` in the response body so clients can
-            // distinguish token vs web_search quota exhaustion (DESIGN.md §5.2).
-            Problem::new(status, error_code, error_code).into_response()
-        }
-        StreamError::WebSearchDisabled => {
-            info!(
-                reason = "kill_switch",
-                "web search disabled via kill switch, mutation rejected"
-            );
-            Problem::new(
-                StatusCode::BAD_REQUEST,
-                "web_search_disabled",
-                "Web search is currently disabled",
-            )
-            .into_response()
-        }
-        StreamError::InvalidAttachment { code, message } => {
-            info!(code = %code, message = %message, "invalid attachment in request");
-            Problem::new(StatusCode::BAD_REQUEST, code, message).into_response()
-        }
-        StreamError::ContextBudgetExceeded {
-            required_tokens,
-            available_tokens,
-        } => {
-            info!(
-                required_tokens,
-                available_tokens, "context budget exceeded, request rejected"
-            );
-            Problem::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "context_budget_exceeded",
-                format!(
-                    "Context requires {required_tokens} tokens but only {available_tokens} are available"
-                ),
-            )
-            .into_response()
-        }
-        other => {
-            warn!(error = ?other, "post-mutation stream error");
-            Problem::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Error",
-                "Failed to start streaming",
-            )
-            .into_response()
-        }
-    }
 }

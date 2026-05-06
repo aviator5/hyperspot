@@ -9,8 +9,8 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use futures::Stream;
+use modkit::api::canonical_prelude::*;
 use modkit::api::odata::OData;
-use modkit::api::prelude::*;
 use modkit_security::SecurityContext;
 use tokio::sync::mpsc;
 use tokio::time::{Interval, interval};
@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, warn};
 
 use crate::api::rest::dto::{MessageDto, StreamMessageRequest};
+use crate::api::rest::error::MiniChatChatError;
 use crate::api::rest::sse::{StreamEventKind, StreamPhase};
 use crate::domain::service::{StreamError, replay};
 use crate::domain::stream_events::StreamEvent;
@@ -50,12 +51,14 @@ pub(crate) async fn stream_message(
 ) -> Response {
     // ── Pre-stream validation ──────────────────────────────────────────
     if body.content.trim().is_empty() {
-        return Problem::new(
-            StatusCode::BAD_REQUEST,
-            "Bad Request",
-            "Message content must not be empty",
-        )
-        .into_response();
+        return MiniChatChatError::invalid_argument()
+            .with_field_violation(
+                "content",
+                "Message content must not be empty",
+                "EMPTY_CONTENT",
+            )
+            .create()
+            .into_response();
     }
 
     // Resolve request_id early so it's available for error logging below.
@@ -66,16 +69,8 @@ pub(crate) async fn stream_message(
     let chat = match svc.chats.get_chat(&ctx, chat_id).await {
         Ok(c) => c,
         Err(e) => {
-            let (status, detail) = if e.to_string().contains("not found") {
-                (StatusCode::NOT_FOUND, e.to_string())
-            } else {
-                warn!(error = %e, "failed to fetch chat for stream");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "An internal error occurred".to_owned(),
-                )
-            };
-            return Problem::new(status, "Error", detail).into_response();
+            warn!(error = %e, "failed to fetch chat for stream");
+            return Problem::from(e).into_response();
         }
     };
 
@@ -88,8 +83,7 @@ pub(crate) async fn stream_message(
         Ok(r) => r,
         Err(e) => {
             warn!(error = %e, model = %selected_model, "model resolution failed");
-            return Problem::new(StatusCode::BAD_REQUEST, "Bad Request", e.to_string())
-                .into_response();
+            return Problem::from(e).into_response();
         }
     };
 
@@ -127,7 +121,7 @@ pub(crate) async fn stream_message(
         Err(StreamError::Replay { turn }) => {
             return replay_response(&svc, tenant_id, &selected_model, &turn, ping_secs).await;
         }
-        Err(e) => return stream_error_response(&e),
+        Err(e) => return CanonicalError::from(e).into_response(),
     };
 
     // Monitor provider task for panics
@@ -147,134 +141,6 @@ pub(crate) async fn stream_message(
     Sse::new(relay)
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(30)))
         .into_response()
-}
-
-/// Map a [`StreamError`] to an appropriate HTTP error response.
-///
-/// Caller is expected to be within an instrumented span that carries
-/// `chat_id` and `turn_request_id` fields.
-#[allow(clippy::cognitive_complexity)]
-fn stream_error_response(err: &StreamError) -> Response {
-    match err {
-        StreamError::Replay { .. } => {
-            // Completed turns are handled by replay_response(); this arm covers
-            // the defensive case where Replay leaks through without interception.
-            Problem::new(StatusCode::CONFLICT, "Conflict", "Duplicate request_id").into_response()
-        }
-        StreamError::Conflict { message, code } => {
-            info!(conflict_code = %code, "stream request conflict");
-            Problem::new(StatusCode::CONFLICT, "Conflict", message).into_response()
-        }
-        StreamError::ChatNotFound { .. } => {
-            Problem::new(StatusCode::NOT_FOUND, "Not Found", "Chat not found").into_response()
-        }
-        StreamError::AuthorizationFailed { source } => {
-            warn!(error = %source, "stream authorization failed");
-            Problem::new(StatusCode::FORBIDDEN, "Forbidden", "Access denied").into_response()
-        }
-        StreamError::TurnCreationFailed { source } => {
-            warn!(error = %source, "pre-stream turn creation failed");
-            Problem::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Error",
-                "Failed to initialize turn",
-            )
-            .into_response()
-        }
-        StreamError::QuotaExhausted {
-            error_code,
-            http_status,
-            quota_scope,
-        } => {
-            info!(error_code = %error_code, http_status = *http_status, quota_scope = %quota_scope, "quota exhausted, request rejected");
-            let status =
-                StatusCode::from_u16(*http_status).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
-            // TODO(P2): include `quota_scope` in the response body so clients can
-            // distinguish token vs web_search quota exhaustion (DESIGN.md §5.2).
-            Problem::new(status, error_code, error_code).into_response()
-        }
-        StreamError::WebSearchDisabled => {
-            info!(
-                reason = "kill_switch",
-                "web search disabled via kill switch, request rejected"
-            );
-            Problem::new(
-                StatusCode::BAD_REQUEST,
-                "web_search_disabled",
-                "Web search is currently disabled",
-            )
-            .into_response()
-        }
-        StreamError::ImagesDisabled => {
-            info!(
-                reason = "kill_switch",
-                "images disabled via kill switch, request rejected"
-            );
-            Problem::new(
-                StatusCode::BAD_REQUEST,
-                "images_disabled",
-                "Image inputs are currently disabled",
-            )
-            .into_response()
-        }
-        StreamError::TooManyImages { count, max } => {
-            info!(count, max, "too many image attachments in request");
-            Problem::new(
-                StatusCode::BAD_REQUEST,
-                "too_many_images",
-                format!("Request includes {count} images, maximum is {max}"),
-            )
-            .into_response()
-        }
-        StreamError::UnsupportedMedia => {
-            info!("model does not support image input, request rejected");
-            Problem::new(
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "unsupported_media",
-                "The selected model does not support image input",
-            )
-            .into_response()
-        }
-        StreamError::InvalidAttachment { code, message } => {
-            info!(code = %code, message = %message, "invalid attachment in request");
-            Problem::new(StatusCode::BAD_REQUEST, code, message).into_response()
-        }
-        StreamError::ContextBudgetExceeded {
-            required_tokens,
-            available_tokens,
-        } => {
-            info!(
-                required_tokens,
-                available_tokens, "context budget exceeded, request rejected"
-            );
-            Problem::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "context_budget_exceeded",
-                format!(
-                    "Context requires {required_tokens} tokens but only {available_tokens} are available"
-                ),
-            )
-            .into_response()
-        }
-        StreamError::InputTooLong {
-            estimated_tokens,
-            max_input_tokens,
-        } => {
-            info!(
-                estimated_tokens,
-                max_input_tokens, "message too long, request rejected"
-            );
-            Problem::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "input_too_long",
-                format!(
-                    "Message too long. Current: {estimated_tokens} tokens, Maximum: {max_input_tokens} tokens. Please shorten your message."
-                ),
-            )
-            .with_code("input_too_long".to_owned())
-            .into_response()
-        }
-    }
 }
 
 /// Build an SSE replay response for a completed turn.
@@ -302,12 +168,8 @@ async fn replay_response(
         Ok(ev) => ev,
         Err(e) => {
             warn!(error = %e, turn_id = %turn.id, "replay failed");
-            return Problem::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Error",
-                "Failed to replay turn",
-            )
-            .into_response();
+            let err = CanonicalError::internal("Failed to replay turn").create();
+            return err.into_response();
         }
     };
 

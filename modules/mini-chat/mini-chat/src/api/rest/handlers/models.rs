@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Extension;
 use axum::extract::Path;
-use modkit::api::prelude::*;
+use modkit::api::canonical_prelude::*;
 use modkit_security::SecurityContext;
 
 use crate::api::rest::dto::{ModelDto, ModelListDto};

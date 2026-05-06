@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::Extension;
-use modkit::api::prelude::*;
+use modkit::api::canonical_prelude::*;
 use modkit_security::SecurityContext;
 use serde::Serialize;
 use utoipa::ToSchema;

@@ -6,10 +6,11 @@ use axum::Extension;
 use axum::extract::Path;
 use bytes::Bytes;
 use futures::stream::Stream;
-use modkit::api::prelude::*;
+use modkit::api::canonical_prelude::*;
 use modkit_security::SecurityContext;
 
 use crate::api::rest::dto::AttachmentDetailDto;
+use crate::api::rest::error::MiniChatAttachmentError;
 use crate::domain::mime_validation::{
     MIME_OCTET_STREAM, infer_mime_from_extension, normalize_mime, remap_csv_to_plain,
     truncate_filename, validate_mime,
@@ -113,10 +114,14 @@ pub(crate) async fn upload_attachment(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     let boundary = multer::parse_boundary(content_type).map_err(|_| {
-        Problem::new(
-            http::StatusCode::BAD_REQUEST,
-            "Missing Boundary",
-            "Content-Type must be multipart/form-data with a boundary",
+        Problem::from(
+            MiniChatAttachmentError::invalid_argument()
+                .with_field_violation(
+                    "content_type",
+                    "Content-Type must be multipart/form-data with a boundary",
+                    "BOUNDARY_REQUIRED",
+                )
+                .create(),
         )
     })?;
 
@@ -139,19 +144,27 @@ pub(crate) async fn upload_attachment(
     // 4. Find the "file" field.
     let field = loop {
         match multipart.next_field().await.map_err(|e| {
-            Problem::new(
-                http::StatusCode::BAD_REQUEST,
-                "Multipart Error",
-                format!("Failed to read multipart field: {e}"),
+            Problem::from(
+                MiniChatAttachmentError::invalid_argument()
+                    .with_field_violation(
+                        "multipart",
+                        format!("Failed to read multipart field: {e}"),
+                        "MULTIPART_ERROR",
+                    )
+                    .create(),
             )
         })? {
             Some(f) if f.name() == Some("file") => break f,
             Some(_) => {}
             None => {
-                return Err(Problem::new(
-                    http::StatusCode::BAD_REQUEST,
-                    "Missing File",
-                    "No file field found in multipart request",
+                return Err(Problem::from(
+                    MiniChatAttachmentError::invalid_argument()
+                        .with_field_violation(
+                            "file",
+                            "missing file field in multipart request",
+                            "MISSING_FILE",
+                        )
+                        .create(),
                 ));
             }
         }
@@ -168,10 +181,14 @@ pub(crate) async fn upload_attachment(
         .content_type()
         .map(ToString::to_string)
         .ok_or_else(|| {
-            Problem::new(
-                http::StatusCode::BAD_REQUEST,
-                "Missing Content-Type",
-                "File field has no content type",
+            Problem::from(
+                MiniChatAttachmentError::invalid_argument()
+                    .with_field_violation(
+                        "content_type",
+                        "file field has no content type",
+                        "MISSING_CONTENT_TYPE",
+                    )
+                    .create(),
             )
         })?;
 
@@ -218,19 +235,22 @@ pub(crate) async fn upload_attachment(
         let estimated_file_bytes = cl.saturating_sub(MULTIPART_OVERHEAD);
         if estimated_file_bytes > max_bytes {
             let kind = if is_document { "document" } else { "image" };
-            return Err(Problem::new(
-                http::StatusCode::PAYLOAD_TOO_LARGE,
-                "file_too_large",
-                format!(
-                    "Uploaded {kind} (~{estimated_file_bytes} bytes) exceeds the {kind} size limit of {max_bytes} bytes"
-                ),
-            )
-            .with_code("file_too_large".to_owned()));
+            return Err(Problem::from(
+                MiniChatAttachmentError::out_of_range(format!(
+                    "uploaded {kind} (~{estimated_file_bytes} bytes) exceeds limit of {max_bytes} bytes"
+                ))
+                .with_field_violation(
+                    "content_length",
+                    format!("{estimated_file_bytes}>{max_bytes}"),
+                    "FILE_TOO_LARGE",
+                )
+                .create(),
+            ));
         }
     }
 
     // 9. Acquire upload concurrency permit — returns 503 + Retry-After if all permits are taken.
-    const UPLOAD_RETRY_AFTER_SECS: &str = "5";
+    const UPLOAD_RETRY_AFTER_SECS: u64 = 5;
     let Ok(_permit) = svc.upload_semaphore.try_acquire() else {
         let kind_metric = if is_document {
             kind_label::DOCUMENT
@@ -240,16 +260,13 @@ pub(crate) async fn upload_attachment(
         tracing::warn!("upload concurrency limit reached, rejecting upload");
         svc.metrics
             .record_attachment_upload(kind_metric, upload_result::CONCURRENCY_LIMIT);
-        let mut resp = Problem::new(
-            http::StatusCode::SERVICE_UNAVAILABLE,
-            "Too Many Uploads",
-            "Upload concurrency limit reached, retry shortly",
-        )
-        .with_code("upload_concurrency_limit".to_owned())
-        .into_response();
+        let err = CanonicalError::service_unavailable()
+            .with_retry_after_seconds(UPLOAD_RETRY_AFTER_SECS)
+            .create();
+        let mut resp = Problem::from(err).into_response();
         resp.headers_mut().insert(
             http::header::RETRY_AFTER,
-            http::HeaderValue::from_static(UPLOAD_RETRY_AFTER_SECS),
+            http::HeaderValue::from_static("5"),
         );
         return Ok(resp);
     };

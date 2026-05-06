@@ -55,7 +55,7 @@ class TestUploadAndGet:
 
 
 # ---------------------------------------------------------------------------
-# 10-05: Unsupported MIME → 415
+# 10-05: Unsupported MIME → 400 invalid_argument (UNSUPPORTED_CONTENT_TYPE)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.multi_provider
@@ -69,7 +69,15 @@ class TestUploadInvalidType:
             files={"file": ("archive.zip", io.BytesIO(b"PK\x03\x04fake zip"), "application/zip")},
             timeout=60,
         )
-        assert resp.status_code == 415, f"Expected 415, got {resp.status_code}: {resp.text}"
+        assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text}"
+        body = resp.json()
+        assert "invalid_argument" in body.get("type", ""), (
+            f"Expected canonical invalid_argument type, got: {body.get('type')}"
+        )
+        violations = body.get("context", {}).get("field_violations", [])
+        assert any(v.get("reason") == "UNSUPPORTED_CONTENT_TYPE" for v in violations), (
+            f"Expected UNSUPPORTED_CONTENT_TYPE field violation, got: {violations}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -722,15 +730,15 @@ class TestDocumentAndImageTogether:
 @pytest.mark.multi_provider
 class TestUploadSizeEnforcement:
     """Upload size limit enforcement — files exceeding the configured limit
-    are rejected with HTTP 413 and error code ``file_too_large``.
+    are rejected with HTTP 400 ``out_of_range`` (FILE_TOO_LARGE).
 
     NOTE: these tests rely on the server's default config limits:
     - ``uploaded_file_max_size_kb``: 25600 (25 MB) for documents
     - ``uploaded_image_max_size_kb``: 5120 (5 MB) for images
     """
 
-    def test_oversize_image_rejected_413(self, provider_chat):
-        """Upload an image exceeding uploaded_image_max_size_kb (5 MB) → 413.
+    def test_oversize_image_rejected(self, provider_chat):
+        """Upload an image exceeding uploaded_image_max_size_kb (5 MB) → 400.
 
         Uses ~6 MB which is over the image limit but under the API gateway's
         global 16 MiB body limit, so our handler's streaming size check runs.
@@ -743,16 +751,20 @@ class TestUploadSizeEnforcement:
             files={"file": ("huge.png", io.BytesIO(oversize_payload), "image/png")},
             timeout=60,
         )
-        assert resp.status_code == 413, (
-            f"Expected 413 for oversize image, got {resp.status_code}: {resp.text}"
+        assert resp.status_code == 400, (
+            f"Expected 400 for oversize image, got {resp.status_code}: {resp.text}"
         )
         body = resp.json()
-        assert body.get("code") == "file_too_large" or "file_too_large" in resp.text, (
-            f"Expected file_too_large error code, got: {body}"
+        assert "out_of_range" in body.get("type", ""), (
+            f"Expected canonical out_of_range type, got: {body.get('type')}"
+        )
+        violations = body.get("context", {}).get("field_violations", [])
+        assert any(v.get("reason") == "FILE_TOO_LARGE" for v in violations), (
+            f"Expected FILE_TOO_LARGE field violation, got: {violations}"
         )
 
     def test_oversize_document_rejected_by_gateway(self, provider_chat):
-        """Upload a document exceeding the per-kind handler limit (25 MB) → 413.
+        """Upload a document exceeding the per-kind handler limit (25 MB) → 400.
 
         Documents are capped at 25 MB by the per-kind handler size check.
         A 26 MB upload should be rejected by that handler before any further
@@ -766,12 +778,16 @@ class TestUploadSizeEnforcement:
             files={"file": ("huge.pdf", io.BytesIO(oversize_payload), "application/pdf")},
             timeout=60,
         )
-        assert resp.status_code == 413, (
-            f"Expected 413 for oversize document, got {resp.status_code}: {resp.text}"
+        assert resp.status_code == 400, (
+            f"Expected 400 for oversize document, got {resp.status_code}: {resp.text}"
         )
         body = resp.json()
-        assert body.get("code") == "file_too_large" or "file_too_large" in resp.text, (
-            f"Expected file_too_large error code, got: {body}"
+        assert "out_of_range" in body.get("type", ""), (
+            f"Expected canonical out_of_range type, got: {body.get('type')}"
+        )
+        violations = body.get("context", {}).get("field_violations", [])
+        assert any(v.get("reason") == "FILE_TOO_LARGE" for v in violations), (
+            f"Expected FILE_TOO_LARGE field violation, got: {violations}"
         )
 
     def test_document_within_limit_succeeds(self, provider_chat):

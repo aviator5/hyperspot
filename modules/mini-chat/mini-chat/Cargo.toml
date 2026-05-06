@@ -86,6 +86,7 @@ opentelemetry = { workspace = true }
 
 # Local dependencies
 modkit = { workspace = true }
+modkit-canonical-errors = { workspace = true, features = ["axum"] }
 modkit-db = { workspace = true, features = ["sqlite", "pg", "preview-outbox"] }
 modkit-db-macros = { workspace = true }
 modkit-security = { workspace = true }

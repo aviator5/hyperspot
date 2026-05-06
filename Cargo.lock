@@ -2187,6 +2187,7 @@ dependencies = [
  "cyberware-authz-resolver-sdk",
  "cyberware-mini-chat-sdk",
  "cyberware-modkit",
+ "cyberware-modkit-canonical-errors",
  "cyberware-modkit-db",
  "cyberware-modkit-db-macros",
  "cyberware-modkit-macros",
