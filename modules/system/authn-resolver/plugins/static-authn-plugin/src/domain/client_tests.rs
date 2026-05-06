@@ -33,6 +33,7 @@ async fn plugin_trait_s2s_valid_credentials() {
             client_id: "svc".to_owned(),
             client_secret: SecretString::from("secret"),
             identity: IdentityConfig::default(),
+            bearer_token: None,
         }],
         ..StaticAuthNPluginConfig::default()
     };

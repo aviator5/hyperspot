@@ -105,6 +105,10 @@ pub struct S2sCredentialMapping {
     /// When omitted, uses the default identity (`DEFAULT_SUBJECT_ID` / `DEFAULT_TENANT_ID`).
     #[serde(default)]
     pub identity: IdentityConfig,
+    /// Bearer token to attach to the `SecurityContext` after a successful S2S exchange.
+    /// When `None`, no token is set on the resulting context (redacted in `Debug` output).
+    #[serde(default)]
+    pub bearer_token: Option<SecretString>,
 }
 
 impl std::fmt::Debug for S2sCredentialMapping {
@@ -113,6 +117,10 @@ impl std::fmt::Debug for S2sCredentialMapping {
             .field("client_id", &self.client_id)
             .field("client_secret", &"[REDACTED]")
             .field("identity", &self.identity)
+            .field(
+                "bearer_token",
+                &self.bearer_token.as_ref().map_or("None", |_| "[REDACTED]"),
+            )
             .finish()
     }
 }
