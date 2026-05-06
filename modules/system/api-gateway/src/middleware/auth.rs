@@ -461,7 +461,7 @@ mod tests {
     fn explicit_public_overrides_wildcard_authenticated_fallback() {
         // When a gateway registers a wildcard authenticated 404 the fallback
         // like `/{*rest}` (used to convert anonymous 404s to 401s),
-        // is grab the public routes too, causing 401 on them
+        // grabs the public routes too, causing 401 on them
         let mut public_matchers = HashMap::new();
         let mut public_matcher = PublicRouteMatcher::new();
         public_matcher.insert("/v1/auth/config").unwrap();
