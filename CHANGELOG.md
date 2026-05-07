@@ -9,6 +9,54 @@ release-plz updates this file in the Release PR.
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/cyberfabric/cyberfabric-core/compare/cf-account-management-v0.1.0...cf-account-management-v0.1.1) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-authz-resolver-sdk, cf-tenant-resolver-sdk, cf-resource-group-sdk, cf-account-management-sdk
+
+## [0.1.1](https://github.com/cyberfabric/cyberfabric-core/compare/cf-account-management-sdk-v0.1.0...cf-account-management-sdk-v0.1.1) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-tenant-resolver-sdk
+
+## [0.1.3](https://github.com/cyberfabric/cyberfabric-core/compare/cf-tr-authz-plugin-v0.1.2...cf-tr-authz-plugin-v0.1.3) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-authz-resolver-sdk, cf-tenant-resolver-sdk
+
+## [0.1.21](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-tr-plugin-v0.1.20...cf-static-tr-plugin-v0.1.21) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-tenant-resolver-sdk
+
+## [0.1.18](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-credstore-plugin-v0.1.17...cf-static-credstore-plugin-v0.1.18) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-credstore-sdk
+
+## [0.1.20](https://github.com/cyberfabric/cyberfabric-core/compare/cf-static-authz-plugin-v0.1.19...cf-static-authz-plugin-v0.1.20) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-authz-resolver-sdk
+
+## [0.1.22](https://github.com/cyberfabric/cyberfabric-core/compare/cf-single-tenant-tr-plugin-v0.1.21...cf-single-tenant-tr-plugin-v0.1.22) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-tenant-resolver-sdk
+
+## [0.1.3](https://github.com/cyberfabric/cyberfabric-core/compare/cf-rg-tr-plugin-v0.1.2...cf-rg-tr-plugin-v0.1.3) - 2026-05-07
+
+### Other
+
+- updated the following local packages: cf-modkit, cf-tenant-resolver-sdk, cf-resource-group-sdk
+
 ## [0.1.0](https://github.com/cyberfabric/cyberfabric-core/releases/tag/cf-account-management-v0.1.0) - 2026-05-06
 
 ### Added
