@@ -28,6 +28,7 @@ pub struct Service {
 struct S2sEntry {
     client_secret: SecretString,
     identity: IdentityConfig,
+    bearer_token: Option<SecretString>,
 }
 
 impl Service {
@@ -47,10 +48,9 @@ impl Service {
                 (
                     m.client_id.clone(),
                     S2sEntry {
-                        client_secret: SecretString::from(
-                            m.client_secret.expose_secret().to_owned(),
-                        ),
+                        client_secret: m.client_secret.clone(),
                         identity: m.identity.clone(),
+                        bearer_token: m.bearer_token.clone(),
                     },
                 )
             })
@@ -79,7 +79,7 @@ impl Service {
             AuthNMode::StaticTokens => self.token_map.get(bearer_token)?,
         };
 
-        build_result(identity, Some(bearer_token))
+        build_result(identity, Some(SecretString::from(bearer_token)))
     }
 
     /// Exchange client credentials for a `SecurityContext`.
@@ -96,13 +96,13 @@ impl Service {
         if entry.client_secret.expose_secret() != request.client_secret.expose_secret() {
             return None;
         }
-        build_result(&entry.identity, None)
+        build_result(&entry.identity, entry.bearer_token.clone())
     }
 }
 
 fn build_result(
     identity: &IdentityConfig,
-    bearer_token: Option<&str>,
+    bearer_token: Option<SecretString>,
 ) -> Option<AuthenticationResult> {
     let mut builder = SecurityContext::builder()
         .subject_id(identity.subject_id)
@@ -113,7 +113,7 @@ fn build_result(
         builder = builder.subject_type(st);
     }
     if let Some(token) = bearer_token {
-        builder = builder.bearer_token(token.to_owned());
+        builder = builder.bearer_token(token);
     }
 
     let ctx = builder

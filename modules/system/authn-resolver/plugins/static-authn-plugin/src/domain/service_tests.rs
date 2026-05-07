@@ -143,9 +143,53 @@ fn s2s_config() -> StaticAuthNPluginConfig {
                 token_scopes: vec!["platform.internal".to_owned()],
                 subject_type: Some("service".to_owned()),
             },
+            bearer_token: None,
         }],
         ..default_config()
     }
+}
+
+#[test]
+fn test_exchange_s2s_with_bearer_token() {
+    let svc_id = Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap();
+    let svc_tenant = Uuid::parse_str("dddddddd-dddd-dddd-dddd-dddddddddddd").unwrap();
+
+    let cfg = StaticAuthNPluginConfig {
+        s2s_credentials: vec![S2sCredentialMapping {
+            client_id: "my-service".to_owned(),
+            client_secret: SecretString::from("my-secret"),
+            identity: IdentityConfig {
+                subject_id: svc_id,
+                subject_tenant_id: svc_tenant,
+                token_scopes: vec!["platform.internal".to_owned()],
+                subject_type: Some("service".to_owned()),
+            },
+            bearer_token: Some(SecretString::from("s2s-issued-token")),
+        }],
+        ..default_config()
+    };
+
+    let service = Service::from_config(&cfg);
+
+    let request = ClientCredentialsRequest {
+        client_id: "my-service".to_owned(),
+        client_secret: SecretString::from("my-secret"),
+        scopes: vec![],
+    };
+
+    let result = service.exchange_client_credentials(&request);
+    assert!(result.is_some());
+
+    let auth = result.unwrap();
+    let ctx = &auth.security_context;
+    assert_eq!(ctx.subject_id(), svc_id);
+    assert_eq!(ctx.subject_tenant_id(), svc_tenant);
+    assert_eq!(ctx.token_scopes(), &["platform.internal"]);
+    assert_eq!(ctx.subject_type(), Some("service"));
+    assert_eq!(
+        ctx.bearer_token().map(ExposeSecret::expose_secret),
+        Some("s2s-issued-token"),
+    );
 }
 
 #[test]
@@ -173,7 +217,7 @@ fn s2s_exchange_returns_identity_for_valid_credentials() {
     );
     assert_eq!(ctx.token_scopes(), &["platform.internal"]);
     assert_eq!(ctx.subject_type(), Some("service"));
-    // S2S exchange does not set bearer_token (no real token issued)
+    // bearer_token is None in this config entry — no token propagated to SecurityContext
     assert!(ctx.bearer_token().is_none());
 }
 
