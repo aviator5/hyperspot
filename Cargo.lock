@@ -4037,9 +4037,9 @@ dependencies = [
 
 [[package]]
 name = "gts"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "349ca150e5a2a61cfe91dda57e841fffa122b876e73f8522b6810630fccebed1"
+checksum = "2a5643b7f259cc57b8822d78e7de34e6e31079a36ffb0a75ee8f685fd53595e5"
 dependencies = [
  "gts-id",
  "jsonschema",
@@ -4056,9 +4056,9 @@ dependencies = [
 
 [[package]]
 name = "gts-id"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "097854f3aade247a143b6f2e8e6f1e7159cf11b0dc01f7d5fbe2d4cefca2cd7b"
+checksum = "c9d8c6ff0c4fcdf993d2279f44a9edf1e66060fe55c59d5ce06b63a6fafaeafa"
 dependencies = [
  "thiserror 2.0.18",
 ]
