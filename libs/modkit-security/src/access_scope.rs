@@ -126,6 +126,34 @@ pub mod rg_tables {
     pub const CLOSURE_DESCENDANT_ID: &str = "descendant_id";
 }
 
+/// Well-known tenant-closure table and column names for subquery construction.
+///
+/// Used by the `SecureORM` condition builder to translate `InTenantSubtree`
+/// scope filters into SQL subqueries without depending on entity types.
+///
+/// **Note:** This table is canonical to the Account Management module's
+/// database. `InTenantSubtree` predicates are only executable in modules
+/// that share the AM database (or replicate `tenant_closure` from it).
+pub mod tenant_tables {
+    /// Closure table for tenant hierarchy.
+    pub const CLOSURE_TABLE: &str = "tenant_closure";
+    /// Column in closure table: the ancestor tenant.
+    pub const CLOSURE_ANCESTOR_ID: &str = "ancestor_id";
+    /// Column in closure table: the descendant tenant.
+    pub const CLOSURE_DESCENDANT_ID: &str = "descendant_id";
+    /// Column in closure table: barrier flag.
+    ///
+    /// AM materializes `barrier = 1` on every closure row whose strict path
+    /// `(ancestor, descendant]` crosses a self-managed tenant. Subtree
+    /// queries that should stop at delegation boundaries clamp the
+    /// subquery with `AND barrier = 0`.
+    pub const CLOSURE_BARRIER: &str = "barrier";
+    /// Column in closure table: status of the descendant tenant (SMALLINT,
+    /// canonically `{1 = active, 2 = suspended, 3 = deleted}` — see
+    /// `tenant_resolver_sdk::TenantStatus::as_smallint`).
+    pub const CLOSURE_DESCENDANT_STATUS: &str = "descendant_status";
+}
+
 /// A single scope filter — a typed predicate on a named resource property.
 ///
 /// The property name (e.g., `"owner_tenant_id"`, `"id"`) is an authorization
@@ -136,6 +164,7 @@ pub mod rg_tables {
 /// - [`ScopeFilter::In`] — set membership (`property IN (values)`)
 /// - [`ScopeFilter::InGroup`] — group membership subquery
 /// - [`ScopeFilter::InGroupSubtree`] — group subtree subquery
+/// - [`ScopeFilter::InTenantSubtree`] — tenant subtree subquery on `tenant_closure`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScopeFilter {
     /// Equality: `property = value`.
@@ -146,6 +175,8 @@ pub enum ScopeFilter {
     InGroup(InGroupScopeFilter),
     /// Group subtree: `property IN (SELECT resource_id FROM membership WHERE group_id IN (SELECT descendant_id FROM closure WHERE ancestor_id IN (ancestor_ids)))`.
     InGroupSubtree(InGroupSubtreeScopeFilter),
+    /// Tenant subtree: `property IN (SELECT descendant_id FROM tenant_closure WHERE ancestor_id = root_tenant_id)`.
+    InTenantSubtree(InTenantSubtreeScopeFilter),
 }
 
 /// Equality scope filter: `property = value`.
@@ -292,6 +323,111 @@ impl InGroupSubtreeScopeFilter {
     }
 }
 
+/// Tenant subtree scope filter — clamps a property to descendants of a single
+/// root tenant via the `tenant_closure` table.
+///
+/// Compiles to (with `respect_barriers = true`, the default, and an empty
+/// `descendant_status`):
+/// `property IN (SELECT descendant_id FROM tenant_closure
+///   WHERE ancestor_id = root_tenant_id AND barrier = 0)`
+///
+/// With `respect_barriers = false`:
+/// `property IN (SELECT descendant_id FROM tenant_closure
+///   WHERE ancestor_id = root_tenant_id)`
+///
+/// With a non-empty `descendant_status` (each value is the canonical
+/// SMALLINT for a tenant status — see
+/// `tenant_resolver_sdk::TenantStatus::as_smallint`):
+/// `... AND descendant_status IN (...)`
+///
+/// **Heads-up for `tenants`-style entities:** When a property resolves
+/// to the `tenants` row's own primary key (via `pep_properties::RESOURCE_ID`),
+/// the entity must declare the `id` column as a resolvable secured
+/// property. Entities marked with `#[secure(no_resource, ...)]` will
+/// fail-closed at scope resolution time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InTenantSubtreeScopeFilter {
+    property: String,
+    root_tenant_id: ScopeValue,
+    respect_barriers: bool,
+    descendant_status: Vec<ScopeValue>,
+}
+
+impl InTenantSubtreeScopeFilter {
+    /// Create a tenant subtree scope filter that respects barriers with no
+    /// status filter.
+    ///
+    /// Equivalent to
+    /// `with_respect_barriers(property, root_tenant_id, true)`.
+    #[must_use]
+    pub fn new(property: impl Into<String>, root_tenant_id: impl Into<ScopeValue>) -> Self {
+        Self::with_respect_barriers(property, root_tenant_id, true)
+    }
+
+    /// Create a tenant subtree scope filter with explicit barrier handling
+    /// and no status filter.
+    #[must_use]
+    pub fn with_respect_barriers(
+        property: impl Into<String>,
+        root_tenant_id: impl Into<ScopeValue>,
+        respect_barriers: bool,
+    ) -> Self {
+        Self::with_descendant_status(property, root_tenant_id, respect_barriers, Vec::new())
+    }
+
+    /// Create a tenant subtree scope filter with explicit barrier handling
+    /// and a (possibly empty) status filter on the descendants. An empty
+    /// list is equivalent to "no status filter".
+    #[must_use]
+    pub fn with_descendant_status(
+        property: impl Into<String>,
+        root_tenant_id: impl Into<ScopeValue>,
+        respect_barriers: bool,
+        descendant_status: Vec<ScopeValue>,
+    ) -> Self {
+        Self {
+            property: property.into(),
+            root_tenant_id: root_tenant_id.into(),
+            respect_barriers,
+            descendant_status,
+        }
+    }
+
+    /// The authorization property name.
+    #[inline]
+    #[must_use]
+    pub fn property(&self) -> &str {
+        &self.property
+    }
+
+    /// The single root tenant ID at which the subtree is anchored.
+    #[inline]
+    #[must_use]
+    pub fn root_tenant_id(&self) -> &ScopeValue {
+        &self.root_tenant_id
+    }
+
+    /// Whether the SQL compilation should clamp the closure subquery
+    /// with `AND barrier = 0` (i.e. stop at self-managed boundaries).
+    #[inline]
+    #[must_use]
+    pub fn respect_barriers(&self) -> bool {
+        self.respect_barriers
+    }
+
+    /// Status filter applied to the descendants reached via the closure.
+    ///
+    /// Empty slice means "no status filter"; otherwise the SQL adds
+    /// `AND descendant_status IN (...)` to the closure subquery. Values
+    /// are expected to be SMALLINT-encoded statuses
+    /// (see `tenant_resolver_sdk::TenantStatus::as_smallint`).
+    #[inline]
+    #[must_use]
+    pub fn descendant_status(&self) -> &[ScopeValue] {
+        &self.descendant_status
+    }
+}
+
 impl ScopeFilter {
     /// Create an equality filter (`property = value`).
     #[must_use]
@@ -326,6 +462,27 @@ impl ScopeFilter {
         Self::InGroupSubtree(InGroupSubtreeScopeFilter::new(property, ancestor_ids))
     }
 
+    /// Create a tenant subtree filter rooted at a single ancestor tenant.
+    ///
+    /// `descendant_status` is a (possibly empty) list of SMALLINT-encoded
+    /// tenant statuses (see `tenant_resolver_sdk::TenantStatus::as_smallint`);
+    /// when non-empty, the SQL adds `AND descendant_status IN (...)` to
+    /// the closure subquery. Pass `Vec::new()` for "no status filter".
+    #[must_use]
+    pub fn in_tenant_subtree(
+        property: impl Into<String>,
+        root_tenant_id: impl Into<ScopeValue>,
+        respect_barriers: bool,
+        descendant_status: Vec<ScopeValue>,
+    ) -> Self {
+        Self::InTenantSubtree(InTenantSubtreeScopeFilter::with_descendant_status(
+            property,
+            root_tenant_id,
+            respect_barriers,
+            descendant_status,
+        ))
+    }
+
     /// The authorization property name.
     #[must_use]
     pub fn property(&self) -> &str {
@@ -334,21 +491,31 @@ impl ScopeFilter {
             Self::In(f) => f.property(),
             Self::InGroup(f) => f.property(),
             Self::InGroupSubtree(f) => f.property(),
+            Self::InTenantSubtree(f) => f.property(),
         }
     }
 
     /// Collect direct-match values as a slice-like view for iteration.
     ///
     /// For `Eq`, returns a single-element slice; for `In`, returns the values slice.
-    /// For `InGroup`/`InGroupSubtree`, returns empty — those are subquery parameters,
-    /// not resource property values. The actual matching happens in SQL via
-    /// [`secure::scope_to_condition`].
+    /// For `InGroup`/`InGroupSubtree`/`InTenantSubtree`, returns empty — those
+    /// are subquery parameters, not resource property values. The actual
+    /// matching happens in SQL via [`secure::scope_to_condition`].
+    ///
+    /// **Write-path limitation:** Because `InTenantSubtree` returns an empty
+    /// slice here, in-memory helpers such as [`AccessScope::contains_uuid`] and
+    /// [`AccessScope::all_uuid_values_for`] always return negative/empty results
+    /// for this filter variant. Secure-insert paths that validate scope membership
+    /// via these helpers cannot use `InTenantSubtree` as a substitute for
+    /// `allow_all()` without an additional DB-backed tenant-membership check.
     #[must_use]
     pub fn values(&self) -> ScopeFilterValues<'_> {
         match self {
             Self::Eq(f) => ScopeFilterValues::Single(&f.value),
             Self::In(f) => ScopeFilterValues::Multiple(&f.values),
-            Self::InGroup(_) | Self::InGroupSubtree(_) => ScopeFilterValues::Multiple(&[]),
+            Self::InGroup(_) | Self::InGroupSubtree(_) | Self::InTenantSubtree(_) => {
+                ScopeFilterValues::Multiple(&[])
+            }
         }
     }
 
@@ -1100,6 +1267,80 @@ mod tests {
             vec![ScopeValue::Uuid(uid(T1))],
         )]));
         assert!(!scope.contains_uuid(pep_properties::OWNER_TENANT_ID, uid(T1)));
+    }
+
+    // --- ScopeFilter::InTenantSubtree ---
+
+    #[test]
+    fn scope_filter_in_tenant_subtree_constructor_defaults_to_respect() {
+        let f = ScopeFilter::in_tenant_subtree(
+            pep_properties::RESOURCE_ID,
+            ScopeValue::Uuid(uid(T1)),
+            true,
+            Vec::new(),
+        );
+        assert_eq!(f.property(), pep_properties::RESOURCE_ID);
+        assert!(matches!(f, ScopeFilter::InTenantSubtree(_)));
+        assert_eq!(f.values().iter().count(), 0);
+        match &f {
+            ScopeFilter::InTenantSubtree(sf) => {
+                assert!(sf.respect_barriers());
+                assert!(sf.descendant_status().is_empty());
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_tenant_subtree_scope_contains_uuid_returns_false() {
+        let scope =
+            AccessScope::single(ScopeConstraint::new(vec![ScopeFilter::in_tenant_subtree(
+                pep_properties::RESOURCE_ID,
+                ScopeValue::Uuid(uid(T1)),
+                true,
+                Vec::new(),
+            )]));
+        assert!(!scope.contains_uuid(pep_properties::RESOURCE_ID, uid(T1)));
+    }
+
+    #[test]
+    fn in_tenant_subtree_scope_filter_carries_descendant_status() {
+        let f = InTenantSubtreeScopeFilter::with_descendant_status(
+            pep_properties::OWNER_TENANT_ID,
+            ScopeValue::Uuid(uid(T1)),
+            true,
+            vec![ScopeValue::Int(1), ScopeValue::Int(2)],
+        );
+        assert_eq!(f.descendant_status().len(), 2);
+        assert_eq!(f.descendant_status()[0], ScopeValue::Int(1));
+        assert_eq!(f.descendant_status()[1], ScopeValue::Int(2));
+    }
+
+    #[test]
+    fn in_tenant_subtree_scope_filter_exposes_property_and_root() {
+        let f =
+            InTenantSubtreeScopeFilter::new(pep_properties::RESOURCE_ID, ScopeValue::Uuid(uid(T1)));
+        assert_eq!(f.property(), pep_properties::RESOURCE_ID);
+        assert_eq!(f.root_tenant_id(), &ScopeValue::Uuid(uid(T1)));
+        assert!(f.respect_barriers());
+    }
+
+    #[test]
+    fn in_tenant_subtree_scope_filter_ignore_barriers_constructor() {
+        let f = InTenantSubtreeScopeFilter::with_respect_barriers(
+            pep_properties::OWNER_TENANT_ID,
+            ScopeValue::Uuid(uid(T1)),
+            false,
+        );
+        assert!(!f.respect_barriers());
+    }
+
+    #[test]
+    fn tenant_tables_constants_are_stable() {
+        assert_eq!(tenant_tables::CLOSURE_TABLE, "tenant_closure");
+        assert_eq!(tenant_tables::CLOSURE_ANCESTOR_ID, "ancestor_id");
+        assert_eq!(tenant_tables::CLOSURE_DESCENDANT_ID, "descendant_id");
+        assert_eq!(tenant_tables::CLOSURE_BARRIER, "barrier");
     }
 
     // --- contains_uuid string matching ---

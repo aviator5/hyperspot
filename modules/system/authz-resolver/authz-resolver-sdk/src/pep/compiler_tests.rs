@@ -480,6 +480,261 @@ fn empty_in_group_ids_fails_constraint() {
 }
 
 #[test]
+fn in_tenant_subtree_predicate_compiles_to_subtree_filter_respecting_barriers() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let root = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: jid(root),
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
+    assert_eq!(scope.constraints().len(), 1);
+    let filter = &scope.constraints()[0].filters()[0];
+    match filter {
+        ScopeFilter::InTenantSubtree(sf) => {
+            assert_eq!(sf.property(), pep_properties::OWNER_TENANT_ID);
+            assert!(sf.respect_barriers(), "Respect must clamp on barrier");
+        }
+        other => panic!("expected InTenantSubtree filter, got: {other:?}"),
+    }
+}
+
+#[test]
+fn in_tenant_subtree_predicate_ignore_barriers_propagates_to_filter() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let root = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: jid(root),
+                    barrier_mode: BarrierMode::Ignore,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
+    let filter = &scope.constraints()[0].filters()[0];
+    match filter {
+        ScopeFilter::InTenantSubtree(sf) => {
+            assert!(!sf.respect_barriers(), "Ignore must not clamp on barrier");
+        }
+        other => panic!("expected InTenantSubtree filter, got: {other:?}"),
+    }
+}
+
+#[test]
+fn in_tenant_subtree_with_descendant_status_compiles_to_smallint_filter() {
+    // Non-empty descendant_status must flow through the compiler unchanged
+    // in semantics — each TenantStatus lowers to its canonical SMALLINT
+    // encoding (Active=1, Suspended=2, Deleted=3) on the ScopeFilter so the
+    // SQL bind matches the `tenant_closure.descendant_status` domain.
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+    use modkit_security::ScopeValue;
+    use tenant_resolver_sdk::TenantStatus;
+
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: jid(T1),
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: vec![TenantStatus::Active, TenantStatus::Suspended],
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let scope = compile_to_access_scope(&response, true, DEFAULT_PROPS).unwrap();
+    let filter = &scope.constraints()[0].filters()[0];
+    match filter {
+        ScopeFilter::InTenantSubtree(sf) => {
+            assert_eq!(
+                sf.descendant_status(),
+                &[ScopeValue::Int(1), ScopeValue::Int(2)],
+                "TenantStatus must lower to as_smallint() values"
+            );
+            assert!(sf.respect_barriers());
+        }
+        other => panic!("expected InTenantSubtree filter, got: {other:?}"),
+    }
+}
+
+#[test]
+fn in_tenant_subtree_non_uuid_root_bool_fails_constraint() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: serde_json::json!(true),
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
+    assert!(
+        matches!(
+            result,
+            Err(ConstraintCompileError::AllConstraintsFailed { .. })
+        ),
+        "bool root_tenant_id must fail-closed, got: {result:?}"
+    );
+}
+
+#[test]
+fn in_tenant_subtree_non_uuid_root_int_fails_constraint() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: serde_json::json!(42),
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
+    assert!(
+        matches!(
+            result,
+            Err(ConstraintCompileError::AllConstraintsFailed { .. })
+        ),
+        "integer root_tenant_id must fail-closed, got: {result:?}"
+    );
+}
+
+#[test]
+fn in_tenant_subtree_non_uuid_root_string_fails_constraint() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: serde_json::json!("not-a-uuid"),
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
+    assert!(
+        matches!(
+            result,
+            Err(ConstraintCompileError::AllConstraintsFailed { .. })
+        ),
+        "non-UUID string root_tenant_id must fail-closed, got: {result:?}"
+    );
+}
+
+#[test]
+fn in_tenant_subtree_non_uuid_root_null_fails_constraint() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: serde_json::Value::Null,
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
+    assert!(
+        matches!(
+            result,
+            Err(ConstraintCompileError::AllConstraintsFailed { .. })
+        ),
+        "null root_tenant_id must fail-closed, got: {result:?}"
+    );
+}
+
+#[test]
+fn in_tenant_subtree_non_uuid_root_array_fails_constraint() {
+    use crate::constraints::InTenantSubtreePredicate;
+    use crate::models::BarrierMode;
+
+    let response = EvaluationResponse {
+        decision: true,
+        context: EvaluationResponseContext {
+            constraints: vec![Constraint {
+                predicates: vec![Predicate::InTenantSubtree(InTenantSubtreePredicate {
+                    property: pep_properties::OWNER_TENANT_ID.to_owned(),
+                    root_tenant_id: serde_json::json!([T1]),
+                    barrier_mode: BarrierMode::Respect,
+                    descendant_status: Vec::new(),
+                })],
+            }],
+            ..Default::default()
+        },
+    };
+
+    let result = compile_to_access_scope(&response, true, DEFAULT_PROPS);
+    assert!(
+        matches!(
+            result,
+            Err(ConstraintCompileError::AllConstraintsFailed { .. })
+        ),
+        "array root_tenant_id must fail-closed, got: {result:?}"
+    );
+}
+
+#[test]
 fn empty_in_group_subtree_ancestor_ids_fails_constraint() {
     use crate::constraints::InGroupSubtreePredicate;
 

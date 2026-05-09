@@ -2,7 +2,9 @@ use sea_orm::sea_query::{Alias, Query};
 use sea_orm::{ColumnTrait, Condition, EntityTrait, sea_query::Expr};
 
 use crate::secure::{AccessScope, ScopableEntity};
-use modkit_security::access_scope::{ScopeConstraint, ScopeFilter, ScopeValue, rg_tables};
+use modkit_security::access_scope::{
+    ScopeConstraint, ScopeFilter, ScopeValue, rg_tables, tenant_tables,
+};
 
 /// Convert a [`ScopeValue`] to a `sea_query::SimpleExpr` for SQL binding.
 fn scope_value_to_sea_expr(v: &ScopeValue) -> sea_orm::sea_query::SimpleExpr {
@@ -140,6 +142,46 @@ where
                     )
                     .to_owned();
                 and_cond = and_cond.add(col.into_expr().in_subquery(membership_subquery));
+            }
+            ScopeFilter::InTenantSubtree(sf) => {
+                // Respect-barriers (default), no descendant_status filter:
+                //   col IN (SELECT descendant_id FROM tenant_closure
+                //            WHERE ancestor_id = root_tenant_id AND barrier = 0)
+                // Ignore-barriers:
+                //   col IN (SELECT descendant_id FROM tenant_closure
+                //            WHERE ancestor_id = root_tenant_id)
+                // Non-empty descendant_status appends:
+                //   AND descendant_status IN (...)
+                //
+                // The closure invariant guarantees `(ancestor=X, descendant=X)`
+                // is always present (self-row, barrier=0), enforced by AM's
+                // `ck_tenant_closure_self_row_barrier` check constraint, so the
+                // root tenant is included regardless of the barrier clamp.
+                //
+                // The composite index
+                // `idx_tenant_closure_ancestor_barrier_status (ancestor_id, barrier, descendant_status)`
+                // covers all three clauses, so a status filter does not
+                // change the access path.
+                let root_expr = scope_value_to_sea_expr(sf.root_tenant_id());
+                let mut subquery = Query::select()
+                    .column(Alias::new(tenant_tables::CLOSURE_DESCENDANT_ID))
+                    .from(Alias::new(tenant_tables::CLOSURE_TABLE))
+                    .and_where(
+                        Expr::col(Alias::new(tenant_tables::CLOSURE_ANCESTOR_ID)).eq(root_expr),
+                    )
+                    .to_owned();
+                if sf.respect_barriers() {
+                    subquery
+                        .and_where(Expr::col(Alias::new(tenant_tables::CLOSURE_BARRIER)).eq(0_i16));
+                }
+                if !sf.descendant_status().is_empty() {
+                    let status_values = scope_values_to_sea_values(sf.descendant_status());
+                    subquery.and_where(
+                        Expr::col(Alias::new(tenant_tables::CLOSURE_DESCENDANT_STATUS))
+                            .is_in(status_values),
+                    );
+                }
+                and_cond = and_cond.add(col.into_expr().in_subquery(subquery));
             }
         }
     }
@@ -320,6 +362,159 @@ mod tests {
     }
 
     #[test]
+    fn test_in_tenant_subtree_respects_barrier_by_default() {
+        let root_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                true,
+                Vec::new(),
+            ),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            !cond_str.contains("Value(Bool(Some(false)))"),
+            "InTenantSubtree should produce a real condition, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains("tenant_closure"),
+            "InTenantSubtree condition must reference tenant_closure table, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains("ancestor_id"),
+            "InTenantSubtree condition must filter by ancestor_id, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains("descendant_id"),
+            "InTenantSubtree condition must select descendant_id, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains("barrier"),
+            "Respect-barriers mode must clamp closure subquery with barrier=0, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_ignore_barriers_omits_clamp() {
+        let root_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                false,
+                Vec::new(),
+            ),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains("tenant_closure"),
+            "Ignore-barriers must still produce closure subquery, got: {cond_str}"
+        );
+        assert!(
+            !cond_str.contains("barrier"),
+            "Ignore-barriers must NOT clamp on barrier column, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_binds_root_tenant_id() {
+        // Single-root contract: the SQL must reference the root tenant UUID
+        // exactly once via `ancestor_id = ?`, not an `IN` list. This guards
+        // against accidental regressions to a multi-root encoding.
+        let root_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                true,
+                Vec::new(),
+            ),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains(&root_id.to_string()),
+            "root tenant UUID must appear in the subquery, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_with_descendant_status_emits_clause() {
+        // Non-empty descendant_status must add `AND descendant_status IN (...)`
+        // to the closure subquery, binding the SMALLINT values verbatim.
+        let root_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                true,
+                vec![ScopeValue::Int(1), ScopeValue::Int(2)],
+            ),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains("descendant_status"),
+            "descendant_status clause must be present, got: {cond_str}"
+        );
+        // Status values are bound through sea-query as SMALLINT-compatible
+        // integers — they appear as i64 placeholders in the debug print.
+        assert!(
+            cond_str.contains("BigInt(Some(1))") || cond_str.contains("Int(Some(1))"),
+            "status value 1 must be bound, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains("BigInt(Some(2))") || cond_str.contains("Int(Some(2))"),
+            "status value 2 must be bound, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_empty_descendant_status_omits_clause() {
+        // Empty descendant_status must NOT add a status predicate — the
+        // ignore-barriers variant exposes this most cleanly because then the
+        // only mention of `barrier` or `descendant_status` would come from
+        // the status clause itself.
+        let root_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                false,
+                Vec::new(),
+            ),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            !cond_str.contains("descendant_status"),
+            "empty descendant_status must NOT emit clause, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_unknown_property_deny_all() {
+        let root_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                "nonexistent",
+                ScopeValue::Uuid(root_id),
+                true,
+                Vec::new(),
+            ),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains("Value(Bool(Some(false)))"),
+            "Unknown property must deny-all, got: {cond_str}"
+        );
+    }
+
+    #[test]
     fn test_in_group_subtree_filter_produces_subquery_condition() {
         let ancestor_id = uuid::Uuid::new_v4();
         let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
@@ -358,6 +553,67 @@ mod tests {
         assert!(
             !cond_str.contains("Value(Bool(Some(false)))"),
             "Combined tenant+group should produce a real condition, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_and_eq_produces_and_condition() {
+        let root_id = uuid::Uuid::new_v4();
+        let resource_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![ScopeConstraint::new(vec![
+            ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                true,
+                Vec::new(),
+            ),
+            ScopeFilter::eq(pep_properties::RESOURCE_ID, resource_id),
+        ])]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains("tenant_closure"),
+            "AND-composed condition must include closure subquery, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains(&resource_id.to_string()),
+            "AND-composed condition must include resource_id eq, got: {cond_str}"
+        );
+        assert!(
+            !cond_str.contains("Value(Bool(Some(false)))"),
+            "AND-composed condition must not deny-all, got: {cond_str}"
+        );
+    }
+
+    #[test]
+    fn test_in_tenant_subtree_or_with_in_produces_or_condition() {
+        let root_id = uuid::Uuid::new_v4();
+        let tenant_id = uuid::Uuid::new_v4();
+        let scope = AccessScope::from_constraints(vec![
+            ScopeConstraint::new(vec![ScopeFilter::in_tenant_subtree(
+                pep_properties::OWNER_TENANT_ID,
+                ScopeValue::Uuid(root_id),
+                true,
+                Vec::new(),
+            )]),
+            ScopeConstraint::new(vec![ScopeFilter::in_uuids(
+                pep_properties::OWNER_TENANT_ID,
+                vec![tenant_id],
+            )]),
+        ]);
+        let cond = build_scope_condition::<custom_prop_entity::Entity>(&scope);
+        let cond_str = format!("{cond:?}");
+        assert!(
+            cond_str.contains("tenant_closure"),
+            "OR condition must include closure subquery branch, got: {cond_str}"
+        );
+        assert!(
+            cond_str.contains(&tenant_id.to_string()),
+            "OR condition must include plain IN branch, got: {cond_str}"
+        );
+        assert!(
+            !cond_str.contains("Value(Bool(Some(false)))"),
+            "OR condition must not deny-all, got: {cond_str}"
         );
     }
 

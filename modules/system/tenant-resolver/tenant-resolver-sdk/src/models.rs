@@ -100,6 +100,15 @@ impl From<&TenantInfo> for TenantRef {
 }
 
 /// Tenant lifecycle status.
+///
+/// Mirrors the SMALLINT encoding stored in `tenants.status` and
+/// `tenant_closure.descendant_status` (the canonical mapping is
+/// `Active = 1`, `Suspended = 2`, `Deleted = 3`). Use [`as_smallint`] /
+/// [`from_smallint`] to cross the DB boundary so the mapping stays in
+/// one place — duplicating it elsewhere risks future drift.
+///
+/// [`as_smallint`]: TenantStatus::as_smallint
+/// [`from_smallint`]: TenantStatus::from_smallint
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TenantStatus {
@@ -110,6 +119,38 @@ pub enum TenantStatus {
     Suspended,
     /// Tenant has been deleted (soft delete).
     Deleted,
+}
+
+impl TenantStatus {
+    /// Canonical SMALLINT encoding used by the AM-owned schema.
+    ///
+    /// Pinned to `Active = 1`, `Suspended = 2`, `Deleted = 3` to match
+    /// the `CHECK (status IN (1, 2, 3))` constraint on `tenants.status`
+    /// and the equivalent `descendant_status` constraint on
+    /// `tenant_closure`. `0` is reserved for AM-internal `Provisioning`,
+    /// which is not part of the SDK contract.
+    #[must_use]
+    pub const fn as_smallint(self) -> i16 {
+        match self {
+            Self::Active => 1,
+            Self::Suspended => 2,
+            Self::Deleted => 3,
+        }
+    }
+
+    /// Parse from the SMALLINT encoding. Returns `None` for any value
+    /// outside the SDK-visible domain `{1, 2, 3}` (in particular the
+    /// AM-internal `0 = provisioning` code is rejected, since
+    /// `Provisioning` is not part of [`TenantStatus`]).
+    #[must_use]
+    pub const fn from_smallint(value: i16) -> Option<Self> {
+        match value {
+            1 => Some(Self::Active),
+            2 => Some(Self::Suspended),
+            3 => Some(Self::Deleted),
+            _ => None,
+        }
+    }
 }
 
 /// Trait for types that expose a [`TenantStatus`].

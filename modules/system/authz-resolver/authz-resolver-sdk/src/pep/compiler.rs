@@ -21,17 +21,23 @@
 //!
 //! ## Empty value lists (fail-closed)
 //!
-//! Set-membership predicates (`In`, `InGroup`, `InGroupSubtree`) with an empty
-//! value list are rejected at compile time. An empty list means "match nothing"
-//! which is semantically a deny — but passing it through to the ORM would
-//! generate `WHERE col IN ()`, which is a SQL error on some engines. Instead
-//! the compiler treats this as a PDP contract violation and fails the
-//! constraint (fail-closed).
+//! Set-membership predicates (`In`, `InGroup`, `InGroupSubtree`) with an
+//! empty value list are rejected at compile time. An empty list means
+//! "match nothing" which is semantically a deny — but passing it through
+//! to the ORM would generate `WHERE col IN ()`, which is a SQL error on
+//! some engines. Instead the compiler treats this as a PDP contract
+//! violation and fails the constraint (fail-closed).
+//!
+//! `InTenantSubtree` carries a single `root_tenant_id` rather than a list,
+//! so the empty-list case does not arise; a missing or non-UUID root id
+//! is rejected the same way. Its optional `descendant_status` list is
+//! converted element-wise (via `TenantStatus::as_smallint`) and bound to
+//! the SQL `descendant_status` column; an empty list disables the filter.
 
 use modkit_security::{AccessScope, ScopeConstraint, ScopeFilter, ScopeValue};
 
 use crate::constraints::{Constraint, Predicate};
-use crate::models::EvaluationResponse;
+use crate::models::{BarrierMode, EvaluationResponse};
 
 /// Error during constraint compilation.
 #[derive(Debug, thiserror::Error)]
@@ -178,6 +184,39 @@ fn compile_constraint(
                     ScopeFilter::in_group_subtree(&p.property, ancestor_ids),
                 )
             }
+            Predicate::InTenantSubtree(p) => {
+                let root_tenant_id = json_to_uuid_scope_value(&p.root_tenant_id).map_err(|e| {
+                    format!(
+                        "InTenantSubtree predicate on '{}' has invalid root_tenant_id: {e}",
+                        p.property
+                    )
+                })?;
+                // Map authz-sdk barrier mode onto modkit-security's bool flag.
+                // `Respect` (default) clamps the closure subquery with
+                // `AND barrier = 0`; `Ignore` is reserved for cross-barrier
+                // operations such as billing or tenant metadata reads.
+                let respect_barriers = matches!(p.barrier_mode, BarrierMode::Respect);
+                // Each `TenantStatus` lowers to its canonical SMALLINT
+                // encoding (Active=1, Suspended=2, Deleted=3) so the SQL
+                // bind matches the `tenant_closure.descendant_status`
+                // column domain. The `Provisioning` AM-internal status is
+                // not part of `TenantStatus` and therefore cannot be
+                // expressed here — that matches the closure invariant.
+                let descendant_status: Vec<ScopeValue> = p
+                    .descendant_status
+                    .iter()
+                    .map(|s| ScopeValue::Int(i64::from(s.as_smallint())))
+                    .collect();
+                (
+                    p.property.as_str(),
+                    ScopeFilter::in_tenant_subtree(
+                        &p.property,
+                        root_tenant_id,
+                        respect_barriers,
+                        descendant_status,
+                    ),
+                )
+            }
         };
 
         if !supported_properties.contains(&property) {
@@ -188,6 +227,28 @@ fn compile_constraint(
     }
 
     Ok(ScopeConstraint::new(filters))
+}
+
+/// Convert a `serde_json::Value` to a UUID `ScopeValue`.
+///
+/// Only valid UUID strings are accepted; anything else (non-UUID string,
+/// number, bool, null, array, object) is rejected. Used for `root_tenant_id`
+/// in `InTenantSubtree` where the column type is always UUID.
+fn json_to_uuid_scope_value(v: &serde_json::Value) -> Result<ScopeValue, String> {
+    match v {
+        serde_json::Value::String(s) => uuid::Uuid::parse_str(s)
+            .map(ScopeValue::Uuid)
+            .map_err(|_| format!("root_tenant_id must be a UUID string, got: {s:?} (fail-closed)")),
+        serde_json::Value::Number(_) => {
+            Err("root_tenant_id must be a UUID string, got number (fail-closed)".to_owned())
+        }
+        serde_json::Value::Bool(_) => {
+            Err("root_tenant_id must be a UUID string, got bool (fail-closed)".to_owned())
+        }
+        other => Err(format!(
+            "root_tenant_id must be a UUID string, got: {other} (fail-closed)"
+        )),
+    }
 }
 
 /// Convert a `serde_json::Value` to a `ScopeValue`.

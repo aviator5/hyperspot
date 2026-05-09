@@ -32,6 +32,7 @@ gts-macros = { workspace = true }
 # ModKit dependencies
 modkit = { workspace = true }
 modkit-security = { workspace = true }
+tenant-resolver-sdk = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

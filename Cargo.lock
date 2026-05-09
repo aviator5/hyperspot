@@ -2028,6 +2028,7 @@ dependencies = [
  "async-trait",
  "cyberware-modkit",
  "cyberware-modkit-security",
+ "cyberware-tenant-resolver-sdk",
  "gts",
  "gts-macros",
  "schemars 1.2.1",
