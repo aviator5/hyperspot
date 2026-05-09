@@ -113,6 +113,12 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Go (required for aws-lc-fips-sys FIPS build)
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: 'stable'
+          cache: false
+
       - name: Install Rust toolchain from rust-toolchain.toml
         run: |
           rustup show active-toolchain || rustup toolchain install
@@ -159,6 +165,9 @@ jobs:
 
       - name: Test modkit-db (mysql integration)
         run: make test-mysql
+
+      - name: Test modkit (FIPS integration)
+        run: make test-fips
 
   cypilot:
     name: Cypilot

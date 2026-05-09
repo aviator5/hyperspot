@@ -338,7 +338,7 @@ dev: dev-fmt dev-clippy dev-test
 
 # -------- Tests --------
 
-.PHONY: test test-no-macros test-macros test-sqlite test-pg test-mysql test-db test-users-info-pg
+.PHONY: test test-no-macros test-macros test-sqlite test-pg test-mysql test-db test-users-info-pg test-fips
 
 # Run all tests
 test: install-tools
@@ -370,6 +370,10 @@ test-db: test-sqlite test-pg test-mysql
 ## Run users-info module integration tests
 test-users-info-pg: install-tools
 	cargo nextest run -p users-info --features "integration"
+
+## Run FIPS-mode integration tests (cf-modkit, requires Go for aws-lc-fips-sys)
+test-fips: install-tools
+	cargo nextest run -p cf-modkit --features bootstrap,fips
 
 # -------- Benchmarks --------
 
@@ -533,7 +537,7 @@ fuzz-corpus: fuzz-install
 
 # -------- Main targets --------
 
-.PHONY: all check ci build cargo-build split-debug quickstart example mini-chat mini-chat-docker mini-chat-helm mini-chat-helm-template mini-chat-up mini-chat-down mini-chat-port-forward
+.PHONY: all check ci ci_test ci_docs build cargo-build split-debug quickstart example mini-chat mini-chat-docker mini-chat-helm mini-chat-helm-template mini-chat-up mini-chat-down mini-chat-port-forward
 
 # Start server with quickstart config
 quickstart:
