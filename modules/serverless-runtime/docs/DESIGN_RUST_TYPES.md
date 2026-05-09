@@ -1,11 +1,21 @@
+<!--
+Created:  2026-03-12 by Constructor Tech
+Updated:  2026-04-30 by Constructor Tech
+-->
+
 # Serverless Runtime: Rust Domain Types and Runtime Traits
 
 > **Companion file to [DESIGN.md](./DESIGN.md) section 3.1 "Rust Domain Types and Runtime Traits".**
 >
 > This file contains the complete Rust type definitions and trait interfaces for the
-> Serverless Runtime domain model. These types are transport-agnostic and intended for
-> SDK or core runtime crates. The abstract `ServerlessRuntime` trait can be implemented
-> by adapters (Temporal, Starlark, cloud FaaS).
+> Serverless Runtime domain model. These types are transport-agnostic and live in the
+> `serverless-runtime-sdk` crate. Per ADR `cpt-cf-serverless-runtime-adr-thin-host`, the
+> public surface is split across two traits: `ServerlessRuntimeClient` (host-implemented,
+> consumer- and plugin-callable; carries the public CRUD surface plus a thin
+> plugin-to-host event port) and `RuntimeAdapter` (Runtime Plugin-implemented,
+> host-callable; carries identity, lifecycle hooks, invocation, schedule, and
+> event-trigger methods). Each Runtime Plugin implementation (Temporal, Starlark, cloud
+> FaaS, etc.) provides a `RuntimeAdapter` impl bound to a single GTS adapter type.
 
 ##### Core Types (Rust)
 
@@ -37,7 +47,7 @@ pub enum InvocationMode {
 }
 
 /// Invocation lifecycle status. Matches the short enum values in the
-/// `gts.cf.core.serverless.status.v1~` GTS schema.
+/// `gts.cf.core.sless.status.v1~` GTS schema.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvocationStatus {
     Queued,
@@ -51,9 +61,11 @@ pub enum InvocationStatus {
     DeadLettered,
 }
 
-/// Function kind derived from GTS chain (not stored, computed from function_id).
-/// In the 2-tier hierarchy, all types contain `function.v1~` in the chain;
-/// workflows additionally contain `workflow.v1~`. Check workflow first.
+/// Callable kind derived from the GTS chain (not stored, computed from
+/// `function_id`). `Function` and `Workflow` are sibling base types — neither
+/// derives from the other — so the chain contains exactly one of
+/// `function.v1~` or `workflow.v1~` at the base position; both branches are
+/// matched independently.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FunctionKind {
     Function,
@@ -61,13 +73,13 @@ pub enum FunctionKind {
 }
 
 impl FunctionKind {
-    /// Determines function kind by checking the GTS chain for known base types.
-    /// Workflow is checked first because all types contain `function.v1~` in the
-    /// new 2-tier hierarchy (function base → workflow derived).
+    /// Determines callable kind by matching the sibling base type in the GTS
+    /// chain. The two branches are mutually exclusive in the sibling-type
+    /// model; check order is therefore irrelevant.
     pub fn from_gts_id(function_id: &str) -> Option<Self> {
-        if function_id.contains("cf.core.serverless.workflow.") {
+        if function_id.contains("cf.core.sless.workflow.") {
             Some(FunctionKind::Workflow)
-        } else if function_id.contains("cf.core.serverless.function.") {
+        } else if function_id.contains("cf.core.sless.function.") {
             Some(FunctionKind::Function)
         } else {
             None
@@ -141,7 +153,7 @@ pub struct ResponseCachingPolicy {
 /// Applies to both sync and async invocation modes.
 ///
 /// `strategy` is the GTS type ID of the rate limiter plugin (derived from
-/// `gts.cf.core.serverless.rate_limit.v1~`); `config` is the strategy-specific
+/// `gts.cf.core.sless.rate_limit.v1~`); `config` is the strategy-specific
 /// settings as an opaque JSON object validated by the resolved plugin.
 #[derive(Clone, Debug)]
 pub struct RateLimit {
@@ -154,7 +166,7 @@ pub struct RateLimit {
 }
 
 /// System-default token bucket rate limiter configuration.
-/// GTS ID: gts.cf.core.serverless.rate_limit.v1~cf.core.serverless.rate_limit.token_bucket.v1~
+/// GTS ID: gts.cf.core.sless.rate_limit.v1~cf.core.sless.rate_limit.token_bucket.v1~
 ///
 /// Both per-second and per-minute limits are enforced independently.
 /// `burst_size` applies to the per-second bucket only.
@@ -246,7 +258,7 @@ pub struct RetryPolicy {
 /// Implementation with explicit adapter for limits validation.
 #[derive(Clone, Debug)]
 pub struct FunctionImplementation {
-    /// GTS type ID of the adapter (e.g., gts.cf.core.serverless.adapter.starlark.v1~)
+    /// GTS type ID of the adapter (e.g., gts.cf.core.sless.runtime.starlark.v1~)
     pub adapter: GtsId,
     pub kind: ImplementationKind,
     pub payload: ImplementationPayload,
@@ -432,7 +444,7 @@ pub struct TenantRetention {
 
 #[derive(Clone, Debug)]
 pub struct TenantPolicies {
-    /// Allowed adapter GTS type IDs (e.g., gts.cf.core.serverless.adapter.starlark.v1~).
+    /// Allowed adapter GTS type IDs (e.g., gts.cf.core.sless.runtime.starlark.v1~).
     /// Validated against `implementation.adapter` at function registration time.
     pub allowed_runtimes: Vec<GtsId>,
     /// When true, function publishing requires administrative approval.
@@ -469,7 +481,7 @@ pub enum RuntimeErrorCategory {
 
 #[derive(Clone, Debug)]
 pub struct RuntimeErrorPayload {
-    /// GTS error type ID (e.g., gts.cf.core.serverless.err.v1~cf.core.serverless.err.validation.v1~)
+    /// GTS error type ID (e.g., gts.cf.core.sless.err.v1~cf.core.sless.err.validation.v1~)
     pub error_type_id: GtsId,
     pub message: String,
     pub category: RuntimeErrorCategory,
@@ -534,8 +546,18 @@ pub enum InvocationControlAction {
     Replay,
 }
 
+/// Host-implemented client trait. Consumed by external callers (REST/JSON-RPC/MCP
+/// handlers) and by Runtime Plugins (via `ClientHub::get::<dyn ServerlessRuntimeClient>()`).
+///
+/// Carries the public CRUD surface across functions, invocations (host-indexed
+/// aggregate queries), schedules, triggers, and tenant policy, plus a thin
+/// notification-only event port that plugins use to populate the host invocation
+/// index. The event port is one-directional plugin -> host: the host never calls
+/// back into the plugin through this surface.
 #[async_trait]
-pub trait ServerlessRuntime: Send + Sync {
+pub trait ServerlessRuntimeClient: Send + Sync {
+    // --- Functions (registry CRUD) ---
+
     async fn register_function(
         &self,
         ctx: &SecurityContext,
@@ -580,17 +602,28 @@ pub trait ServerlessRuntime: Send + Sync {
         function_id: &FunctionId,
     ) -> Result<(), RuntimeErrorPayload>;
 
+    // --- Invocations ---
+    //
+    // `start_invocation` and `control_invocation` are the public entry points for
+    // REST/JSON-RPC/MCP handlers. The host implementation applies cross-cutting
+    // concerns at the dispatch boundary (auth, tenant policy, GTS validation,
+    // rate limiting, Idempotency-Key dedup, response cache, dry-run short-circuit
+    // — see `cpt-cf-serverless-runtime-seq-invocation-flow`) and then routes to
+    // the resolved `RuntimeAdapter`. Handlers MUST NOT bypass this trait by
+    // resolving the adapter directly.
+    //
+    // `list_invocations` / `get_invocation` are served from the host-owned
+    // `invocation_index` populated via the plugin event port. The returned
+    // `InvocationRecord` carries only the index-resident fields (id, function_id,
+    // tenant, status, timestamps, error summary); transport, observability, and
+    // full timeline data require `RuntimeAdapter::get_invocation` /
+    // `RuntimeAdapter::get_invocation_timeline`.
+
     async fn start_invocation(
         &self,
         ctx: &SecurityContext,
         request: InvocationRequest,
     ) -> Result<InvocationResult, RuntimeErrorPayload>;
-
-    async fn get_invocation(
-        &self,
-        ctx: &SecurityContext,
-        invocation_id: &InvocationId,
-    ) -> Result<InvocationRecord, RuntimeErrorPayload>;
 
     async fn control_invocation(
         &self,
@@ -605,11 +638,13 @@ pub trait ServerlessRuntime: Send + Sync {
         filter: InvocationListFilter,
     ) -> Result<Vec<InvocationRecord>, RuntimeErrorPayload>;
 
-    async fn get_invocation_timeline(
+    async fn get_invocation(
         &self,
         ctx: &SecurityContext,
         invocation_id: &InvocationId,
-    ) -> Result<Vec<InvocationTimelineEvent>, RuntimeErrorPayload>;
+    ) -> Result<InvocationRecord, RuntimeErrorPayload>;
+
+    // --- Schedules (host-side metadata CRUD; plugin owns the schedule itself) ---
 
     async fn create_schedule(
         &self,
@@ -660,6 +695,8 @@ pub trait ServerlessRuntime: Send + Sync {
         schedule_id: &ScheduleId,
     ) -> Result<Vec<InvocationRecord>, RuntimeErrorPayload>;
 
+    // --- Event triggers (host-side metadata CRUD; plugin owns the subscription) ---
+
     async fn create_trigger(
         &self,
         ctx: &SecurityContext,
@@ -691,6 +728,8 @@ pub trait ServerlessRuntime: Send + Sync {
         trigger_id: &TriggerId,
     ) -> Result<(), RuntimeErrorPayload>;
 
+    // --- Tenant policy ---
+
     async fn get_tenant_runtime_policy(
         &self,
         ctx: &SecurityContext,
@@ -716,13 +755,189 @@ pub trait ServerlessRuntime: Send + Sync {
         tenant_id: &TenantId,
         filter: UsageHistoryFilter,
     ) -> Result<Vec<TenantUsage>, RuntimeErrorPayload>;
+
+    // --- Thin event port (plugin -> host; notification surface only) ---
+    //
+    // These two methods are the ONLY plugin-to-host callback surface. They are not
+    // a general-purpose callback API: the host accepts notifications and updates
+    // the host-owned invocation index / re-emits timeline events to subscribers.
+
+    /// Notify the host of an invocation status transition. Plugins call this on
+    /// every status change so the host invocation index stays current.
+    /// `error_summary` carries the human-readable failure reason for terminal
+    /// failure statuses; it is `None` for non-terminal transitions and successes.
+    async fn publish_invocation_status(
+        &self,
+        ctx: &SecurityContext,
+        invocation_id: &InvocationId,
+        status: InvocationStatus,
+        error_summary: Option<String>,
+    ) -> Result<(), RuntimeErrorPayload>;
+
+    /// Notify the host of a timeline-relevant event for downstream subscribers
+    /// (audit, observability). The host does not commit the timeline itself —
+    /// the plugin remains the source of truth via `RuntimeAdapter::get_invocation_timeline`.
+    async fn publish_invocation_event(
+        &self,
+        ctx: &SecurityContext,
+        invocation_id: &InvocationId,
+        timeline_event: InvocationTimelineEvent,
+    ) -> Result<(), RuntimeErrorPayload>;
+}
+
+/// Runtime Plugin contract. Each plugin implements `RuntimeAdapter` and binds it to a
+/// single GTS adapter type (e.g., `gts.cf.core.sless.runtime.starlark.v1~`). The
+/// host dispatches calls via `dyn RuntimeAdapter` after `ClientHub` scoped resolution
+/// keyed by adapter GTS type. Plugins own the execution engine, scheduler, and event
+/// subscription stack for their adapter type and report progress back to the host
+/// only through `ServerlessRuntimeClient::publish_invocation_status` /
+/// `publish_invocation_event`.
+#[async_trait]
+pub trait RuntimeAdapter: Send + Sync {
+    // --- Identity ---
+
+    /// The single GTS adapter type ID this plugin handles.
+    fn adapter_type(&self) -> &GtsId;
+
+    // --- Lifecycle hooks ---
+
+    /// Validate a function implementation against this adapter's constraints
+    /// (limits, language/runtime, payload shape). Called by the host during
+    /// function registration before the definition is persisted.
+    async fn validate_implementation(
+        &self,
+        ctx: &SecurityContext,
+        function: &FunctionDefinition,
+    ) -> Result<(), RuntimeErrorPayload>;
+
+    /// Notify the plugin that a function it owns has transitioned to `Active`.
+    /// Plugins use this to provision adapter-side state (compile/cache code,
+    /// register workflow definitions, etc.).
+    async fn on_function_activated(
+        &self,
+        ctx: &SecurityContext,
+        function: &FunctionDefinition,
+    ) -> Result<(), RuntimeErrorPayload>;
+
+    /// Notify the plugin that a function it owns has transitioned out of `Active`
+    /// (deprecated, disabled, archived, deleted). Plugins use this to release
+    /// adapter-side resources.
+    async fn on_function_deactivated(
+        &self,
+        ctx: &SecurityContext,
+        function: &FunctionDefinition,
+    ) -> Result<(), RuntimeErrorPayload>;
+
+    // --- Invocation ---
+
+    /// Start a new invocation. The plugin synchronously returns the initial
+    /// `InvocationResult` (queued/running/succeeded for fast paths) and is
+    /// responsible for emitting subsequent status transitions through the
+    /// host event port.
+    async fn start_invocation(
+        &self,
+        ctx: &SecurityContext,
+        request: InvocationRequest,
+    ) -> Result<InvocationResult, RuntimeErrorPayload>;
+
+    /// Apply a control action (cancel/suspend/resume/retry/replay) to an
+    /// in-flight invocation. The plugin emits the resulting status transition
+    /// via the host event port.
+    async fn control_invocation(
+        &self,
+        ctx: &SecurityContext,
+        invocation_id: &InvocationId,
+        action: InvocationControlAction,
+    ) -> Result<InvocationRecord, RuntimeErrorPayload>;
+
+    /// Return the authoritative single-invocation record from the plugin's own
+    /// state store. The host uses this for deep fetches that go beyond the
+    /// host-indexed aggregate row.
+    async fn get_invocation(
+        &self,
+        ctx: &SecurityContext,
+        invocation_id: &InvocationId,
+    ) -> Result<InvocationRecord, RuntimeErrorPayload>;
+
+    /// Return invocations from the plugin's own state store. The host uses this
+    /// for adapter-scoped queries that need fields not present in the host
+    /// invocation index.
+    async fn list_invocations(
+        &self,
+        ctx: &SecurityContext,
+        filter: InvocationListFilter,
+    ) -> Result<Vec<InvocationRecord>, RuntimeErrorPayload>;
+
+    /// Return the full timeline of an invocation. The plugin is the source of
+    /// truth — the host event port re-emits timeline events but does not store
+    /// them.
+    async fn get_invocation_timeline(
+        &self,
+        ctx: &SecurityContext,
+        invocation_id: &InvocationId,
+    ) -> Result<Vec<InvocationTimelineEvent>, RuntimeErrorPayload>;
+
+    // --- Schedules ---
+    //
+    // The plugin owns the live schedule (cron evaluation, missed-policy handling,
+    // concurrency policies) using its backend's native facilities. The host
+    // delegates the full schedule lifecycle that affects backend state — create,
+    // patch, pause, resume, delete — to the adapter. Read-only listings and
+    // history queries (`list_schedules`, `get_schedule`, `list_schedule_invocations`)
+    // remain host-side and are served from host-owned metadata and the
+    // `invocation_index`.
+
+    async fn create_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule: Schedule,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn patch_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
+        patch: SchedulePatch,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn pause_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn resume_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
+    ) -> Result<Schedule, RuntimeErrorPayload>;
+
+    async fn delete_schedule(
+        &self,
+        ctx: &SecurityContext,
+        schedule_id: &ScheduleId,
+    ) -> Result<(), RuntimeErrorPayload>;
+
+    // --- Event triggers (plugin owns the event subscription) ---
+
+    async fn create_trigger(
+        &self,
+        ctx: &SecurityContext,
+        trigger: Trigger,
+    ) -> Result<Trigger, RuntimeErrorPayload>;
+
+    async fn delete_trigger(
+        &self,
+        ctx: &SecurityContext,
+        trigger_id: &TriggerId,
+    ) -> Result<(), RuntimeErrorPayload>;
 }
 ```
 
 ##### Additional Rust Types
 
 ```rust
-/// GTS ID: gts.cf.core.serverless.err.v1~cf.core.serverless.err.validation.v1~
+/// GTS ID: gts.cf.core.sless.err.v1~cf.core.sless.err.validation.v1~
 /// Validation error extending base error, containing multiple issues.
 /// Returned only when validation fails; success returns the validated definition.
 #[derive(Clone, Debug)]
@@ -844,7 +1059,7 @@ pub enum UsageGranularity {
     Weekly,
 }
 
-/// GTS ID: gts.cf.core.serverless.timeline_event.v1~
+/// GTS ID: gts.cf.core.sless.timeline_event.v1~
 #[derive(Clone, Debug)]
 pub struct InvocationTimelineEvent {
     pub at: OffsetDateTime,
