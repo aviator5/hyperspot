@@ -498,9 +498,9 @@ async fn e2e_invalid_content_length_returns_400() {
         .await;
 }
 
-// 8.11: Content-Length exceeding 100MB returns 413.
+// 8.11: Content-Length exceeding 100MB returns 400.
 #[tokio::test]
-async fn e2e_body_exceeding_limit_returns_413() {
+async fn e2e_body_exceeding_limit_returns_400() {
     let h = AppHarness::builder()
         .with_credentials(vec![("cred://openai-key".into(), "sk-e2e-test-key".into())])
         .build()
@@ -547,7 +547,7 @@ async fn e2e_body_exceeding_limit_returns_413() {
             http::header::CONTENT_LENGTH,
             http::HeaderValue::from_static("200000000"),
         )
-        .expect_status(413)
+        .expect_status(400)
         .await;
 }
 
@@ -670,10 +670,10 @@ async fn e2e_authz_forbidden_returns_403() {
 
     let body = resp.json();
     assert_eq!(body["status"], 403);
-    assert_eq!(body["title"], "Forbidden");
+    assert_eq!(body["title"], "Permission Denied");
     assert_eq!(
         body["type"],
-        "gts.cf.core.errors.err.v1~cf.oagw.authz.forbidden.v1"
+        "gts://gts.cf.core.errors.err.v1~cf.core.err.permission_denied.v1~"
     );
 }
 

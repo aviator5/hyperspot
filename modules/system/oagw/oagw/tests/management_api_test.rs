@@ -84,7 +84,7 @@ async fn get_upstream_invalid_gts_returns_400() {
     let json = resp.json();
     assert_eq!(
         json["type"].as_str().unwrap(),
-        "gts.cf.core.errors.err.v1~cf.oagw.validation.error.v1"
+        "gts://gts.cf.core.errors.err.v1~cf.core.err.invalid_argument.v1~"
     );
 }
 
