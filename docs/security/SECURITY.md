@@ -19,7 +19,7 @@ Cyber Ware takes a **defense-in-depth** approach to security, combining Rust's c
 - [11. Security Scanners in CI](#11-security-scanners-in-ci)
 - [12. PR Review Bots](#12-pr-review-bots)
 - [13. Specification Templates & SDLC](#13-specification-templates--sdlc)
-- [14. Repository Scaffolding — Cyber Ware CLI](#14-repository-scaffolding--cyber-fabric-cli)
+- [14. Repository Scaffolding — Cyber Ware CLI](#14-repository-scaffolding--cyber-ware-cli)
 - [15. Opportunities for Improvement](#15-opportunities-for-improvement)
 
 ---
