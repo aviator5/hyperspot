@@ -94,6 +94,10 @@ fn precondition_variants_map_to_400() {
     );
     assert_eq!(status_of(DomainError::AlreadyResolved), 400);
     assert_eq!(status_of(DomainError::Conflict { detail: "x".into() }), 400);
+    assert_eq!(
+        status_of(DomainError::FeatureDisabled { detail: "x".into() }),
+        400
+    );
 }
 
 #[test]
@@ -142,13 +146,8 @@ fn unsupported_operation_maps_to_501() {
 }
 
 #[test]
-fn audit_already_running_maps_to_429() {
-    assert_eq!(
-        status_of(DomainError::AuditAlreadyRunning {
-            scope: "whole".into()
-        }),
-        429
-    );
+fn integrity_check_in_progress_maps_to_429() {
+    assert_eq!(status_of(DomainError::IntegrityCheckInProgress), 429);
 }
 
 #[test]
@@ -286,10 +285,12 @@ impl DomainError {
             Self::InvalidActorForTransition { .. } => "invalid_actor_for_transition",
             Self::AlreadyResolved => "already_resolved",
             Self::Conflict { .. } => "conflict",
+            Self::FeatureDisabled { .. } => "feature_disabled",
             Self::CrossTenantDenied { .. } => "cross_tenant_denied",
             Self::ServiceUnavailable { .. } => "service_unavailable",
+            Self::IdpUnavailable { .. } => "idp_unavailable",
             Self::UnsupportedOperation { .. } => "unsupported_operation",
-            Self::AuditAlreadyRunning { .. } => "audit_already_running",
+            Self::IntegrityCheckInProgress => "integrity_check_in_progress",
             Self::Internal { .. } => "internal",
         }
     }
@@ -319,15 +320,16 @@ impl DomainError {
             | Self::TenantHasResources
             | Self::PendingExists { .. }
             | Self::AlreadyResolved
-            | Self::Conflict { .. } => 400,
+            | Self::Conflict { .. }
+            | Self::FeatureDisabled { .. } => 400,
             Self::NotFound { .. }
             | Self::MetadataSchemaNotRegistered { .. }
             | Self::MetadataEntryNotFound { .. } => 404,
             Self::AlreadyExists { .. } | Self::Aborted { .. } => 409,
             Self::CrossTenantDenied { .. } => 403,
-            Self::ServiceUnavailable { .. } => 503,
+            Self::ServiceUnavailable { .. } | Self::IdpUnavailable { .. } => 503,
             Self::UnsupportedOperation { .. } => 501,
-            Self::AuditAlreadyRunning { .. } => 429,
+            Self::IntegrityCheckInProgress => 429,
             Self::Internal { .. } => 500,
         }
     }

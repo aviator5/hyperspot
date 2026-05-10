@@ -234,7 +234,7 @@ Bootstrap is triggered by the `AccountManagementModule` lifecycle rather than an
 
 ### Implement Root Tenant Auto-Creation
 
-- [ ] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-root-creation`
+- [x] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-root-creation`
 
 The system **MUST** create exactly one root tenant row (`parent_id IS NULL`) during the first successful bootstrap, finalize it to `active` status, and write the corresponding self-row in `tenant_closure`. Bootstrap **MUST NOT** expose a root tenant in `active` status until the three-step saga has fully committed.
 
@@ -251,7 +251,7 @@ The system **MUST** create exactly one root tenant row (`parent_id IS NULL`) dur
 
 ### Implement Root Tenant IdP Linking
 
-- [ ] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-idp-linking`
+- [x] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-idp-linking`
 
 The system **MUST** invoke the IdP provider's `provision_tenant(root_id, root_tenant_name, root_tenant_type, root_tenant_metadata)` exactly once during a successful bootstrap and persist every metadata entry returned in `ProvisionResult` as a `tenant_metadata` row (validated against registered GTS schemas). Bootstrap **MUST NOT** validate or interpret `root_tenant_metadata` content — it is a pass-through forwarded as-is.
 
@@ -268,7 +268,7 @@ The system **MUST** invoke the IdP provider's `provision_tenant(root_id, root_te
 
 ### Implement Bootstrap Idempotency
 
-- [ ] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-idempotency`
+- [x] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-idempotency`
 
 The system **MUST** detect an existing active root tenant on platform restart or upgrade and complete bootstrap as a no-op. When a `provisioning` root row is observed (stuck from a prior failed attempt), bootstrap **MUST** defer to the Provisioning Reaper and **MUST NOT** create a second root or re-run the saga against the stale row.
 
@@ -284,7 +284,7 @@ The system **MUST** detect an existing active root tenant on platform restart or
 
 ### Implement IdP Wait Ordering
 
-- [ ] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-idp-wait-ordering`
+- [x] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-idp-wait-ordering`
 
 The system **MUST** block bootstrap at `IdpProviderPluginClient::check_availability()` until the IdP reports available, using exponential backoff with the configured `idp_retry_backoff_initial` (default 2s), capped at `idp_retry_backoff_max` (default 30s), and bounded by `idp_retry_timeout` (default 5min). On timeout, bootstrap **MUST** return `CanonicalError::ServiceUnavailable` (HTTP 503) and leave no partial `provisioning` row behind.
 
@@ -299,7 +299,7 @@ The system **MUST** block bootstrap at `IdpProviderPluginClient::check_availabil
 
 ### Implement Bootstrap Audit and Metrics Emission
 
-- [ ] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-audit-and-metrics`
+- [x] `p1` - **ID**: `cpt-cf-account-management-dod-platform-bootstrap-audit-and-metrics`
 
 The system **MUST** emit `actor=system` platform audit events at every terminal bootstrap outcome (`bootstrapCompleted`, `bootstrapSkipped`, `bootstrapDeferredToReaper`, `bootstrapIdpTimeout`, `bootstrapInvariantViolation`, `bootstrapFinalizationFailed` — camelCase wire form pinned by `AuditEventKind::as_str` and the Serde `rename_all = "camelCase"` derive) and **MUST** export the bootstrap-lifecycle metric family (attempt counter, IdP-wait duration histogram, IdP-wait timeout counter, outcome counter by terminal classification) through the module's observability plumbing owned by the errors-observability feature.
 

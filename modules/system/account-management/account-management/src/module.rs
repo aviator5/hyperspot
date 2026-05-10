@@ -2,13 +2,12 @@
 //!
 //! Owns the module declaration (`#[modkit::module]`), the
 //! [`DatabaseCapability`] implementation (Phase 1 migrations), and the
-//! lifecycle entry-point (`serve`) that drives the retention + reaper
-//! background ticks.
+//! lifecycle entry-point (`serve`) that drives the retention, reaper,
+//! and periodic hierarchy-integrity-check background ticks.
 //!
-//! REST routes, the platform-bootstrap saga, and hierarchy-integrity
-//! audit are deliberately out of scope for this module file — they
-//! live in subsequent PRs together with their own subsystems
-//! (`api/`, `domain/bootstrap/`, hierarchy audit).
+//! REST routes are deliberately out of scope for this module file —
+//! they land in a subsequent PR once the `InTenantSubtree` predicate
+//! makes the storage-level subtree clamp safe (cyberfabric-core#1813).
 //!
 //! Lifecycle ordering:
 //!
@@ -21,10 +20,23 @@
 //!    ordering; missing client → `init` returns an error), resolves
 //!    the `IdpTenantProvisionerClient` plugin under a config-gated
 //!    policy (`idp.required = true` → fail-closed; `false` → fall back
-//!    to `NoopProvisioner`), builds the `TenantService`, and stores
-//!    it in `OnceLock`.
-//! 3. The runtime invokes `serve` on a background task which spawns the
-//!    retention + reaper interval loops and returns once `cancel` fires.
+//!    to `NoopProvisioner`), validates the bootstrap configuration
+//!    (fail-fast for strict-mode invalid configs), builds the
+//!    `TenantService`, and stores it in `OnceLock`. `init()` does
+//!    **not** run the bootstrap saga — it only validates the config
+//!    and stores the parameters for `serve()`.
+//! 3. The runtime invokes `serve` on a background task. `serve()`
+//!    first runs the platform-bootstrap saga (if configured) with
+//!    the `CancellationToken` provided by the runtime, ensuring the
+//!    saga is interruptible on SIGTERM. Under `bootstrap.strict = true`
+//!    (production posture) a successful saga guarantees an `Active`
+//!    root row is present before retention + reaper start, so those
+//!    loops never observe a rootless platform. Under
+//!    `bootstrap.strict = false` (or when the `[bootstrap]` section
+//!    is absent entirely) the saga is allowed to fail or skip —
+//!    `serve()` logs and continues. After bootstrap, `serve()` spawns
+//!    the retention + reaper interval loops and returns once `cancel`
+//!    fires.
 
 use std::sync::{Arc, OnceLock};
 
@@ -41,6 +53,8 @@ use tracing::info;
 use account_management_sdk::IdpTenantProvisionerClient;
 
 use crate::config::AccountManagementConfig;
+use crate::domain::bootstrap::BootstrapService;
+use crate::domain::integrity_check::{IntegrityChecker, run_integrity_check_loop};
 use crate::domain::tenant::hooks::TenantHardDeleteHook;
 use crate::domain::tenant::resource_checker::ResourceOwnershipChecker;
 use crate::domain::tenant::service::TenantService;
@@ -52,6 +66,18 @@ use crate::infra::storage::repo_impl::{AmDbProvider, TenantRepoImpl};
 use crate::infra::types_registry::GtsTenantTypeChecker;
 
 type ConcreteService = TenantService<TenantRepoImpl>;
+
+/// Bootstrap dependencies captured in `init()` and consumed by
+/// `serve()`. Separating validation (fast, in `init`) from execution
+/// (slow, cancellable, in `serve`) keeps `init()` fail-fast and lets
+/// the orchestrator mark the pod as live before the `IdP` wait begins.
+struct BootstrapParams {
+    config: crate::domain::bootstrap::BootstrapConfig,
+    idp_required: bool,
+    repo: Arc<TenantRepoImpl>,
+    idp: Arc<dyn IdpTenantProvisionerClient>,
+    types_registry: Arc<dyn types_registry_sdk::TypesRegistryClient>,
+}
 
 #[modkit::module(
     name = "account-management",
@@ -67,6 +93,10 @@ pub struct AccountManagementModule {
     /// regardless of init ordering between modules. Always locked
     /// briefly; never held across `await`.
     pending_hard_delete_hooks: Mutex<Vec<TenantHardDeleteHook>>,
+    /// Bootstrap saga parameters validated in `init()`, consumed by
+    /// `serve()`. `None` when bootstrap is not configured, config is
+    /// invalid (non-strict), or after `serve()` has taken the params.
+    bootstrap_params: Mutex<Option<BootstrapParams>>,
 }
 
 impl Default for AccountManagementModule {
@@ -74,6 +104,7 @@ impl Default for AccountManagementModule {
         Self {
             service: OnceLock::new(),
             pending_hard_delete_hooks: Mutex::new(Vec::new()),
+            bootstrap_params: Mutex::new(None),
         }
     }
 }
@@ -140,6 +171,10 @@ impl AccountManagementModule {
         clippy::redundant_pub_crate,
         reason = "module-private serve entry-point invoked by the modkit runtime"
     )]
+    #[allow(
+        clippy::cognitive_complexity,
+        reason = "three symmetric tick-task spawns + a 3-arm select! that joins the survivors per-arm; collapsing the arms would obscure the panic-cascade contract documented above each arm"
+    )]
     pub(crate) async fn serve(
         self: Arc<Self>,
         cancel: CancellationToken,
@@ -148,22 +183,36 @@ impl AccountManagementModule {
         let Some(svc) = self.service.get().cloned() else {
             anyhow::bail!("account-management: serve invoked before init");
         };
+
+        // Phase 1: run bootstrap saga before tick loops. The saga
+        // gets the runtime's CancellationToken so IdP-wait sleeps
+        // are interruptible on SIGTERM. The guarantee "active root
+        // row exists before the loops observe the platform" is
+        // preserved — loops are not spawned until after this resolves.
+        let bootstrap_params = self.bootstrap_params.lock().take();
+        if let Some(params) = bootstrap_params {
+            run_bootstrap_saga(params, cancel.child_token()).await?;
+        }
+
         let retention_tick = svc.retention_tick();
         let reaper_tick = svc.reaper_tick();
         let batch_size = svc.hard_delete_batch_size();
         let provisioning_timeout = svc.provisioning_timeout();
+        let integrity_cfg = svc.integrity_check_config();
 
         // Shared child token — cancelled by either the runtime
         // (normal shutdown via `cancel`) or by `serve()` itself when
-        // one of the tick tasks dies (early-fail). Both tick tasks
-        // observe the same token so a panic in one shuts down the
-        // other deterministically instead of leaving it running for
-        // up to one full tick beyond `serve()`'s return.
+        // one of the tick tasks dies (early-fail). All three tick
+        // tasks observe the same token so a panic in one shuts down
+        // the others deterministically instead of leaving them
+        // running for up to one full tick beyond `serve()`'s return.
         let tasks_cancel = cancel.child_token();
         let retention_cancel = tasks_cancel.clone();
         let reaper_cancel = tasks_cancel.clone();
+        let integrity_cancel = tasks_cancel.clone();
         let retention_svc = svc.clone();
-        let reaper_svc = svc;
+        let reaper_svc = svc.clone();
+        let integrity_checker: Arc<dyn IntegrityChecker> = svc;
 
         let mut retention_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(retention_tick);
@@ -226,14 +275,28 @@ impl AccountManagementModule {
             }
         });
 
+        // Hierarchy-integrity check loop. The loop itself is the
+        // entire task body — it owns its initial-delay sleep, the
+        // jittered post-tick sleep, the per-tick error policy
+        // (gate-conflict → skip; other err → warn-and-continue), and
+        // the cancellation observation. When `cfg.enabled = false`
+        // the loop short-circuits to `cancel.cancelled().await` so
+        // this `JoinHandle` retains the same lifecycle shape as
+        // retention / reaper (it never resolves before shutdown),
+        // keeping the `select!` arms below symmetric.
+        let integrity_enabled = integrity_cfg.enabled;
+        let mut integrity_handle = tokio::spawn(async move {
+            run_integrity_check_loop(integrity_checker, integrity_cfg, integrity_cancel).await;
+        });
+
         // Flip the runtime's `Starting -> Running` gate. Note: this
-        // returns once both `tokio::spawn` calls above have submitted
-        // their futures to the scheduler, but **before** either child
-        // task has had its first poll on the `select!` inside its loop.
-        // The Tokio scheduler is free to defer that first poll, so
-        // there is a narrow window where a consumer observing
-        // `Running` could call `cancel.cancel()` before either tick
-        // loop has been polled even once. Both child tasks observe
+        // returns once all three `tokio::spawn` calls above have
+        // submitted their futures to the scheduler, but **before** any
+        // child task has had its first poll on the `select!` inside
+        // its loop. The Tokio scheduler is free to defer that first
+        // poll, so there is a narrow window where a consumer observing
+        // `Running` could call `cancel.cancel()` before any tick loop
+        // has been polled even once. Each child task observes
         // `cancelled()` on the very first `select!` poll — this is the
         // accepted "Running but not yet ticked" pattern documented at
         // [`modkit::lifecycle::ReadySignal`] — so the race is bounded
@@ -244,6 +307,7 @@ impl AccountManagementModule {
             target: "am.lifecycle",
             retention_tick_secs = retention_tick.as_secs(),
             reaper_tick_secs = reaper_tick.as_secs(),
+            integrity_check_enabled = integrity_enabled,
             "account-management background ticks started"
         );
 
@@ -263,15 +327,28 @@ impl AccountManagementModule {
             res = &mut retention_handle => {
                 tasks_cancel.cancel();
                 let reaper_res = (&mut reaper_handle).await;
+                let integrity_res = (&mut integrity_handle).await;
                 check_task_join("retention", res)?;
                 check_task_join("reaper", reaper_res)?;
+                check_task_join("integrity", integrity_res)?;
                 Ok(())
             }
             res = &mut reaper_handle => {
                 tasks_cancel.cancel();
                 let retention_res = (&mut retention_handle).await;
+                let integrity_res = (&mut integrity_handle).await;
                 check_task_join("reaper", res)?;
                 check_task_join("retention", retention_res)?;
+                check_task_join("integrity", integrity_res)?;
+                Ok(())
+            }
+            res = &mut integrity_handle => {
+                tasks_cancel.cancel();
+                let retention_res = (&mut retention_handle).await;
+                let reaper_res = (&mut reaper_handle).await;
+                check_task_join("integrity", res)?;
+                check_task_join("retention", retention_res)?;
+                check_task_join("reaper", reaper_res)?;
                 Ok(())
             }
         };
@@ -420,6 +497,33 @@ impl Module for AccountManagementModule {
         let enforcer = PolicyEnforcer::new(authz);
         info!("authz-resolver client resolved from client hub; PolicyEnforcer wired");
 
+        // Validate bootstrap config (fast, fail-fast) and store
+        // params for serve(). The saga itself runs in serve() where
+        // the runtime's CancellationToken is available, so IdP-wait
+        // sleeps are interruptible on SIGTERM and the pod's liveness
+        // probe can respond while init() is not blocked.
+        if let Some(boot_cfg) = cfg.bootstrap.clone() {
+            if let Err(err) = boot_cfg.validate() {
+                if boot_cfg.strict {
+                    return Err(anyhow::anyhow!(
+                        "bootstrap configuration invalid (strict mode): {err}"
+                    ));
+                }
+                tracing::warn!(
+                    error = %err,
+                    "bootstrap configuration invalid (non-strict); skipping bootstrap"
+                );
+            } else {
+                *self.bootstrap_params.lock() = Some(BootstrapParams {
+                    config: boot_cfg,
+                    idp_required: cfg.idp.required,
+                    repo: Arc::clone(&repo),
+                    idp: Arc::clone(&idp),
+                    types_registry: Arc::clone(&types_registry),
+                });
+            }
+        }
+
         let mut service = TenantService::new(
             repo,
             idp,
@@ -459,6 +563,36 @@ impl DatabaseCapability for AccountManagementModule {
         use sea_orm_migration::MigratorTrait;
         info!("providing account-management database migrations");
         Migrator::migrations()
+    }
+}
+
+/// Run a validated bootstrap saga with cancellation support.
+/// Called from `serve()` with the runtime's `CancellationToken`.
+async fn run_bootstrap_saga(
+    params: BootstrapParams,
+    cancel: CancellationToken,
+) -> anyhow::Result<()> {
+    let strict = params.config.strict;
+    let mut bootstrap = BootstrapService::new(params.repo, params.idp, params.config);
+    bootstrap = bootstrap
+        .with_types_registry(params.types_registry)
+        .with_idp_required(params.idp_required)
+        .with_cancel(cancel);
+    match bootstrap.run().await {
+        Ok(root) => {
+            info!(root_id = %root.id, "platform bootstrap saga completed");
+            Ok(())
+        }
+        Err(err) if strict => Err(anyhow::anyhow!(
+            "platform bootstrap saga failed (strict mode): {err}"
+        )),
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "platform bootstrap saga failed (non-strict); proceeding without root"
+            );
+            Ok(())
+        }
     }
 }
 
