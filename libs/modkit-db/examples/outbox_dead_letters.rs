@@ -3,7 +3,7 @@
 //! Dead letter lifecycle: reject -> list -> replay -> resolve -> cleanup.
 //!
 //! Run:
-//!   cargo run -p cf-modkit-db --example `outbox_dead_letters` --features sqlite,preview-outbox
+//!   cargo run -p cyberware-modkit-db --example `outbox_dead_letters` --features sqlite,preview-outbox
 
 use std::time::Duration;
 

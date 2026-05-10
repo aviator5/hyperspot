@@ -26,7 +26,7 @@ We welcome contributions in:
 ```bash
 # Clone the repository
 git clone --recurse-submodules <repository-url>
-cd cyberfabric-core
+cd cyberware-rust
 
 # If you didn't clone with --recurse-submodules (includes Cypilot for PR reviews)
 git submodule update --init --recursive
@@ -47,7 +47,7 @@ make test
 make quickstart
 
 # Start the development server with the example users_info module
-cargo run --bin cf-core-server --features users-info-example -- --config config/quickstart.yaml run
+cargo run --bin cf-example-server --features users-info-example -- --config config/quickstart.yaml run
 ```
 
 ## 2. Development Workflow
@@ -413,8 +413,8 @@ We use per-crate versioning, controlled via Cargo manifests and release automati
 ## ModKit Unified Release Rule
 
 ModKit is released as a unified framework:
-- Only `cf-modkit` produces changelog entries and GitHub releases.
-- Other `cf-modkit-*` crates are published to crates.io but do not create separate changelog entries/releases.
+- Only `cyberware-modkit` produces changelog entries and GitHub releases.
+- Other `cyberware-modkit-*` crates are published to crates.io but do not create separate changelog entries/releases.
 
 ## Release Process (Automation)
 

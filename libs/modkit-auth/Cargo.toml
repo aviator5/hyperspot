@@ -1,5 +1,5 @@
 [package]
-name = "cf-modkit-auth"
+name = "cyberware-modkit-auth"
 version = "0.7.0"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "ModKit authentication library"
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-modkit"]
+keywords = ["cyberfabric", "cyberware", "cyberware-modkit"]
 categories = ["development-tools"]
 
 [lib]

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Prerequisite checking module for CyberFabric testing environment.
+Prerequisite checking module for CyberWare testing environment.
 
 This module provides classes to check various prerequisites needed for testing,
 including services, tools, and dependencies.
@@ -137,9 +137,9 @@ class PrereqLMStudio(Prereq):
 class PrereqHSSrvMock(Prereq):
     def __init__(self):
         super().__init__(
-            name="CyberFabric server is running with mock mode enabled",
+            name="CyberWare server is running with mock mode enabled",
             remediation=(
-                "Start the CyberFabric server with mock mode enabled "
+                "Start the CyberWare server with mock mode enabled "
                 "(use -mock option)"
             )
         )
@@ -163,7 +163,7 @@ class PrereqHSSrvMock(Prereq):
 
                 if response.status_code != 200:
                     logging.debug(
-                        f"CyberFabric server responded with status code: "
+                        f"CyberWare server responded with status code: "
                         f"{response.status_code} (attempt {attempt + 1})"
                     )
                 else:
@@ -178,7 +178,7 @@ class PrereqHSSrvMock(Prereq):
                             if service.get('name') == 'mock':
                                 mock_service_found = True
                                 logging.info(
-                                    "CyberFabric server is running with "
+                                    "CyberWare server is running with "
                                     "mock mode enabled"
                                 )
                                 break
@@ -187,7 +187,7 @@ class PrereqHSSrvMock(Prereq):
                             return PRECHECK_OK
                         else:
                             logging.debug(
-                                "CyberFabric server is running but mock mode "
+                                "CyberWare server is running but mock mode "
                                 f"is not enabled (attempt {attempt + 1})"
                             )
                             status = PRECHECK_WARNING
@@ -202,13 +202,13 @@ class PrereqHSSrvMock(Prereq):
             except (requests.exceptions.ConnectionError,
                     requests.exceptions.Timeout) as e:
                 logging.debug(
-                    f"Connection error to CyberFabric server: {e} "
+                    f"Connection error to CyberWare server: {e} "
                     f"(attempt {attempt + 1})"
                 )
                 status = PRECHECK_WARNING
             except Exception as e:
                 logging.debug(
-                    f"Error checking CyberFabric server: {e} "
+                    f"Error checking CyberWare server: {e} "
                     f"(attempt {attempt + 1})"
                 )
                 status = PRECHECK_WARNING
@@ -235,17 +235,17 @@ class PrereqHSSrvMock(Prereq):
         if status == PRECHECK_WARNING:
             if attempt > 0:
                 logging.warning(
-                    f"Cannot connect to CyberFabric server at {BASE_URL} "
+                    f"Cannot connect to CyberWare server at {BASE_URL} "
                     f"after {attempt + 1} attempts over "
                     f"{time.time() - start_time:.1f}s"
                 )
             else:
                 logging.warning(
-                    f"Cannot connect to CyberFabric server at {BASE_URL}"
+                    f"Cannot connect to CyberWare server at {BASE_URL}"
                 )
         elif status == PRECHECK_ERROR:
             logging.error(
-                f"CyberFabric server communication failed after "
+                f"CyberWare server communication failed after "
                 f"{attempt + 1} attempts"
             )
 

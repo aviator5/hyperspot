@@ -12,12 +12,12 @@
 # End-to-end: AuthZ request → tr-authz-plugin → TenantResolverClient
 #             → rg-tr-plugin → ResourceGroupReadHierarchy → RG storage.
 #
-# CyberFabric Server Configuration
+# CyberWare Server Configuration
 #
 # Database Architecture Overview:
 # ===============================
 #
-# CyberFabric Server uses a centralized DbManager that:
+# CyberWare Server uses a centralized DbManager that:
 # 1. Loads global database server templates from `database.servers`
 # 2. For each module, merges server template with module-specific overrides
 # 3. Creates isolated database connections per module
@@ -32,7 +32,7 @@
 
 # Core server configuration (global section)
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware"
 
 # Database configuration (DbManager architecture)
 #
@@ -78,7 +78,7 @@ logging:
   # global section
   default:
     console_level: info
-    file: "logs/cyberfabric-e2e.log"
+    file: "logs/cyberware-e2e.log"
     file_level: info
     max_age_days: 28
     max_backups: 3
@@ -114,9 +114,9 @@ modules:
 
       # OpenAPI Documentation Configuration
       openapi:
-        title: "CyberFabric Server API"
+        title: "CyberWare Example Server API"
         version: "0.1.0"
-        description: "CyberFabric Server API Documentation"
+        description: "CyberWare Example Server API Documentation"
       defaults:
         body_limit_bytes: 64000000
         rate_limit:
@@ -134,7 +134,7 @@ modules:
 
   static-tr-plugin:
     config:
-      vendor: "cyberfabric"
+      vendor: "cyberware"
       priority: 20
       tenants:
         # Root tenant used by oagw + credstore e2e tests
@@ -175,7 +175,7 @@ modules:
 
   tenant-resolver:
     config:
-      vendor: "cyberfabric"
+      vendor: "cyberware"
 
   static-credstore-plugin:
     config:
@@ -198,7 +198,7 @@ modules:
 
   grpc-hub:
     config:
-      listen_addr: "uds:///tmp/cyberfabric-grpc-e2e"
+      listen_addr: "uds:///tmp/cyberware-grpc-e2e"
 
   users-info:
     # Module-specific database configuration
@@ -234,11 +234,11 @@ modules:
 
   authz-resolver:
     config:
-      vendor: "cyberfabric"
+      vendor: "cyberware"
 
   static-authn-plugin:
     config:
-      vendor: "cyberfabric"
+      vendor: "cyberware"
       priority: 100
       mode: static_tokens
       tokens:
@@ -266,12 +266,12 @@ modules:
 
   tr-authz-plugin:
     config:
-      vendor: "cyberfabric"
+      vendor: "cyberware"
       priority: 90  # Below static-authz-plugin default (100), so tr-authz is selected
 
   rg-tr-plugin:
     config:
-      vendor: "cyberfabric"
+      vendor: "cyberware"
       priority: 10  # Below static-tr-plugin (20), so rg-tr is the winning TR plugin
 
   mini-chat:
@@ -313,11 +313,11 @@ modules:
 opentelemetry:
   # Shared resource identity (attached to all traces and metrics)
   resource:
-    service_name: "cyberfabric-api"
+    service_name: "cyberware-api"
     attributes:
       service.version: "1.3.7"
       deployment.environment: "dev"
-      service.namespace: "cyberfabric"
+      service.namespace: "cyberware"
 
   # Default exporter shared by tracing and metrics.
   # Per-signal `exporter` fields override this when present.
@@ -371,11 +371,11 @@ opentelemetry:
 #     main_postgres:
 #       host: "localhost"
 #       port: 5432
-#       user: "cyberfabric"
+#       user: "cyberware"
 #       password: "${POSTGRES_PASSWORD}"  # From environment variable
 #       params:
 #         sslmode: "require"
-#         application_name: "cyberfabric"
+#         application_name: "cyberware"
 #       pool:
 #         max_conns: 20
 #         acquire_timeout: "30s"

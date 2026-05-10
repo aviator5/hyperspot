@@ -31,7 +31,7 @@
 //! ## Coordination
 //!
 //! The `tenant_id` filter field was added to RG's `GroupFilterField`
-//! whitelist in cyberfabric/cyberfabric-core#1626 (closed). RG ships
+//! whitelist in cyberfabric/cyberware-rust#1626 (closed). RG ships
 //! the field as the un-nested identifier `tenant_id` (not
 //! `hierarchy/tenant_id`); this checker matches that wire shape.
 

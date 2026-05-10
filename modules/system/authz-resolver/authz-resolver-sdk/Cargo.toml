@@ -1,5 +1,5 @@
 [package]
-name = "cf-authz-resolver-sdk"
+name = "cyberware-authz-resolver-sdk"
 version = "0.3.6"
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 description = "SDK for authz_resolver module: evaluation API, constraints, PEP compiler"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system", "authorization"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system", "authorization"]
 categories = ["authentication"]
 
 [lib]

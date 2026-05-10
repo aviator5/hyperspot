@@ -1,5 +1,5 @@
 [package]
-name = "cf-oagw-sdk"
+name = "cyberware-oagw-sdk"
 description = "SDK for the OpenAPI Gateway: API traits, models, and error definitions"
 version = "0.5.1"
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["web-programming"]
 
 [lib]

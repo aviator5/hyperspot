@@ -30,7 +30,7 @@ jobs:
   release-pr:
     name: Create release PR
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'cyberfabric/cyberfabric-core' && (github.event_name == 'push' || github.event.inputs.mode == 'release-pr') }}
+    if: ${{ github.repository == 'cyberfabric/cyberware-rust' && (github.event_name == 'push' || github.event.inputs.mode == 'release-pr') }}
     permissions:
       contents: write
       pull-requests: write
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       ${{
-        github.repository == 'cyberfabric/cyberfabric-core'
+        github.repository == 'cyberfabric/cyberware-rust'
         && (
           (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'release')
           || (
@@ -129,7 +129,7 @@ jobs:
     # - when a release PR (labeled `release-plz`) is merged into main.
     if: >-
       ${{
-        github.repository == 'cyberfabric/cyberfabric-core'
+        github.repository == 'cyberfabric/cyberware-rust'
         && (
           (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'release')
           || (

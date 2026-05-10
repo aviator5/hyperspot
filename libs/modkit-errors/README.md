@@ -4,7 +4,7 @@ Core error types for ModKit.
 
 ## Overview
 
-The `cf-modkit-errors` crate provides pure data types for error handling, including:
+The `cyberware-modkit-errors` crate provides pure data types for error handling, including:
 
 - RFC 9457 Problem Details (`Problem`)
 - Validation error types

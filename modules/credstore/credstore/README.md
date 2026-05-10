@@ -4,14 +4,14 @@ Credential storage gateway module. Discovers storage backend plugins via the typ
 
 ## Overview
 
-The `cf-credstore` module provides:
+The `cyberware-credstore` module provides:
 
 - **Plugin discovery** — finds storage backend plugins via the types registry using a configured vendor
 - **Secret routing** — delegates `get`/`put`/`delete` to the active plugin
 - **Hierarchical resolution** — walks the tenant hierarchy to resolve inherited secrets
 - **ClientHub integration** — registers `CredStoreClientV1` for inter-module use
 
-This module depends on `types-registry`. All storage logic lives in the plugin (e.g. `cf-static-credstore-plugin`).
+This module depends on `types-registry`. All storage logic lives in the plugin (e.g. `cyberware-static-credstore-plugin`).
 
 ## Usage
 

@@ -4,39 +4,73 @@ Created:  2026-04-09 by Diffora
 
 <!-- toc -->
 
-- [1. Overview](#1-overview)
-  - [1.1 Purpose](#11-purpose)
-  - [1.2 Background / Problem Statement](#12-background--problem-statement)
-  - [1.3 Goals (Business Outcomes)](#13-goals-business-outcomes)
-  - [1.4 Glossary](#14-glossary)
-- [2. Actors](#2-actors)
-  - [2.1 Human Actors](#21-human-actors)
-  - [2.2 System Actors](#22-system-actors)
-- [3. Operational Concept & Environment](#3-operational-concept--environment)
-- [4. Scope](#4-scope)
-  - [4.1 In Scope](#41-in-scope)
-  - [4.2 Out of Scope](#42-out-of-scope)
-- [5. Functional Requirements](#5-functional-requirements)
-  - [5.1 Token Validation](#51-token-validation)
-  - [5.2 Claim Extraction & Mapping](#52-claim-extraction--mapping)
-  - [5.3 OIDC Auto-Configuration](#53-oidc-auto-configuration)
-  - [5.4 S2S Client Credentials Exchange](#54-s2s-client-credentials-exchange)
-  - [5.5 Plugin Discovery & Registration](#55-plugin-discovery--registration)
-- [6. Non-Functional Requirements](#6-non-functional-requirements)
-  - [6.1 Module-Specific NFRs](#61-module-specific-nfrs)
-  - [6.2 NFR Exclusions](#62-nfr-exclusions)
-- [7. Public Library Interfaces](#7-public-library-interfaces)
-  - [7.1 Public API Surface](#71-public-api-surface)
-  - [7.2 External Integration Contracts](#72-external-integration-contracts)
-- [8. Use Cases](#8-use-cases)
-  - [Authenticate API Request](#authenticate-api-request)
-  - [Service-to-Service Authentication](#service-to-service-authentication)
-- [9. Acceptance Criteria](#9-acceptance-criteria)
-- [10. Dependencies](#10-dependencies)
-- [11. Assumptions](#11-assumptions)
-- [12. Risks](#12-risks)
-- [13. Open Questions](#13-open-questions)
-- [14. Traceability](#14-traceability)
+- [PRD — OIDC AuthN Resolver Plugin](#prd--oidc-authn-resolver-plugin)
+  - [1. Overview](#1-overview)
+    - [1.1 Purpose](#11-purpose)
+    - [1.2 Background / Problem Statement](#12-background--problem-statement)
+    - [1.3 Goals (Business Outcomes)](#13-goals-business-outcomes)
+    - [1.4 Glossary](#14-glossary)
+  - [2. Actors](#2-actors)
+    - [2.1 Human Actors](#21-human-actors)
+      - [Platform Administrator](#platform-administrator)
+    - [2.2 System Actors](#22-system-actors)
+      - [API Gateway / AuthN Middleware](#api-gateway--authn-middleware)
+      - [Domain Modules (Request Path)](#domain-modules-request-path)
+      - [Domain Modules (Background Tasks)](#domain-modules-background-tasks)
+      - [OIDC Identity Provider](#oidc-identity-provider)
+  - [3. Operational Concept \& Environment](#3-operational-concept--environment)
+  - [4. Scope](#4-scope)
+    - [4.1 In Scope](#41-in-scope)
+    - [4.2 Out of Scope](#42-out-of-scope)
+  - [5. Functional Requirements](#5-functional-requirements)
+    - [5.1 Token Validation](#51-token-validation)
+      - [JWT Local Validation](#jwt-local-validation)
+      - [Non-JWT Token Rejection](#non-jwt-token-rejection)
+      - [Trusted Issuer Enforcement](#trusted-issuer-enforcement)
+      - [JWKS Key Rotation Handling](#jwks-key-rotation-handling)
+      - [Audience Validation](#audience-validation)
+    - [5.2 Claim Extraction \& Mapping](#52-claim-extraction--mapping)
+      - [Configurable Claim Mapping](#configurable-claim-mapping)
+      - [Tenant Claim Requirement](#tenant-claim-requirement)
+      - [First-Party vs Third-Party App Detection](#first-party-vs-third-party-app-detection)
+    - [5.3 OIDC Auto-Configuration](#53-oidc-auto-configuration)
+      - [OIDC Discovery](#oidc-discovery)
+      - [JWKS Caching](#jwks-caching)
+    - [5.4 S2S Client Credentials Exchange](#54-s2s-client-credentials-exchange)
+      - [Client Credentials Grant](#client-credentials-grant)
+      - [S2S Token Caching](#s2s-token-caching)
+      - [S2S Default Subject Type](#s2s-default-subject-type)
+    - [5.5 Plugin Discovery \& Registration](#55-plugin-discovery--registration)
+      - [ClientHub Registration](#clienthub-registration)
+    - [5.6 Resilience \& Timeouts](#56-resilience--timeouts)
+      - [Configurable Request Timeout](#configurable-request-timeout)
+      - [Transient-Failure Retry](#transient-failure-retry)
+      - [Per-Host Circuit Breaker (Toggleable)](#per-host-circuit-breaker-toggleable)
+  - [6. Non-Functional Requirements](#6-non-functional-requirements)
+    - [6.1 Module-Specific NFRs](#61-module-specific-nfrs)
+      - [JWT Validation Latency](#jwt-validation-latency)
+      - [Plugin Availability](#plugin-availability)
+      - [Fail-Closed Guarantee](#fail-closed-guarantee)
+      - [Tenant Isolation](#tenant-isolation)
+      - [S2S Exchange Latency](#s2s-exchange-latency)
+      - [Token Security](#token-security)
+    - [6.2 NFR Exclusions](#62-nfr-exclusions)
+  - [7. Public Library Interfaces](#7-public-library-interfaces)
+    - [7.1 Public API Surface](#71-public-api-surface)
+      - [AuthN Resolver Gateway Interface](#authn-resolver-gateway-interface)
+      - [AuthN Resolver Plugin Interface](#authn-resolver-plugin-interface)
+    - [7.2 External Integration Contracts](#72-external-integration-contracts)
+      - [OIDC Identity Provider Contract](#oidc-identity-provider-contract)
+      - [SecurityContext Contract](#securitycontext-contract)
+  - [8. Use Cases](#8-use-cases)
+    - [Authenticate API Request](#authenticate-api-request)
+    - [Service-to-Service Authentication](#service-to-service-authentication)
+  - [9. Acceptance Criteria](#9-acceptance-criteria)
+  - [10. Dependencies](#10-dependencies)
+  - [11. Assumptions](#11-assumptions)
+  - [12. Risks](#12-risks)
+  - [13. Open Questions](#13-open-questions)
+  - [14. Traceability](#14-traceability)
 
 <!-- /toc -->
 
@@ -46,13 +80,13 @@ Created:  2026-04-09 by Diffora
 
 ### 1.1 Purpose
 
-The OIDC AuthN Resolver Plugin provides authentication services for the CyberFabric platform by integrating with OpenID Connect-compliant Identity Providers (IdPs). It validates JWT access tokens, extracts identity claims, and produces the platform's `SecurityContext` structure that downstream modules consume for authorization and tenant-scoped access control.
+The OIDC AuthN Resolver Plugin provides authentication services for the CyberWare middleware by integrating with OpenID Connect-compliant Identity Providers (IdPs). It validates JWT access tokens, extracts identity claims, and produces the platform's `SecurityContext` structure that downstream modules consume for authorization and tenant-scoped access control.
 
-The plugin is a vendor-specific implementation of the AuthN Resolver plugin interface, following the CyberFabric gateway + plugin architecture pattern. It ships as the default authentication plugin for deployments using standard OIDC-compliant IdPs.
+The plugin is a vendor-specific implementation of the AuthN Resolver plugin interface, following the CyberWare gateway + plugin architecture pattern. It ships as the default authentication plugin for deployments using standard OIDC-compliant IdPs.
 
 ### 1.2 Background / Problem Statement
 
-CyberFabric modules need a consistent, high-performance mechanism to authenticate incoming API requests and establish caller identity. Without a centralized authentication plugin, each module would independently validate tokens, parse claims, and construct identity context — leading to duplicated logic, inconsistent claim interpretation, and security gaps.
+CyberWare modules need a consistent, high-performance mechanism to authenticate incoming API requests and establish caller identity. Without a centralized authentication plugin, each module would independently validate tokens, parse claims, and construct identity context — leading to duplicated logic, inconsistent claim interpretation, and security gaps.
 
 The platform requires multi-tenant authentication where tenant isolation is achieved via claims embedded in access tokens rather than per-tenant IdP instances. A single OIDC issuer can serve many tenants (each tenant identified by a claim), while multiple issuers can coexist for different tenant groups. The target is 10,000+ tenants without requiring per-tenant IdP configuration.
 
@@ -133,7 +167,7 @@ No module-specific environment constraints beyond project defaults. The plugin r
 - Configurable HTTP request timeout for all outbound IdP calls
 - Transient-failure retry with exponential backoff + jitter (network errors, HTTP 5xx, HTTP 429)
 - Per-host circuit breaker for IdP resilience (globally enable/disable)
-- Plugin registration via CyberFabric ClientHub with GTS identity
+- Plugin registration via CyberWare ClientHub with GTS identity
 
 ### 4.2 Out of Scope
 
@@ -297,7 +331,7 @@ When `s2s_oauth.default_subject_type` is configured and the obtained S2S token d
 
 - [ ] `p1` - **ID**: `cpt-cf-authn-plugin-fr-clienthub-registration`
 
-The plugin MUST register `dyn AuthNResolverPluginClient` with CyberFabric ClientHub using GTS schema identity at startup. Registration MUST include vendor key (`"cyberfabric"`), priority, and display name.
+The plugin MUST register `dyn AuthNResolverPluginClient` with CyberWare ClientHub using GTS schema identity at startup. Registration MUST include vendor key (`"cyberfabric"`), priority, and display name.
 
 - **Rationale**: Enables the AuthN Resolver gateway to discover and select the active plugin at runtime via ClientHub lookup.
 - **Actors**: `cpt-cf-authn-plugin-actor-api-gateway`

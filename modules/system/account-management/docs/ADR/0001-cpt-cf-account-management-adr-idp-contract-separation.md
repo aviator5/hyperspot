@@ -34,20 +34,20 @@ The Cyber Fabric platform already provides the AuthN Resolver as a gateway + plu
 
 * **Hot-path latency budget**: AuthN Resolver validates tokens on every API request with a microsecond budget; it must be stateless and always available. Any coupling to transactional admin logic risks degrading this critical path.
 * **Admin operation characteristics**: Tenant provisioning (e.g., creating a Keycloak realm), user provisioning, deprovisioning, and impersonation are infrequent operations with different latency tolerance (retries, transactions) and different protocols (SCIM, admin REST API vs OIDC token validation).
-* **CyberFabric plugin pattern alignment**: The platform uses a gateway + plugin pattern for extensible integrations (AuthN Resolver, Tenant Resolver, AuthZ Resolver). The IdP integration contract should follow the same pattern — a plugin trait discovered via GTS, registered in `ClientHub`, and selected by the gateway at runtime.
+* **CyberWare plugin pattern alignment**: The platform uses a gateway + plugin pattern for extensible integrations (AuthN Resolver, Tenant Resolver, AuthZ Resolver). The IdP integration contract should follow the same pattern — a plugin trait discovered via GTS, registered in `ClientHub`, and selected by the gateway at runtime.
 * **Independent evolution**: Authentication standards (OIDC) and admin APIs (SCIM, vendor REST) evolve on different timelines. Coupling them in one contract forces synchronized changes.
 * **Optional deployment**: Not all deployments require user management through AM. Some may use external provisioning while still requiring token validation.
 
 ## Considered Options
 
-1. **Separate contracts** — IdP integration plugin (`IdpProviderPluginClient`) for admin operations, AuthN Resolver plugin (`AuthNResolverPluginClient`) for token validation. Both follow the CyberFabric gateway + plugin pattern with independent GTS schemas and ClientHub registration.
+1. **Separate contracts** — IdP integration plugin (`IdpProviderPluginClient`) for admin operations, AuthN Resolver plugin (`AuthNResolverPluginClient`) for token validation. Both follow the CyberWare gateway + plugin pattern with independent GTS schemas and ClientHub registration.
 2. **Single unified IdP contract** — one plugin contract covering both token validation and admin operations.
 
 ## Decision Outcome
 
-Chosen option: **Separate contracts**, because the two categories have fundamentally different performance profiles, protocols, and deployment requirements. Both contracts follow the CyberFabric plugin pattern (GTS-registered, ClientHub-discovered, vendor-replaceable) but as independent plugins. Merging them would couple the hot-path authentication with transactional admin logic, creating unnecessary risk on every API request.
+Chosen option: **Separate contracts**, because the two categories have fundamentally different performance profiles, protocols, and deployment requirements. Both contracts follow the CyberWare plugin pattern (GTS-registered, ClientHub-discovered, vendor-replaceable) but as independent plugins. Merging them would couple the hot-path authentication with transactional admin logic, creating unnecessary risk on every API request.
 
-The IdP integration contract is implemented as a CyberFabric plugin, analogous to `AuthNResolverPluginClient`:
+The IdP integration contract is implemented as a CyberWare plugin, analogous to `AuthNResolverPluginClient`:
 
 - **SDK trait**: `IdpProviderPluginClient` — defines `check_availability`, `provision_tenant`, `deprovision_tenant`, `create_user`, `delete_user`, `list_users`, `issue_impersonation_token`, `supports_impersonation`. `check_availability` is the side-effect-free provider readiness probe used by bootstrap retry/backoff and returns only available / unavailable / provider error outcomes under the configured timeout. Mutating operations must not silently no-op; unsupported mutating capabilities return explicit `idp_unsupported_operation` failures. Capability probes such as `supports_impersonation` may default to `false`, and read helpers may use explicit empty results only where the trait contract documents that behavior.
 - **GTS schema**: A dedicated GTS schema (e.g., `gts.cf.core.am.idp_provider.v1~`) registers the plugin spec. Vendor-specific implementations derive from this schema.
@@ -61,7 +61,7 @@ The IdP integration contract is implemented as a CyberFabric plugin, analogous t
 * Deployments whose IdP supports standard OpenID Connect can reuse the platform-shipped OIDC AuthN Resolver plugin out of the box for authentication and only implement the `IdpProviderPluginClient` for vendor-specific admin operations (user provisioning, realm setup, impersonation). This significantly reduces integration effort — the vendor writes only the admin part, not the entire IdP integration surface.
 * Each plugin can evolve independently — changes to admin API protocols (e.g., migrating from vendor REST to SCIM) do not require changes to the token validation plugin.
 * Implementors must provide two separate plugin implementations when both capabilities are needed, which adds a small amount of integration complexity.
-* The plugin follows established CyberFabric patterns: GTS-typed, ClientHub-registered, vendor-replaceable.
+* The plugin follows established CyberWare patterns: GTS-typed, ClientHub-registered, vendor-replaceable.
 
 ### Confirmation
 
@@ -77,7 +77,7 @@ The IdP integration contract is implemented as a CyberFabric plugin, analogous t
 * Good, because each plugin can evolve independently with different protocol requirements.
 * Good, because deployments can selectively enable user management without affecting authentication.
 * Good, because deployments whose IdP supports standard OIDC can reuse the platform-shipped AuthN plugin and only implement the vendor-specific admin plugin — reducing integration effort to just the provisioning part.
-* Good, because both follow the established CyberFabric plugin pattern — consistent with AuthN Resolver, Tenant Resolver, and AuthZ Resolver.
+* Good, because both follow the established CyberWare plugin pattern — consistent with AuthN Resolver, Tenant Resolver, and AuthZ Resolver.
 * Neutral, because shared configuration between the two plugins requires a small coordination mechanism.
 * Bad, because implementors must provide two separate plugin implementations when targeting the same IdP.
 
@@ -88,7 +88,7 @@ The IdP integration contract is implemented as a CyberFabric plugin, analogous t
 * Bad, because hot-path token validation becomes coupled to transactional admin logic, risking latency degradation on every API request.
 * Bad, because changes to admin protocols force changes to the authentication contract.
 * Bad, because deployments that don't need user management still carry the admin contract surface.
-* Bad, because it deviates from the CyberFabric pattern of focused, single-responsibility plugins.
+* Bad, because it deviates from the CyberWare pattern of focused, single-responsibility plugins.
 
 ## Traceability
 

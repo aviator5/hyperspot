@@ -3,8 +3,8 @@
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Cyber Fabric"]
-repository = "https://github.com/cyberfabric/cyberfabric-core"
-description = "CyberFabric Server"
+repository = "https://github.com/cyberfabric/cyberware-rust"
+description = "CyberWare Server Example"
 rust-version = "1.95.0"
 readme = "README.md"
 
@@ -23,7 +23,7 @@ debug = "line-tables-only"
 
 [workspace]
 members = [
-    "apps/cf-server",
+    "apps/cyberware-example-server",
     "tools/xtask",
     "libs/modkit",
     "libs/modkit-macros",
@@ -220,43 +220,43 @@ verbose_file_reads = "deny"
 
 [workspace.dependencies]
 # libs
-modkit = { package = "cf-modkit", version = "0.6.10", path = "libs/modkit" }
-modkit-http = { package = "cf-modkit-http", version = "0.6.5", path = "libs/modkit-http" }
-modkit-auth = { package = "cf-modkit-auth", version = "0.7.0", path = "libs/modkit-auth" }
-modkit-canonical-errors = { package = "cf-modkit-canonical-errors", version = "0.7.3", path = "libs/modkit-canonical-errors" }
-modkit-canonical-errors-macro = { package = "cf-modkit-canonical-errors-macro", version = "0.6.1", path = "libs/modkit-canonical-errors-macro" }
-modkit-db = { package = "cf-modkit-db", version = "0.8.2", path = "libs/modkit-db" }
-modkit-db-macros = { package = "cf-modkit-db-macros", version = "0.6.2", path = "libs/modkit-db-macros" }
-modkit-errors = { package = "cf-modkit-errors", version = "0.7.0", path = "libs/modkit-errors" }
-modkit-errors-macro = { package = "cf-modkit-errors-macro", version = "0.6.3", path = "libs/modkit-errors-macro" }
-modkit-macros = { package = "cf-modkit-macros", version = "0.6.2", path = "libs/modkit-macros" }
-modkit-node-info = { package = "cf-modkit-node-info", version = "0.6.4", path = "libs/modkit-node-info" }
-modkit-odata = { package = "cf-modkit-odata", version = "0.8.0", path = "libs/modkit-odata" }
-modkit-odata-macros = { package = "cf-modkit-odata-macros", version = "0.6.5", path = "libs/modkit-odata-macros" }
-modkit-sdk = { package = "cf-modkit-sdk", version = "0.6.5", path = "libs/modkit-sdk" }
-modkit-security = { package = "cf-modkit-security", version = "0.7.0", path = "libs/modkit-security" }
-modkit-transport-grpc = { package = "cf-modkit-transport-grpc", version = "0.6.4", path = "libs/modkit-transport-grpc" }
-modkit-utils = { package = "cf-modkit-utils", version = "0.6.3", path = "libs/modkit-utils" }
+modkit = { package = "cyberware-modkit", version = "0.6.10", path = "libs/modkit" }
+modkit-http = { package = "cyberware-modkit-http", version = "0.6.5", path = "libs/modkit-http" }
+modkit-auth = { package = "cyberware-modkit-auth", version = "0.7.0", path = "libs/modkit-auth" }
+modkit-canonical-errors = { package = "cyberware-modkit-canonical-errors", version = "0.7.3", path = "libs/modkit-canonical-errors" }
+modkit-canonical-errors-macro = { package = "cyberware-modkit-canonical-errors-macro", version = "0.6.1", path = "libs/modkit-canonical-errors-macro" }
+modkit-db = { package = "cyberware-modkit-db", version = "0.8.2", path = "libs/modkit-db" }
+modkit-db-macros = { package = "cyberware-modkit-db-macros", version = "0.6.2", path = "libs/modkit-db-macros" }
+modkit-errors = { package = "cyberware-modkit-errors", version = "0.7.0", path = "libs/modkit-errors" }
+modkit-errors-macro = { package = "cyberware-modkit-errors-macro", version = "0.6.3", path = "libs/modkit-errors-macro" }
+modkit-macros = { package = "cyberware-modkit-macros", version = "0.6.2", path = "libs/modkit-macros" }
+modkit-node-info = { package = "cyberware-modkit-node-info", version = "0.6.4", path = "libs/modkit-node-info" }
+modkit-odata = { package = "cyberware-modkit-odata", version = "0.8.0", path = "libs/modkit-odata" }
+modkit-odata-macros = { package = "cyberware-modkit-odata-macros", version = "0.6.5", path = "libs/modkit-odata-macros" }
+modkit-sdk = { package = "cyberware-modkit-sdk", version = "0.6.5", path = "libs/modkit-sdk" }
+modkit-security = { package = "cyberware-modkit-security", version = "0.7.0", path = "libs/modkit-security" }
+modkit-transport-grpc = { package = "cyberware-modkit-transport-grpc", version = "0.6.4", path = "libs/modkit-transport-grpc" }
+modkit-utils = { package = "cyberware-modkit-utils", version = "0.6.3", path = "libs/modkit-utils" }
 
-cf-system-sdks = { version = "0.1.35", path = "libs/system-sdks" }
-cf-system-sdk-directory = { version = "0.1.35", path = "libs/system-sdks/sdks/directory" }
+cyberware-system-sdks = { version = "0.1.35", path = "libs/system-sdks" }
+cyberware-system-sdk-directory = { version = "0.1.35", path = "libs/system-sdks/sdks/directory" }
 
 # system modules SDKs
-account-management-sdk = { package = "cf-account-management-sdk", version = "0.1.1", path = "modules/system/account-management/account-management-sdk" }
-types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.2.2", path = "modules/system/types-registry/types-registry-sdk" }
-tenant-resolver-sdk = { package = "cf-tenant-resolver-sdk", version = "0.3.6", path = "modules/system/tenant-resolver/tenant-resolver-sdk" }
-authz-resolver-sdk = { package = "cf-authz-resolver-sdk", version = "0.3.6", path = "modules/system/authz-resolver/authz-resolver-sdk" }
-resource-group-sdk = { package = "cf-resource-group-sdk", version = "0.1.3", path = "modules/system/resource-group/resource-group-sdk" }
-oagw-sdk = { package = "cf-oagw-sdk", version = "0.5.1", path = "modules/system/oagw/oagw-sdk" }
+account-management-sdk = { package = "cyberware-account-management-sdk", version = "0.1.1", path = "modules/system/account-management/account-management-sdk" }
+types-registry-sdk = { package = "cyberware-types-registry-sdk", version = "0.2.2", path = "modules/system/types-registry/types-registry-sdk" }
+tenant-resolver-sdk = { package = "cyberware-tenant-resolver-sdk", version = "0.3.6", path = "modules/system/tenant-resolver/tenant-resolver-sdk" }
+authz-resolver-sdk = { package = "cyberware-authz-resolver-sdk", version = "0.3.6", path = "modules/system/authz-resolver/authz-resolver-sdk" }
+resource-group-sdk = { package = "cyberware-resource-group-sdk", version = "0.1.3", path = "modules/system/resource-group/resource-group-sdk" }
+oagw-sdk = { package = "cyberware-oagw-sdk", version = "0.5.1", path = "modules/system/oagw/oagw-sdk" }
 
 # credstore
-credstore-sdk = { package = "cf-credstore-sdk", version = "0.1.24", path = "modules/credstore/credstore-sdk" }
+credstore-sdk = { package = "cyberware-credstore-sdk", version = "0.1.24", path = "modules/credstore/credstore-sdk" }
 
 # mini-chat
-mini-chat-sdk = { package = "cf-mini-chat-sdk", version = "0.10.6", path = "modules/mini-chat/mini-chat-sdk" }
+mini-chat-sdk = { package = "cyberware-mini-chat-sdk", version = "0.10.6", path = "modules/mini-chat/mini-chat-sdk" }
 
 # system modules
-grpc_hub = { package = "cf-grpc-hub", version = "0.2.6", path = "modules/system/grpc-hub" }
+grpc_hub = { package = "cyberware-grpc-hub", version = "0.2.6", path = "modules/system/grpc-hub" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -281,13 +281,6 @@ async-stream = { version = "0.3" }
 # High-performance data structures
 dashmap = "6.1"
 arc-swap = "1.7"
-
-# Stable, deterministic hasher for non-cryptographic correlation
-# digests (operator-log forensics). Unlike `std::hash::DefaultHasher`,
-# the FNV-1a output is pinned to a specification — digests stay stable
-# across Rust toolchain upgrades, so audit records emitted by older
-# binaries still correlate with newer ones.
-fnv = "1.0"
 
 # Security
 zeroize = { version = "1", features = ["derive"] }
@@ -441,7 +434,7 @@ ureq = "3.3"
 time = { version = "0.3.47", features = ["serde", "formatting", "parsing"] }
 
 # Cryptographic utilities
-sha2 = "0.11"
+sha2 = "0.10"
 hex = "0.4"
 
 # JWT and authentication
@@ -530,6 +523,7 @@ temp-env = { version = "0.3", features = ["async_closure"] }
 
 # Additional utilities
 nanoid = "0.4"
+fnv = "1.0"
 
 # Metrics
 tokio-metrics = { version = "0.5", features = ["rt"] }
@@ -540,9 +534,9 @@ walkdir = "2.5"
 shellexpand = "3.1"
 
 # GTS library
-gts-id = "0.9.0"
+gts-id = "0.9.3"
 gts = "0.9.3"
-gts-macros = "0.9.0"
+gts-macros = "0.9.3"
 
 # GTS validator
-gts-validator = "0.9.0"
+gts-validator = "0.9.3"

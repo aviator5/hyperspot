@@ -1,16 +1,16 @@
 # Resource Group
 
-Main module for hierarchical resource group management in CyberFabric. Backed by `cf-resource-group-sdk`, persisted via SeaORM, exposed over REST, and integrated with the AuthZ resolver and types registry.
+Main module for hierarchical resource group management in CyberWare. Backed by `cyberware-resource-group-sdk`, persisted via SeaORM, exposed over REST, and integrated with the AuthZ resolver and types registry.
 
 ## Overview
 
-The `cf-resource-group` module provides:
+The `cyberware-resource-group` module provides:
 
 - **GTS-typed groups** — every group is bound to a GTS type (validated against the types registry)
 - **Hierarchy** — parent/child relationships with ancestor/descendant traversal and depth tracking
 - **Memberships** — `(resource_type, resource_id)` links to groups
 - **OData listing** — filterable, cursor-paginated reads for types, groups, and memberships
-- **AuthZ enforcement** — every mutation and read goes through `PolicyEnforcer` from `cf-authz-resolver-sdk`
+- **AuthZ enforcement** — every mutation and read goes through `PolicyEnforcer` from `cyberware-authz-resolver-sdk`
 - **ClientHub integration** — registers `ResourceGroupClient` (full surface) and `ResourceGroupReadHierarchy` (narrow read-only) for in-process consumers
 
 The module owns its database schema via `DatabaseCapability` and exposes a REST surface via `RestApiCapability`.
@@ -24,7 +24,7 @@ Consumer Module
 ResourceGroupClient / ResourceGroupReadHierarchy  (SDK traits, ClientHub)
     │
     ▼
-cf-resource-group  (this crate — services, repos, REST handlers)
+cyberware-resource-group  (this crate — services, repos, REST handlers)
     │
     ├──▶ AuthZ resolver  (PolicyEnforcer)
     ├──▶ Types registry  (GTS schema validation)
@@ -39,7 +39,7 @@ cf-resource-group  (this crate — services, repos, REST handlers)
 
 ## Usage (in-process)
 
-Consumers use the SDK trait from `cf-resource-group-sdk`:
+Consumers use the SDK trait from `cyberware-resource-group-sdk`:
 
 ```rust
 use resource_group_sdk::ResourceGroupClient;
@@ -64,7 +64,7 @@ The module registers REST routes for types, groups, hierarchy traversal, and mem
 ## Testing
 
 ```bash
-cargo test -p cf-resource-group
+cargo test -p cyberware-resource-group
 ```
 
 ## License

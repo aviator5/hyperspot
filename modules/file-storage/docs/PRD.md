@@ -4,7 +4,7 @@
 
 ### 1.1 Purpose
 
-FileStorage is a universal file storage and management service for the CyberFabric platform. It provides upload,
+FileStorage is a universal file storage and management service for the CyberWare middleware. It provides upload,
 download, metadata management, access control, and sharing capabilities for any module or user within the platform.
 
 The service supports pluggable storage backends, multiple access protocols (REST, S3-compatible, WebDAV), tenant-scoped
@@ -12,7 +12,7 @@ access control with an ownership model, and policy-driven governance for file ty
 
 ### 1.2 Background / Problem Statement
 
-CyberFabric modules and platform users require file storage for various purposes: modules handle multimodal AI content
+CyberWare modules and platform users require file storage for various purposes: modules handle multimodal AI content
 (images, audio, video, documents), documents and artifacts, reporting outputs, and platform users need direct file
 access through standard protocols.
 
@@ -22,11 +22,11 @@ links, and there is no unified access control or policy enforcement across the p
 
 FileStorage solves this by providing a centralized, tenant-aware storage service with persistent URLs, pluggable
 backends, and standardized access interfaces — functioning as a superset of S3 and WebDAV capabilities within the
-CyberFabric security and governance model.
+CyberWare security and governance model.
 
 ### 1.3 Goals (Business Outcomes)
 
-- Unified file storage accessible by all CyberFabric modules and platform users
+- Unified file storage accessible by all CyberWare modules and platform users
 - Tenant-scoped and origin-module-scoped access control with tenant, user and module ownership model
 - Flexible sharing via public, tenant-scoped, and signed URLs
 - Policy-driven governance over file types, sizes, events, and sharing models
@@ -75,18 +75,18 @@ CyberFabric security and governance model.
 
 ### 2.2 System Actors
 
-#### CyberFabric Modules
+#### CyberWare Modules
 
 **ID**: `cpt-cf-file-storage-actor-cf-modules`
 
-**Role**: Any CyberFabric module requiring file upload, download, metadata retrieval, or link management (e.g., LLM
+**Role**: Any CyberWare module requiring file upload, download, metadata retrieval, or link management (e.g., LLM
 Gateway for multimodal media, document management modules, reporting modules).
 
 ## 3. Operational Concept & Environment
 
 ### 3.1 Module-Specific Environment Constraints
 
-FileStorage operates within the standard CyberFabric runtime environment. Authentication and identity management are
+FileStorage operates within the standard CyberWare runtime environment. Authentication and identity management are
 fully delegated to the platform — FileStorage does not implement its own authentication layer. All incoming requests are
 pre-authenticated by the platform infrastructure, and FileStorage receives the caller's identity context (user, tenant,
 roles) from the platform authentication middleware.
@@ -807,7 +807,7 @@ or geographic requirements.
 
 The system **MUST** expose a REST API for all file operations (upload, download, delete, metadata, link management).
 
-**Rationale**: REST is the standard access interface for CyberFabric modules and platform UI.
+**Rationale**: REST is the standard access interface for CyberWare modules and platform UI.
 **Actors**: `cpt-cf-file-storage-actor-platform-user`, `cpt-cf-file-storage-actor-cf-modules`
 
 #### S3-Compatible API
@@ -1008,11 +1008,11 @@ changes.
 
 ### 7.2 External Integration Contracts
 
-#### CyberFabric Module Contract
+#### CyberWare Module Contract
 
 - [ ] `p1` - **ID**: `cpt-cf-file-storage-contract-cf-modules`
 
-**Direction**: provided by library (consumed by CyberFabric modules)
+**Direction**: provided by library (consumed by CyberWare modules)
 **Protocol/Format**: In-process Rust SDK trait via ClientHub
 **Compatibility**: Trait versioned with SDK crate; breaking changes require coordinated release with consuming modules.
 
@@ -1343,7 +1343,7 @@ debits/credits per `cpt-cf-file-storage-fr-usage-reporting`)
 1. Deployment A configures FileStorage with an S3-compatible backend (e.g., AWS S3)
 2. Deployment B configures FileStorage with a different backend (e.g., Azure Blob Storage)
 3. Both deployments expose identical FileStorage SDK and REST APIs
-4. CyberFabric modules interact with FileStorage through the SDK trait without awareness of the underlying backend
+4. CyberWare modules interact with FileStorage through the SDK trait without awareness of the underlying backend
 5. Upload, download, delete, metadata, and link operations behave identically regardless of backend
 
 **Postconditions**:
@@ -1479,7 +1479,7 @@ debits/credits per `cpt-cf-file-storage-fr-usage-reporting`)
 - Authorization Service is available and supports `gts.cf.fstorage.file.type.v1~` resource type
 - All file access respects tenant boundaries at the platform level
 - Initial storage backend is configured at deployment time; runtime backend switching is phase 2
-- File URLs are internal to CyberFabric; external access is via shareable links or signed URLs
+- File URLs are internal to CyberWare; external access is via shareable links or signed URLs
 - Policy configuration is available to tenant administrators and users through the platform
 
 ## 12. Risks

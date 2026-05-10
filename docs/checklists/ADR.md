@@ -837,7 +837,7 @@ For quick reviews, use this condensed table format:
 When reviewing PRs that add or change Architecture Decision Records, additionally focus on:
 
 - [ ] Ensure the problem is module/system scoped, not generic and repeatable
-- [ ] Compliance with `docs/spec-templates/cf-sdlc/ADR/template.md` template structure
+- [ ] Compliance with `docs/spec-templates/cyberware-sdlc/ADR/template.md` template structure
 - [ ] Ensure the problem is not already solved by other existing ADRs in `docs/adrs/`
 - [ ] Alternatives are genuinely different approaches (not straw men)
 - [ ] Decision rationale is concrete and traceable to project constraints

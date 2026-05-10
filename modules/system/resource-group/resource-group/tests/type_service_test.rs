@@ -14,15 +14,15 @@ use std::sync::Arc;
 use serde_json::json;
 use uuid::Uuid;
 
-use cf_resource_group::domain::error::DomainError;
-use cf_resource_group::domain::repo::TypeRepositoryTrait;
-use cf_resource_group::domain::type_service::TypeService;
-use cf_resource_group::infra::storage::entity::{
+use cyberware_resource_group::domain::error::DomainError;
+use cyberware_resource_group::domain::repo::TypeRepositoryTrait;
+use cyberware_resource_group::domain::type_service::TypeService;
+use cyberware_resource_group::infra::storage::entity::{
     gts_type::{self, Entity as GtsTypeEntity},
     gts_type_allowed_membership::{self, Entity as AllowedMembershipEntity},
     gts_type_allowed_parent::{self, Entity as AllowedParentEntity},
 };
-use cf_resource_group::infra::storage::type_repo::TypeRepository;
+use cyberware_resource_group::infra::storage::type_repo::TypeRepository;
 use modkit_db::secure::{SecureEntityExt, secure_insert};
 use modkit_security::AccessScope;
 use resource_group_sdk::{CreateTypeRequest, UpdateTypeRequest};

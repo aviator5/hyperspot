@@ -12,7 +12,7 @@ rustup component add rust-src --toolchain nightly
 export RUSTUP_TOOLCHAIN=nightly
 echo "Rust version: $(rustc --version)"
 
-cd $SRC/cyberfabric
+cd $SRC/cyberware
 
 # Build all fuzz targets with optimization
 cargo fuzz build -O --fuzz-dir tools/fuzz

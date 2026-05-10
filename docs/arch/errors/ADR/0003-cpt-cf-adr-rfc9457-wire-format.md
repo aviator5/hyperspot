@@ -30,7 +30,7 @@ Chosen option: **Option A — RFC 9457 Problem Details**, because it is an IETF 
 
 ### Consequences
 
-* The error library must define a `Problem` struct with the five standard RFC 9457 members (`type`, `title`, `status`, `detail`, `instance`) plus CyberFabric extension members (`trace_id`, `context`)
+* The error library must define a `Problem` struct with the five standard RFC 9457 members (`type`, `title`, `status`, `detail`, `instance`) plus CyberWare extension members (`trace_id`, `context`)
 * All REST error responses must use `Content-Type: application/problem+json` — middleware must set this header
 * The `type` field carries a GTS URI (not a dereferenceable URL), which deviates from RFC 9457's intent but is valid per spec — this must be documented as a known deviation
 * gRPC and SSE transports will need their own wire format mappings in the future — RFC 9457 only covers REST
@@ -69,14 +69,14 @@ Define a platform-specific JSON structure (e.g., `{ "error": { "code": ..., "mes
 Use the JSON:API error object specification.
 
 * Good, because well-documented open standard
-* Bad, because JSON:API is a full API specification — adopting just the error format creates inconsistency (CyberFabric does not use JSON:API for success responses)
+* Bad, because JSON:API is a full API specification — adopting just the error format creates inconsistency (CyberWare does not use JSON:API for success responses)
 * Bad, because JSON:API error objects have a different structure (`errors` array, `source` pointer) that does not align with the canonical error model's single-error-per-response pattern
 
 ## More Information
 
-RFC 9457 wire format with CyberFabric extensions:
+RFC 9457 wire format with CyberWare extensions:
 
-| Field | RFC 9457 | CyberFabric Extension |
+| Field | RFC 9457 | CyberWare Extension |
 |-------|----------|----------------------|
 | `type` | Standard (§3.1.1) | Carries GTS type URI |
 | `title` | Standard (§3.1.2) | Static per category |

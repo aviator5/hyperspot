@@ -11,7 +11,7 @@ Cyber Fabric.  It is the single source of truth for "what must be tested and how
 |-------|-------|---------|--------------|------------|
 | **Unit** | Single function / struct / module in isolation | `cargo test --workspace` | none (always compiled) | Every PR (`ci.yml` — `test` job, all OS) |
 | **Integration** | Cross-crate or DB-backed logic (SQLite, Postgres, MySQL) | `cargo test -p <pkg> --features integration` | `#[cfg(feature = "integration")]` | Every PR (`ci.yml` — `integration` job, Ubuntu) |
-| **E2E** | Full HTTP request → response through a running server | pytest + httpx against `cf-server` | n/a (Python tests) | PRs to `main`, nightly schedule (`e2e.yml`) |
+| **E2E** | Full HTTP request → response through a running server | pytest + httpx against `cyberware-server` | n/a (Python tests) | PRs to `main`, nightly schedule (`e2e.yml`) |
 | **Fuzz** | Parser / validator robustness against arbitrary input | `cargo-fuzz` (libFuzzer) | nightly toolchain | PRs + nightly (`clusterfuzzlite.yml`) |
 | **Static analysis** | Architectural rules, unsafe code, dependency licenses | clippy, dylint, cargo-deny, cargo-kani, cargo-geiger | varies | Every PR (`ci.yml` — `test`, `security`, `dylint` jobs) |
 
@@ -93,8 +93,8 @@ Local coverage commands produce four report formats under `coverage/<mode>/`:
 
 ```bash
 cargo test --workspace          # all unit tests
-cargo test -p cf-oagw           # single package
-cargo test -p cf-modkit-db -- cursor  # filtered by name
+cargo test -p cyberware-oagw           # single package
+cargo test -p cyberware-modkit-db -- cursor  # filtered by name
 ```
 
 ---
@@ -109,9 +109,9 @@ behind the `integration` Cargo feature so that `cargo test --workspace` (without
 
 | Package | Features | Backend |
 |---------|----------|---------|
-| `cf-modkit-db` | `sqlite,integration` | SQLite (in-process) |
-| `cf-modkit-db` | `pg,integration` | PostgreSQL (requires running instance) |
-| `cf-modkit-db` | `mysql,integration` | MySQL (requires running instance) |
+| `cyberware-modkit-db` | `sqlite,integration` | SQLite (in-process) |
+| `cyberware-modkit-db` | `pg,integration` | PostgreSQL (requires running instance) |
+| `cyberware-modkit-db` | `mysql,integration` | MySQL (requires running instance) |
 | `users-info` | `integration` | PostgreSQL |
 
 ### 4.2 Running
@@ -133,7 +133,7 @@ plus macro UI tests on every PR (Ubuntu only).
 
 ## 5. End-to-End (E2E) Tests
 
-E2E tests exercise the full HTTP surface of `cf-server` using Python (pytest +
+E2E tests exercise the full HTTP surface of `cyberware-server` using Python (pytest +
 httpx).
 
 ### 5.1 Expectations

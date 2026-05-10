@@ -62,215 +62,215 @@ body = """
 """
 
 # ModKit Framework - unified release
-# Only cf-modkit gets changelog entries and GitHub releases
-# All other cf-modkit-* crates are published to crates.io but without separate changelog/releases
+# Only cyberware-modkit gets changelog entries and GitHub releases
+# All other cyberware-modkit-* crates are published to crates.io but without separate changelog/releases
 [[package]]
-name = "cf-modkit"
+name = "cyberware-modkit"
 changelog_update = true
 git_release_enable = true
 
 [[package]]
-name = "cf-modkit-auth"
+name = "cyberware-modkit-auth"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-db"
+name = "cyberware-modkit-db"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-db-macros"
+name = "cyberware-modkit-db-macros"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-errors"
+name = "cyberware-modkit-errors"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-errors-macro"
+name = "cyberware-modkit-errors-macro"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-macros"
+name = "cyberware-modkit-macros"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-macros-tests"
+name = "cyberware-modkit-macros-tests"
 changelog_update = false
 git_release_enable = false
 publish = false
 
 [[package]]
-name = "cf-modkit-node-info"
+name = "cyberware-modkit-node-info"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-odata"
+name = "cyberware-modkit-odata"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-odata-macros"
+name = "cyberware-modkit-odata-macros"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-sdk"
+name = "cyberware-modkit-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-security"
+name = "cyberware-modkit-security"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-transport-grpc"
+name = "cyberware-modkit-transport-grpc"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-modkit-utils"
+name = "cyberware-modkit-utils"
 changelog_update = false
 git_release_enable = false
 
 # System SDK libraries - published to crates.io but without separate changelog/releases
 [[package]]
-name = "cf-system-sdks"
+name = "cyberware-system-sdks"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-system-sdk-directory"
+name = "cyberware-system-sdk-directory"
 changelog_update = false
 git_release_enable = false
 
 # System modules and their SDKs - published to crates.io but without separate changelog/releases
 [[package]]
-name = "cf-api-gateway"
+name = "cyberware-api-gateway"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-grpc-hub"
+name = "cyberware-grpc-hub"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-file-parser"
+name = "cyberware-file-parser"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-nodes-registry"
+name = "cyberware-nodes-registry"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-nodes-registry-sdk"
+name = "cyberware-nodes-registry-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-module-orchestrator"
+name = "cyberware-module-orchestrator"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-types-registry"
+name = "cyberware-types-registry"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-types-registry-sdk"
+name = "cyberware-types-registry-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-simple-user-settings"
+name = "cyberware-simple-user-settings"
 publish = false
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-simple-user-settings-sdk"
+name = "cyberware-simple-user-settings-sdk"
 publish = false
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-resource-group-sdk"
+name = "cyberware-resource-group-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-resource-group"
+name = "cyberware-resource-group"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-tenant-resolver-sdk"
+name = "cyberware-tenant-resolver-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-tenant-resolver"
+name = "cyberware-tenant-resolver"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-authn-resolver-sdk"
+name = "cyberware-authn-resolver-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-authn-resolver"
+name = "cyberware-authn-resolver"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-authz-resolver-sdk"
+name = "cyberware-authz-resolver-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-authz-resolver"
+name = "cyberware-authz-resolver"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-oagw-sdk"
+name = "cyberware-oagw-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-oagw"
+name = "cyberware-oagw"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-credstore-sdk"
+name = "cyberware-credstore-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-credstore"
+name = "cyberware-credstore"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-mini-chat-sdk"
+name = "cyberware-mini-chat-sdk"
 changelog_update = false
 git_release_enable = false
 
 [[package]]
-name = "cf-mini-chat"
+name = "cyberware-mini-chat"
 changelog_update = false
 git_release_enable = false
 

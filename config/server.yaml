@@ -1,9 +1,9 @@
-# CyberFabric Server Configuration
+# CyberWare Example Server Configuration
 # Updated to use the new configuration structure
 
 # Core server configuration (global section)
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware"
 
 # Database configuration (simplified structure)
 database:
@@ -31,7 +31,7 @@ database:
 
     # Example PostgreSQL server (uncomment to use)
     # postgres_main:
-    #   dsn: "postgresql://cyberfabric:${PG_PASSWORD}@localhost:5432/cyberfabric"
+    #   dsn: "postgresql://cyberware:${PG_PASSWORD}@localhost:5432/cyberware"
     #   pool:
     #     max_conns: 10
     #     acquire_timeout: "30s"
@@ -41,7 +41,7 @@ logging:
   # global section
   default:
     console_level: info
-    file: "logs/cyberfabric.log"
+    file: "logs/cyberware.log"
     file_level: warn
     max_age_days: 28
     max_backups: 3
@@ -408,7 +408,7 @@ modules:
 # OpenTelemetry configuration (resource identity, tracing, metrics)
 opentelemetry:
   resource:
-    service_name: "cyberfabric-api"
+    service_name: "cyberware-api"
 
   # Default exporter shared by tracing and metrics
   exporter:

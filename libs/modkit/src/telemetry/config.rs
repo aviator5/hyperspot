@@ -49,7 +49,7 @@ pub struct OpenTelemetryResource {
 
 /// Return the default OpenTelemetry service name used when none is configured.
 fn default_service_name() -> String {
-    "cyberfabric".to_owned()
+    "cyberware".to_owned()
 }
 
 impl Default for OpenTelemetryResource {

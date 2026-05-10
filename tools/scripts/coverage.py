@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Code coverage collection script for CyberFabric.
+Code coverage collection script for CyberWare.
 Supports unit tests, e2e tests, and combined coverage.
 """
 import argparse
@@ -673,7 +673,7 @@ def get_llvm_cov_env():
 
 def build_instrumented_server(env, target_dir: Path):
     step(
-        "Building cf-server with coverage instrumentation "
+        "Building cyberware-server with coverage instrumentation "
         f"(features: {E2E_SERVER_FEATURES})"
     )
     run_cmd(
@@ -681,7 +681,7 @@ def build_instrumented_server(env, target_dir: Path):
             "cargo",
             "build",
             "--bin",
-            "cf-server",
+            "cyberware-server",
             "--features",
             E2E_SERVER_FEATURES,
         ],
@@ -691,7 +691,7 @@ def build_instrumented_server(env, target_dir: Path):
 
 
 def start_instrumented_server(config_file, output_dir, port=None):
-    """Start the cf-server with coverage instrumentation.
+    """Start the cyberware-server with coverage instrumentation.
 
     Args:
         config_file: Path to config file
@@ -709,7 +709,7 @@ def start_instrumented_server(config_file, output_dir, port=None):
 
     # Create output directory and log file
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_file = output_dir / "cf-server.log"
+    log_file = output_dir / "cyberware-server.log"
 
     step(
         f"Starting server with coverage instrumentation "
@@ -723,11 +723,11 @@ def start_instrumented_server(config_file, output_dir, port=None):
     # We must build the server there AND write profiles there so report finds them.
     target_dir = PROJECT_ROOT / "target" / "llvm-cov-target"
     env2["CARGO_TARGET_DIR"] = str(target_dir)
-    env2["LLVM_PROFILE_FILE"] = str(target_dir / "cyberfabric-%p-%m.profraw")
+    env2["LLVM_PROFILE_FILE"] = str(target_dir / "cyberware-%p-%m.profraw")
 
     build_instrumented_server(env2, target_dir)
 
-    server_bin = find_binary(target_dir, "debug", "cf-server")
+    server_bin = find_binary(target_dir, "debug", "cyberware-server")
     if not server_bin.exists():
         print(f"ERROR: Instrumented server binary not found at: {server_bin}")
         sys.exit(1)
@@ -1192,7 +1192,7 @@ def main():
     ensure_tool("cargo-llvm-cov", "cargo install cargo-llvm-cov")
 
     parser = argparse.ArgumentParser(
-        description="Generate code coverage reports for CyberFabric",
+        description="Generate code coverage reports for CyberWare",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

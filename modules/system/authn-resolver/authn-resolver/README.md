@@ -1,17 +1,17 @@
 # AuthN Resolver
 
-Main module for authentication in CyberFabric. Discovers AuthN plugins via GTS types-registry and routes token validation to the selected plugin.
+Main module for authentication in CyberWare. Discovers AuthN plugins via GTS types-registry and routes token validation to the selected plugin.
 
 ## Overview
 
-The `cf-authn-resolver` module provides:
+The `cyberware-authn-resolver` module provides:
 
 - **Plugin discovery** — Finds AuthN plugins via GTS types-registry
 - **Vendor-based selection** — Selects plugin by vendor and priority
 - **Token validation routing** — Delegates bearer token authentication to the active plugin
 - **ClientHub integration** — Registers `AuthNResolverClient` for inter-module use
 
-This is a **main module** — it contains no authentication logic itself. All operations are delegated to the active plugin (e.g., `cf-static-authn-plugin` for development, or a custom OIDC/JWT implementation).
+This is a **main module** — it contains no authentication logic itself. All operations are delegated to the active plugin (e.g., `cyberware-static-authn-plugin` for development, or a custom OIDC/JWT implementation).
 
 ## Architecture
 
@@ -52,12 +52,12 @@ The module is configured via the server's YAML config. Plugin selection is autom
 
 ## Writing a Plugin
 
-Implement the `AuthNResolverPluginClient` trait from `cf-authn-resolver-sdk` and register it with a GTS instance ID derived from the `AuthNResolverPluginSpecV1` schema.
+Implement the `AuthNResolverPluginClient` trait from `cyberware-authn-resolver-sdk` and register it with a GTS instance ID derived from the `AuthNResolverPluginSpecV1` schema.
 
 ## Testing
 
 ```bash
-cargo test -p cf-authn-resolver
+cargo test -p cyberware-authn-resolver
 ```
 
 ## License

@@ -1,6 +1,6 @@
 """E2E tests for the attachment API (upload, get, delete, send-message with attachments).
 
-Run via: ~/projects/cyberfabric-core-worktrees/scripts/run-tests.sh tests/test_attachments.py
+Run via: ~/projects/cyberware-rust-worktrees/scripts/run-tests.sh tests/test_attachments.py
 """
 
 import io

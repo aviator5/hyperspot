@@ -322,7 +322,7 @@ Check every item:
 
 1. DEPENDENCY: `aliri_tokens` in modkit-auth/Cargo.toml with
    `default-features = false, features = ["rand"]`.
-   Run: `cargo tree -p cf-modkit-auth | grep reqwest` — must return NOTHING.
+   Run: `cargo tree -p cyberware-modkit-auth | grep reqwest` — must return NOTHING.
 
 2. OAuthTokenSource: all fields private. Visibility is pub(crate).
 
@@ -662,8 +662,8 @@ Check every item:
 1. FEATURE FLAG:
    - modkit-http/Cargo.toml has `oauth = ["dep:modkit-auth"]` feature.
    - modkit-auth listed as optional dependency.
-   - `cargo check -p cf-modkit-http` (no features) compiles cleanly.
-   - `cargo check -p cf-modkit-http --features oauth` compiles cleanly.
+   - `cargo check -p cyberware-modkit-http` (no features) compiles cleanly.
+   - `cargo check -p cyberware-modkit-http --features oauth` compiles cleanly.
 
 2. BUILDER API (feature-gated):
    - with_bearer_auth() and with_bearer_auth_header() exist only with
@@ -682,8 +682,8 @@ Check every item:
    - With oauth feature but no with_bearer_auth() call: no auth layer in stack.
 
 5. COMPILATION:
-   - `cargo check -p cf-modkit-http` — OK.
-   - `cargo check -p cf-modkit-http --features oauth` — OK.
+   - `cargo check -p cyberware-modkit-http` — OK.
+   - `cargo check -p cyberware-modkit-http --features oauth` — OK.
    - `cargo check --workspace` — OK.
 
 6. TESTS (behind #[cfg(feature = "oauth")]):

@@ -4,7 +4,7 @@ This module builds and hosts the single `tonic::Server` instance for the process
 
 ## Overview
 
-The `cf-grpc-hub` crate implements the `grpc_hub` module and is responsible for:
+The `cyberware-grpc-hub` crate implements the `grpc_hub` module and is responsible for:
 
 - Hosting the gRPC server
 - Installing gRPC services collected from other modules
@@ -16,8 +16,8 @@ modules:
   grpc_hub:
     config:
       # TCP example: "0.0.0.0:50051"
-      # Unix example (unix only): "uds:///tmp/cyberfabric.sock"
-      # Windows named pipe example (windows only): "pipe://\\\\.\\pipe\\cyberfabric"
+      # Unix example (unix only): "uds:///tmp/cyberware.sock"
+      # Windows named pipe example (windows only): "pipe://\\\\.\\pipe\\cybeware"
       listen_addr: "0.0.0.0:50051"
 ```
 

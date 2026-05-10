@@ -42,7 +42,7 @@ modules:
 The server binary includes this plugin only when built with the `static-authn` feature:
 
 ```bash
-cargo build --bin cf-server --features static-authn
+cargo build --bin cyberware-server --features static-authn
 ```
 
 The `make example` target enables this feature automatically.

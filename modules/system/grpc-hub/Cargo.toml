@@ -1,5 +1,5 @@
 [package]
-name = "cf-grpc-hub"
+name = "cyberware-grpc-hub"
 version = "0.2.6"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ rust-version.workspace = true
 description = "gRPC Hub module"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["network-programming"]
 
 [lib]
@@ -20,7 +20,7 @@ workspace = true
 [dependencies]
 modkit = { workspace = true }
 modkit-transport-grpc = { workspace = true }
-cf-system-sdks = { workspace = true }
+cyberware-system-sdks = { workspace = true }
 inventory = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }

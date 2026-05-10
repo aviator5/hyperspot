@@ -6,7 +6,7 @@
 //! so handler side-effects and cursor advance commit atomically.
 //!
 //! Run:
-//!   cargo run -p cf-modkit-db --example `outbox_transactional` --features sqlite,preview-outbox
+//!   cargo run -p cyberware-modkit-db --example `outbox_transactional` --features sqlite,preview-outbox
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

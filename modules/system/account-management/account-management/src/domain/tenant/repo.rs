@@ -54,7 +54,7 @@ use crate::domain::tenant::retention::{
 /// * `scope_with(<narrowed>)` → `deny_all()` (`WHERE false`) for reads
 ///   / mutations, and `ScopeError::Denied` for INSERTs.
 ///
-/// **Until `InTenantSubtree` lands** (cyberfabric-core#1813), callers
+/// **Until `InTenantSubtree` lands** (cyberware-rust#1813), callers
 /// MUST pass [`AccessScope::allow_all`]. A narrowed scope silently
 /// zero-rows every read and turns every mutation into a no-op or hard
 /// deny — no useful authorization happens at this boundary today.

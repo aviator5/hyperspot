@@ -1,11 +1,11 @@
 # Cyber Fabric
 ![Badge](./.github/badgeHN.svg)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cyberfabric/cyberfabric-core/badge)](https://scorecard.dev/viewer/?uri=github.com/cyberfabric/cyberfabric-core)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cyberfabric/cyberware-rust/badge)](https://scorecard.dev/viewer/?uri=github.com/cyberfabric/cyberware-rust)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12050/badge)](https://www.bestpractices.dev/projects/12050)
 
 **Cyber Fabric** is a secure, modular XaaS development framework and middleware written primarily in Rust. It provides ready-to-use building blocks, domain model elements, and APIs with security-in-depth enforcement, multi-tenancy, and granular access control built into every layer.
 
-CyberFabric is not a ready-to-use service — it is a set of well-integrated libraries (modules) that XaaS vendors compose into their own products. Vendors decide which modules to include, how to combine them into services, and on what infrastructure to run — from edge devices to Kubernetes clusters.
+CyberWare is not a ready-to-use service — it is a set of well-integrated libraries (modules) that XaaS vendors compose into their own products. Vendors decide which modules to include, how to combine them into services, and on what infrastructure to run — from edge devices to Kubernetes clusters.
 
 **Five defining characteristics:**
 
@@ -15,7 +15,7 @@ CyberFabric is not a ready-to-use service — it is a set of well-integrated lib
 
 3. **Composable libraries, vendor-controlled deployment** — Each module owns its API surface and database, communicates via a Rust-native SDK that facades local vs. remote calls, and is fully infrastructure-agnostic. Vendors choose which modules to bundle and whether to deploy single-process (edge/on-prem), multi-node (bare metal), or on Kubernetes.
 
-4. **Pre-integrated XaaS backbone** — Deep integration with multi-tenancy, licensing and quota management, usage collection, and event systems. CyberFabric provides its own backbone modules, but each can be replaced or integrated with existing vendor infrastructure via plugins (e.g. subscription management, product catalog, provisioning, or license enforcement).
+4. **Pre-integrated XaaS backbone** — Deep integration with multi-tenancy, licensing and quota management, usage collection, and event systems. CyberWare provides its own backbone modules, but each can be replaced or integrated with existing vendor infrastructure via plugins (e.g. subscription management, product catalog, provisioning, or license enforcement).
 
 5. **Extensible domain model via Global Type System** — Modules expose extensible domain objects whose metadata and types are customizable through [GTS](https://github.com/globaltypesystem/gts-spec) — define new event types, user settings, LLM model attributes, etc. CRUD API handlers support customization via hooks and callbacks as serverless functions and workflows.
 
@@ -46,7 +46,7 @@ See also [REPO_PLAYBOOK](docs/REPO_PLAYBOOK.md) with the registry of repository-
 ```bash
 # Clone the repository
 git clone --recurse-submodules <repository-url>
-cd cyberfabric-core
+cd cyberware-rust
 
 make ci         # Run full CI pipeline
 make fmt        # Check formatting (no changes). Use 'make dev-fmt' to auto-format
@@ -65,13 +65,13 @@ make deny       # License and dependency checks
 make quickstart
 
 # Option 1: Run with SQLite database (recommended for development)
-cargo run --bin cf-server -- --config config/quickstart.yaml run
+cargo run --bin cyberware-example-server -- --config config/quickstart.yaml run
 
 # Option 2: Run without database (no-db mode)
-cargo run --bin cf-server -- --config config/no-db.yaml run
+cargo run --bin cyberware-example-server -- --config config/no-db.yaml run
 
 # Option 3: Run with mock in-memory database for testing
-cargo run --bin cf-server -- --config config/quickstart.yaml --mock run
+cargo run --bin cyberware-example-server -- --config config/quickstart.yaml --mock run
 
 # Check if server is ready (detailed JSON response)
 curl http://127.0.0.1:8087/health
@@ -91,7 +91,7 @@ curl http://127.0.0.1:8087/healthz
 
 # Core server configuration (global section)
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware
 
 # Database configuration (global section)
 database:
@@ -103,7 +103,7 @@ database:
 logging:
   default:
     console_level: info
-    file: "logs/cyberfabric.log"
+    file: "logs/cyberware.og"
     file_level: warn
     max_age_days: 28
     max_backups: 3
@@ -154,7 +154,7 @@ Cyber Fabric uses industry-standard specification templates (IEEE, ISO, MADR) to
 
 # Global server configuration
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware"
 
 # Database configuration
 database:
@@ -172,7 +172,7 @@ database:
 logging:
   default:
     console_level: info
-    file: "logs/cyberfabric.log"
+    file: "logs/cyberware.og"
     file_level: warn
     max_age_days: 28
     max_backups: 3

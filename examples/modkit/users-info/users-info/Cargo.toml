@@ -19,7 +19,7 @@ integration = []    # gate integration tests
 users-info-sdk = { path = "../users-info-sdk", features = ["odata"] }
 
 # AuthZ resolver for authorization (PEP flow)
-authz-resolver-sdk = { package = "cf-authz-resolver-sdk", path = "../../../../modules/system/authz-resolver/authz-resolver-sdk" }
+authz-resolver-sdk = { package = "cyberware-authz-resolver-sdk", path = "../../../../modules/system/authz-resolver/authz-resolver-sdk" }
 
 # Core dependencies
 anyhow = { workspace = true }
@@ -71,7 +71,7 @@ opentelemetry = { workspace = true }
 [dev-dependencies]
 tokio-util = { workspace = true }
 tower = { workspace = true, features = ["util"] }
-api_gateway = { package = "cf-api-gateway", path = "../../../../modules/system/api-gateway" }
+api_gateway = { package = "cyberware-api-gateway", path = "../../../../modules/system/api-gateway" }
 serde_json = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true, features = ["postgres"] }

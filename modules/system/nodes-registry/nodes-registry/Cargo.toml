@@ -1,5 +1,5 @@
 [package]
-name = "cf-nodes-registry"
+name = "cyberware-nodes-registry"
 version = "0.1.25"
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 description = "Nodes registry module"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["development-tools"]
 
 [lib]
@@ -32,4 +32,4 @@ modkit = { workspace = true }
 modkit-canonical-errors = { workspace = true, features = ["axum"] }
 modkit-node-info = { workspace = true }
 modkit-macros = { workspace = true }
-nodes_registry-sdk = { package = "cf-nodes-registry-sdk", version = "0.1.21", path = "../nodes-registry-sdk" }
+nodes_registry-sdk = { package = "cyberware-nodes-registry-sdk", version = "0.1.21", path = "../nodes-registry-sdk" }

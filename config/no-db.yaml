@@ -1,15 +1,15 @@
-# CyberFabric Server Configuration
+# CyberWare Example Server Configuration
 # Updated to use the new configuration structure
 
 # Core server configuration (global section)
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware"
 
 # Logging configuration (global section)
 logging:
   default:
     console_level: info
-    file: "logs/cyberfabric.log"
+    file: "logs/cyberware.log"
     file_level: warn
     max_age_days: 28
     max_backups: 3

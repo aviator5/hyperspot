@@ -4,7 +4,7 @@ SDK crate for the simple user settings module.
 
 ## Overview
 
-The `cf-simple-user-settings-sdk` crate provides:
+The `cyberware-simple-user-settings-sdk` crate provides:
 
 - `SimpleUserSettingsClientV1` trait
 - Model types (`SimpleUserSettings`, `SimpleUserSettingsPatch`, `SimpleUserSettingsUpdate`)

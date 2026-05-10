@@ -4,7 +4,7 @@ Multi-tenant AI chat module with SSE streaming, credit-based quota enforcement, 
 
 ## Overview
 
-The `cf-mini-chat` module provides:
+The `cyberware-mini-chat` module provides:
 
 - **Chat management** — CRUD for chats, turns, messages, and attachments with per-tenant isolation
 - **SSE streaming** — real-time token streaming from LLM providers via OAGW proxy

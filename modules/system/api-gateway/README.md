@@ -4,7 +4,7 @@ HTTP gateway module that owns the Axum router and collects typed operation specs
 
 ## Overview
 
-The `cf-api-gateway` crate provides:
+The `cyberware-api-gateway` crate provides:
 
 - HTTP server host for REST APIs
 - Operation registration via `modkit::api::OperationBuilder`

@@ -1,5 +1,5 @@
 """
-Cross-platform helpers for CyberFabric build scripts.
+Cross-platform helpers for CyberWare build scripts.
 
 Centralises OS-specific logic so that coverage.py, ci.py and similar
 tools stay platform-agnostic.

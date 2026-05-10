@@ -150,11 +150,11 @@ pub struct ServerConfig {
 }
 
 fn default_server_name() -> String {
-    "cyberfabric".to_owned()
+    "cyberware".to_owned()
 }
 
 fn default_home_dir() -> PathBuf {
-    super::host::paths::default_home_dir().join(".cyberfabric")
+    super::host::paths::default_home_dir().join(".cyberware")
 }
 
 impl Default for ServerConfig {
@@ -291,7 +291,7 @@ pub fn default_logging_config() -> LoggingConfig {
         Section {
             console_level: Some(Level::INFO),
             section_file: Some(SectionFile {
-                file: "logs/cyberfabric.log".to_owned(),
+                file: "logs/cyberware.log".to_owned(),
                 file_level: Some(Level::DEBUG),
             }),
             console_format: ConsoleFormat::default(),
@@ -1338,7 +1338,7 @@ mod tests {
 
     /// Helper: platform default subdirectory name.
     fn default_subdir() -> &'static str {
-        ".cyberfabric"
+        ".cyberware"
     }
 
     #[test]
@@ -1354,7 +1354,7 @@ mod tests {
 
         let default_section = &logging["default"];
         assert_eq!(default_section.console_level, Some(Level::INFO));
-        assert_eq!(default_section.file().unwrap(), "logs/cyberfabric.log");
+        assert_eq!(default_section.file().unwrap(), "logs/cyberware.log");
 
         // Modules bag is empty by default
         assert!(config.modules.is_empty());
@@ -1368,7 +1368,7 @@ mod tests {
         // Provide a user path with "~" to ensure expansion and normalization.
         let yaml = r#"
 server:
-  home_dir: "~/.test_cyberfabric"
+  home_dir: "~/.test_cyberware"
 
 database:
   servers:
@@ -1388,7 +1388,7 @@ logging:
 
         // home_dir should be normalized immediately
         assert!(is_normalized_path(&config.server.home_dir));
-        assert!(config.server.home_dir.ends_with(".test_cyberfabric"));
+        assert!(config.server.home_dir.ends_with(".test_cyberware"));
 
         // database parsed (TODO: update test to use new config format)
         // For now, since this test uses old format YAML, we skip DB assertions

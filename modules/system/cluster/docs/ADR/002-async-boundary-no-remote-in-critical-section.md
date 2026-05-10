@@ -29,15 +29,15 @@ date: 2026-04-02
 
 ## Context and Problem Statement
 
-The cluster module is the CyberFabric platform's abstraction for cluster coordination: distributed cache, leader election, distributed locks, and service discovery. Every meaningful cluster operation is a remote call over the network — there is no "in-process" version of a distributed lock, and the "standalone" provider is a testing/development fixture, not the production target.
+The cluster module is the CyberWare middleware's abstraction for cluster coordination: distributed cache, leader election, distributed locks, and service discovery. Every meaningful cluster operation is a remote call over the network — there is no "in-process" version of a distributed lock, and the "standalone" provider is a testing/development fixture, not the production target.
 
 Two interrelated design questions emerged during review:
 
-1. **How should resource handles (`LockGuard`, `ServiceHandle`, `LeaderWatch`) clean up on scope exit?** The Rust idiom is RAII via `Drop`. But these handles represent remote resources whose release requires a network call. `Drop` is a synchronous function; CyberFabric uses Tokio and does not maintain dedicated OS threads for blocking I/O. Sync `Drop` cannot perform async network I/O reliably: `block_on` panics in a Tokio runtime, spawning a detached task is cancelled on shutdown and fails silently, and routing to a background reaper pushes the ordering problem elsewhere.
+1. **How should resource handles (`LockGuard`, `ServiceHandle`, `LeaderWatch`) clean up on scope exit?** The Rust idiom is RAII via `Drop`. But these handles represent remote resources whose release requires a network call. `Drop` is a synchronous function; CyberWare uses Tokio and does not maintain dedicated OS threads for blocking I/O. Sync `Drop` cannot perform async network I/O reliably: `block_on` panics in a Tokio runtime, spawning a detached task is cancelled on shutdown and fails silently, and routing to a background reaper pushes the ordering problem elsewhere.
 
 2. **Do distributed locks need fencing tokens?** The classic Kleppmann argument says yes: a lock holder might pause and then send stale writes to the guarded resource. Pause causes that can exceed a TTL include — non-exhaustively — GC stop-the-world, OS swap-in stalls under memory pressure, partial network partition, VM suspend / hypervisor freeze (common under node overcommit), CPU overcommit / kernel scheduler stalls, container CPU throttling (cgroup CFS), NUMA / memory-pressure stalls, and host hibernation / live migration. A monotonic fencing token lets the guarded resource reject stale writes. But the scenario in which a fencing token actually helps requires *both* an unbounded pause of the holder *and* a critical section that contains remote I/O (otherwise there is no stale writer to guard against). The first half holds in any deployment; the second half is what we eliminate at the architectural level.
 
-Both questions have the same root: **CyberFabric is an async-only, cooperatively-scheduled system where every meaningful cluster operation is remote**. The design must acknowledge this consistently instead of borrowing idioms from sync/blocking systems.
+Both questions have the same root: **CyberWare is an async-only, cooperatively-scheduled system where every meaningful cluster operation is remote**. The design must acknowledge this consistently instead of borrowing idioms from sync/blocking systems.
 
 ## Decision Drivers
 
@@ -46,7 +46,7 @@ Both questions have the same root: **CyberFabric is an async-only, cooperatively
 - Detached tasks (`tokio::spawn` of a release future) are cancelled during runtime shutdown, causing silent leaks in exactly the scenarios release matters most.
 - TTL on the backend is an unavoidable safety net for every distributed resource; it handles process crash, panic, and forgotten release identically.
 - The Kleppmann fencing-token argument requires an "unbounded pause of the lock holder while still able to reach the guarded resource". Async + timeouts cannot bound *every* pause source — VM suspend or kernel-scheduler stalls freeze the entire runtime, including any timeout futures. The argument that eliminates the stale-writer scenario is therefore the no-remote-in-critical-section rule: it removes the *guarded resource access* from the critical section, so even an unbounded pause of arbitrary cause cannot produce a stale writer.
-- CyberFabric already enforces architectural constraints via dylint (layer rules, no-serde-in-contracts); adding one more rule is cheap.
+- CyberWare already enforces architectural constraints via dylint (layer rules, no-serde-in-contracts); adding one more rule is cheap.
 
 ## Considered Options
 
@@ -69,7 +69,7 @@ The `LockGuard`, `ServiceHandle`, and `LeaderWatch` types have no-op `Drop` impl
 
 Consumers that forget to call these rely on the backend TTL for eventual cleanup. The TTL is bounded (seconds, not hours) and identical in behavior to the process-crash case.
 
-The `LockGuard` does not expose a fencing token. Instead, CyberFabric enforces two architectural principles via a dylint rule:
+The `LockGuard` does not expose a fencing token. Instead, CyberWare enforces two architectural principles via a dylint rule:
 
 1. All cluster operations are `async fn` invoked within Tokio. Consumers SHOULD wrap them with `tokio::time::timeout` to bound blocking on network calls.
 2. Code protected by a `LockGuard` (or inside a database transaction) MUST NOT make additional remote I/O calls. Remote effects MUST occur before `try_lock` or after `release`, never between them.
@@ -109,7 +109,7 @@ The dylint rule that enforces "no remote I/O in critical sections" is initially 
 
 - Good, because the consumer sees conventional Rust RAII semantics — drop just works.
 - Bad, because `block_on` inside a Tokio runtime panics at runtime (`"Cannot start a runtime from within a runtime"`). This is not a hypothetical; it fires the first time a `LockGuard` is dropped inside an async function.
-- Bad, because even if we used a dedicated blocking thread pool, CyberFabric doesn't have one.
+- Bad, because even if we used a dedicated blocking thread pool, CyberWare doesn't have one.
 - Bad, because the call is invisible in async stack traces; debugging a deadlock inside `Drop` is painful.
 - Bad, because the `Drop` signature has no way to propagate errors.
 
@@ -150,7 +150,7 @@ The dylint rule that enforces "no remote I/O in critical sections" is initially 
 ### Option 5: Keep fencing tokens
 
 - Good, because it preserves the option for consumers who want Kleppmann-style fencing on guarded resources.
-- Bad, because zero current CyberFabric consumers use fencing tokens. The feature is implemented for hypothetical future need.
+- Bad, because zero current CyberWare consumers use fencing tokens. The feature is implemented for hypothetical future need.
 - Bad, because every provider pays the implementation cost: Redis Lua `INCR` counter for tokens, Postgres sequence or dedicated token table, K8s annotation CAS, NATS revision coupling. These are non-trivial.
 - Bad, because exposing a raw `u64` invites misuse — consumers may compare tokens or use them for purposes other than fencing.
 - Bad, because it implies a guarantee (fencing is safe here) that is only meaningful if the guarded resource supports fencing. Off-the-shelf databases do not.

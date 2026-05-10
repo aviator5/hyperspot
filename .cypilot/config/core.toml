@@ -12,7 +12,7 @@ version = "1.3.0"
 
 [kits.sdlc.resources]
 [kits.sdlc.resources.adr_template]
-path = "../docs/spec-templates/cf-sdlc/ADR/template.md"
+path = "../docs/spec-templates/cyberware-sdlc/ADR/template.md"
 
 [kits.sdlc.resources.adr_rules]
 path = "config/kits/sdlc/artifacts/ADR/rules.md"
@@ -21,10 +21,10 @@ path = "config/kits/sdlc/artifacts/ADR/rules.md"
 path = "../docs/checklists/ADR.md"
 
 [kits.sdlc.resources.adr_example]
-path = "../docs/spec-templates/cf-sdlc/ADR/examples"
+path = "../docs/spec-templates/cyberware-sdlc/ADR/examples"
 
 [kits.sdlc.resources.decomposition_template]
-path = "../docs/spec-templates/cf-sdlc/DECOMPOSITION/template.md"
+path = "../docs/spec-templates/cyberware-sdlc/DECOMPOSITION/template.md"
 
 [kits.sdlc.resources.decomposition_rules]
 path = "config/kits/sdlc/artifacts/DECOMPOSITION/rules.md"
@@ -33,10 +33,10 @@ path = "config/kits/sdlc/artifacts/DECOMPOSITION/rules.md"
 path = "../docs/checklists/DECOMPOSITION.md"
 
 [kits.sdlc.resources.decomposition_example]
-path = "../docs/spec-templates/cf-sdlc/DECOMPOSITION/examples"
+path = "../docs/spec-templates/cyberware-sdlc/DECOMPOSITION/examples"
 
 [kits.sdlc.resources.design_template]
-path = "../docs/spec-templates/cf-sdlc/DESIGN/template.md"
+path = "../docs/spec-templates/cyberware-sdlc/DESIGN/template.md"
 
 [kits.sdlc.resources.design_rules]
 path = "config/kits/sdlc/artifacts/DESIGN/rules.md"
@@ -45,10 +45,10 @@ path = "config/kits/sdlc/artifacts/DESIGN/rules.md"
 path = "../docs/checklists/DESIGN.md"
 
 [kits.sdlc.resources.design_example]
-path = "../docs/spec-templates/cf-sdlc/DESIGN/examples"
+path = "../docs/spec-templates/cyberware-sdlc/DESIGN/examples"
 
 [kits.sdlc.resources.feature_template]
-path = "../docs/spec-templates/cf-sdlc/FEATURE/template.md"
+path = "../docs/spec-templates/cyberware-sdlc/FEATURE/template.md"
 
 [kits.sdlc.resources.feature_rules]
 path = "config/kits/sdlc/artifacts/FEATURE/rules.md"
@@ -57,10 +57,10 @@ path = "config/kits/sdlc/artifacts/FEATURE/rules.md"
 path = "../docs/checklists/FEATURE.md"
 
 [kits.sdlc.resources.feature_example]
-path = "../docs/spec-templates/cf-sdlc/FEATURE/examples"
+path = "../docs/spec-templates/cyberware-sdlc/FEATURE/examples"
 
 [kits.sdlc.resources.prd_template]
-path = "../docs/spec-templates/cf-sdlc/PRD/template.md"
+path = "../docs/spec-templates/cyberware-sdlc/PRD/template.md"
 
 [kits.sdlc.resources.prd_rules]
 path = "config/kits/sdlc/artifacts/PRD/rules.md"
@@ -69,10 +69,10 @@ path = "config/kits/sdlc/artifacts/PRD/rules.md"
 path = "../docs/checklists/PRD.md"
 
 [kits.sdlc.resources.prd_example]
-path = "../docs/spec-templates/cf-sdlc/PRD/examples"
+path = "../docs/spec-templates/cyberware-sdlc/PRD/examples"
 
 [kits.sdlc.resources.upstream_reqs_template]
-path = "../docs/spec-templates/cf-sdlc/UPSTREAM_REQS/template.md"
+path = "../docs/spec-templates/cyberware-sdlc/UPSTREAM_REQS/template.md"
 
 [kits.sdlc.resources.upstream_reqs_rules]
 path = "config/kits/sdlc/artifacts/UPSTREAM_REQS/rules.md"
@@ -81,7 +81,7 @@ path = "config/kits/sdlc/artifacts/UPSTREAM_REQS/rules.md"
 path = "../docs/checklists/UPSTREAM_REQS.md"
 
 [kits.sdlc.resources.upstream_reqs_example]
-path = "../docs/spec-templates/cf-sdlc/UPSTREAM_REQS/examples"
+path = "../docs/spec-templates/cyberware-sdlc/UPSTREAM_REQS/examples"
 
 [kits.sdlc.resources.pr_code_review_template]
 path = "config/kits/sdlc/artifacts/PR-CODE-REVIEW-TEMPLATE/template.md"

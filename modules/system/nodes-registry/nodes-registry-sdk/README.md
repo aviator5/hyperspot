@@ -4,7 +4,7 @@ SDK crate for the nodes registry module.
 
 ## Overview
 
-The `cf-nodes-registry-sdk` crate provides:
+The `cyberware-nodes-registry-sdk` crate provides:
 
 - `NodesRegistryClient` trait
 - Error type `NodesRegistryError`

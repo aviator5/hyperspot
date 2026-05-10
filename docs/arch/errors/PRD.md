@@ -4,11 +4,11 @@
 
 ### 1.1 Purpose
 
-A universal error architecture for the CyberFabric platform that replaces the current ad-hoc error system (`Problem::new()` / `ErrDef` / `declare_errors!` / `ErrorCode`) with a canonical error model providing consistent, structured error responses across all modules and transport protocols.
+A universal error architecture for the CyberWare middleware that replaces the current ad-hoc error system (`Problem::new()` / `ErrDef` / `declare_errors!` / `ErrorCode`) with a canonical error model providing consistent, structured error responses across all modules and transport protocols.
 
 ### 1.2 Background / Problem Statement
 
-CyberFabric modules currently define errors independently using a mix of `Problem::new()`, `ErrDef`, `declare_errors!`, and raw `ErrorCode` enums. This leads to inconsistent error shapes across modules, making it difficult for API consumers to write reliable error-handling code. There is no compile-time enforcement of error contracts, no structured context beyond free-form strings, and no mechanism to detect accidental breaking changes to error responses.
+CyberWare modules currently define errors independently using a mix of `Problem::new()`, `ErrDef`, `declare_errors!`, and raw `ErrorCode` enums. This leads to inconsistent error shapes across modules, making it difficult for API consumers to write reliable error-handling code. There is no compile-time enforcement of error contracts, no structured context beyond free-form strings, and no mechanism to detect accidental breaking changes to error responses.
 
 SDK clients (credstore, tenant-resolver, authn-resolver, etc.) maintain their own ad-hoc error enums that are lossy, manual reconstructions of server responses. Each SDK reinvents error mapping independently.
 
@@ -43,7 +43,7 @@ SDK clients (credstore, tenant-resolver, authn-resolver, etc.) maintain their ow
 
 **ID**: `cpt-cf-errors-actor-api-consumer`
 
-- **Role**: Calls CyberFabric APIs and handles error responses programmatically.
+- **Role**: Calls CyberWare APIs and handles error responses programmatically.
 - **Needs**: Consistent error structure across all modules to write reliable error-handling logic.
 
 ### 2.2 System Actors
@@ -63,7 +63,7 @@ SDK clients (credstore, tenant-resolver, authn-resolver, etc.) maintain their ow
 
 ## 3. Operational Concept & Environment
 
-No module-specific environment constraints. The canonical error system runs within the standard CyberFabric runtime environment.
+No module-specific environment constraints. The canonical error system runs within the standard CyberWare runtime environment.
 
 ## 4. Scope
 

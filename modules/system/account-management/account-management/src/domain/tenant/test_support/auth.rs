@@ -12,7 +12,7 @@
 //!   constraint-bearing PDP output (single `OWNER_TENANT_ID Eq`
 //!   constraint). It exists specifically to regression-pin the
 //!   `tenants`-entity scope-discard contract enforced in
-//!   `service::TenantService` (cyberfabric-core#1813): an
+//!   `service::TenantService` (cyberware-rust#1813): an
 //!   authorized read / update / soft-delete must NOT compile a
 //!   PDP-narrowed permit into a `WHERE false` denial at the
 //!   secure-extension layer until `InTenantSubtree` lands.
@@ -112,7 +112,7 @@ impl AuthZResolverClient for ConstraintBearingAuthZResolver {
 /// Build a [`PolicyEnforcer`] backed by [`ConstraintBearingAuthZResolver`].
 /// Used by tests that pin the contract: AM service methods must
 /// **not** plumb a PDP-narrowed scope into the `tenants` repo until
-/// `InTenantSubtree` lands (cyberfabric-core#1813), because the
+/// `InTenantSubtree` lands (cyberware-rust#1813), because the
 /// `tenants` entity is `no_tenant, no_resource, no_owner, no_type`
 /// and any narrowed scope would compile to `WHERE false`.
 #[must_use]

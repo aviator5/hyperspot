@@ -18,7 +18,7 @@
     },
     "file_id": {
       "type": ["string", "null"],
-      "description": "FileStorage file identifier (CyberFabric extension)"
+      "description": "FileStorage file identifier (CyberWare extension)"
     },
     "detail": {
       "type": ["string", "null"],

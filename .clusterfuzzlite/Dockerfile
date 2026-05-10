@@ -18,8 +18,8 @@ RUN rustup toolchain install nightly --force && \
     rustup component add rust-src --toolchain nightly
 
 # Copy source code
-COPY . $SRC/cyberfabric
-WORKDIR $SRC/cyberfabric
+COPY . $SRC/cyberware
+WORKDIR $SRC/cyberware
 
 # Copy build script
 COPY .clusterfuzzlite/build.sh $SRC/

@@ -1,10 +1,10 @@
 # ModKit OData
 
-OData query building and parsing utilities used by CyberFabric / ModKit.
+OData query building and parsing utilities used by CyberWare / ModKit.
 
 ## Overview
 
-The `cf-modkit-odata` crate provides:
+The `cyberware-modkit-odata` crate provides:
 
 - Query building (`QueryBuilder`)
 - Filtering / pagination primitives

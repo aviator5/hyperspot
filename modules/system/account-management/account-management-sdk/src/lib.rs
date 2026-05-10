@@ -10,14 +10,14 @@
 //!
 //! External consumers — plugin authors, dashboards, integration tests,
 //! sibling modules calling AM via `ClientHub` — depend on **this**
-//! crate, never on the impl crate (`cf-account-management`), so impl-side
+//! crate, never on the impl crate (`cyberware-account-management`), so impl-side
 //! churn (sea-orm migrations, axum wiring, tokio runtime) does not
 //! propagate as a contract break.
 //!
 //! # Mapping summary (AIP-193)
 //!
 //! Every AM domain failure converts to a canonical category at the
-//! impl-crate boundary (`cf-account-management::domain::error`). The
+//! impl-crate boundary (`cyberware-account-management::domain::error`). The
 //! resulting HTTP status codes follow Google AIP-193 verbatim:
 //!
 //! | AM domain shape | Canonical category | HTTP |

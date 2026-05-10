@@ -1,5 +1,5 @@
 [package]
-name = "cf-system-sdks"
+name = "cyberware-system-sdks"
 version = "0.1.35"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Collection of system modules SDKs"
 readme = "README.md"
 rust-version.workspace = true
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberware-system"]
 categories = ["development-tools"]
 
 [lib]
@@ -18,10 +18,10 @@ name = "cf_system_sdks"
 workspace = true
 
 [features]
-directory = ["dep:cf-system-sdk-directory"]
-directory_grpc = ["directory", "cf-system-sdk-directory?/grpc"]
+directory = ["dep:cyberware-system-sdk-directory"]
+directory_grpc = ["directory", "cyberware-system-sdk-directory?/grpc"]
 
 
 [dependencies]
-cf-system-sdk-directory = { workspace = true, optional = true }
+cyberware-system-sdk-directory = { workspace = true, optional = true }
 

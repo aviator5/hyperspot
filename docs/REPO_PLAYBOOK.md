@@ -19,8 +19,8 @@ Purpose: one concise map of repository artifacts that improve developer + AI pro
 | Non-goals | [x] `p1` | [docs/ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) | Link each non-goal to ADR when changed |
 | Design principles | [x] `p1` | [README.md](../README.md), [docs/ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) | Consolidate into single “principles” page |
 | Engineering philosophy | [x] `p1` | [README.md](../README.md), [guidelines/README.md](../guidelines/README.md), [docs/ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) | Add explicit "how to choose correctness vs speed" rubric |
-| Preferred trade-offs | [x] `p1` | [docs/ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) and [docs/spec-templates/cf-sdlc/ADR/template.md](./spec-templates/cf-sdlc/ADR/template.md) | Track per-domain trade-offs in ADR index |
-| Decision criteria | [x] `p2` | Via [docs/spec-templates/cf-sdlc/ADR/template.md](./spec-templates/cf-sdlc/ADR/template.md) | Add repository-wide decision criteria section |
+| Preferred trade-offs | [x] `p1` | [docs/ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) and [docs/spec-templates/cyberware-sdlc/ADR/template.md](./spec-templates/cyberware-sdlc/ADR/template.md) | Track per-domain trade-offs in ADR index |
+| Decision criteria | [x] `p2` | Via [docs/spec-templates/cyberware-sdlc/ADR/template.md](./spec-templates/cyberware-sdlc/ADR/template.md) | Add repository-wide decision criteria section |
 
 ## 2) Architecture & System
 
@@ -32,7 +32,7 @@ Purpose: one concise map of repository artifacts that improve developer + AI pro
 | Component responsibilities | [x] `p1` | [docs/MODULES.md](./MODULES.md), [docs/modkit_unified_system/README.md](./modkit_unified_system/README.md) | Add per-module responsibility cards |
 | Module boundaries | [x] `p1` | [docs/MODULES.md](./MODULES.md), [docs/modkit_unified_system/](./modkit_unified_system/README.md), [tools/dylint_lints/README.md](../tools/dylint_lints/README.md) | Expand lint coverage for boundary rules |
 | Technology choices | [x] `p1` | [README.md](../README.md), [docs/ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md), [guidelines/DEPENDENCIES.md](../guidelines/DEPENDENCIES.md) | Add technology decision registry page |
-| Data flow | [x] `p2` | [docs/MODULES.md](./MODULES.md) and [docs/spec-templates/cf-sdlc/DESIGN/template.md](./spec-templates/cf-sdlc/DESIGN/template.md) | Add dedicated sequence-diagram doc set |
+| Data flow | [x] `p2` | [docs/MODULES.md](./MODULES.md) and [docs/spec-templates/cyberware-sdlc/DESIGN/template.md](./spec-templates/cyberware-sdlc/DESIGN/template.md) | Add dedicated sequence-diagram doc set |
 
 ## 3) Repository, Structure & Naming
 
@@ -151,7 +151,7 @@ Purpose: one concise map of repository artifacts that improve developer + AI pro
 | Access policies | [x] `p2` | [docs/security/SECURITY.md](./security/SECURITY.md), auth architecture docs | Add policy authoring guide |
 | Security scanners in CI | [x] `p2` | [docs/security/SECURITY.md](./security/SECURITY.md), [.github/workflows/](../.github/workflows) | Add scanner findings triage runbook |
 | Continuous fuzzing | [x] `p2` | [docs/security/SECURITY.md](./security/SECURITY.md), [tools/fuzz/](../tools/fuzz) | Expand fuzz target coverage and schedules |
-| Security in PRD/DESIGN SDLC templates | [x] `p2` | [docs/security/SECURITY.md](./security/SECURITY.md), [docs/spec-templates/cf-sdlc/PRD/template.md](./spec-templates/cf-sdlc/PRD/template.md), [docs/spec-templates/cf-sdlc/DESIGN/template.md](./spec-templates/cf-sdlc/DESIGN/template.md) | Add explicit security checklists in templates |
+| Security in PRD/DESIGN SDLC templates | [x] `p2` | [docs/security/SECURITY.md](./security/SECURITY.md), [docs/spec-templates/cyberware-sdlc/PRD/template.md](./spec-templates/cyberware-sdlc/PRD/template.md), [docs/spec-templates/cyberware-sdlc/DESIGN/template.md](./spec-templates/cyberware-sdlc/DESIGN/template.md) | Add explicit security checklists in templates |
 
 
 ## 13) Performance & Benchmarking
@@ -160,7 +160,7 @@ Purpose: one concise map of repository artifacts that improve developer + AI pro
 
 | Item | Status / Phase / ID | Implemented (where) | Planned |
 |---|---|---|---|
-| Basic performance requirements | [x] `p1` | [docs/spec-templates/cf-sdlc/PRD/template.md](./spec-templates/cf-sdlc/PRD/template.md), [docs/spec-templates/cf-sdlc/DESIGN/template.md](./spec-templates/cf-sdlc/DESIGN/template.md) | Keep NFR performance criteria mandatory in every feature spec |
+| Basic performance requirements | [x] `p1` | [docs/spec-templates/cyberware-sdlc/PRD/template.md](./spec-templates/cyberware-sdlc/PRD/template.md), [docs/spec-templates/cyberware-sdlc/DESIGN/template.md](./spec-templates/cyberware-sdlc/DESIGN/template.md) | Keep NFR performance criteria mandatory in every feature spec |
 | Optimization guidelines | [x] `p2` | Rust + clippy guidance in [README.md](../README.md), [docs/security/SECURITY.md](./security/SECURITY.md) | Add hotspot optimization playbook |
 | Caching strategies | [ ] `p3` | Scattered examples only | Add standard caching guidance |
 | Performance standards | [ ] `p3` | Partially in architecture manifest/perf checks | Add explicit performance SLO policy |
@@ -246,8 +246,8 @@ Purpose: one concise map of repository artifacts that improve developer + AI pro
 | First contribution guide | [x] `p1` | [CONTRIBUTING.md](../CONTRIBUTING.md) | Add “first good issue” process |
 | Contribution guidelines | [x] `p1` | [CONTRIBUTING.md](../CONTRIBUTING.md) | Keep aligned with CI/review changes |
 | Contributor expectations | [x] `p1` | [CONTRIBUTING.md](../CONTRIBUTING.md) | Add expected turnaround/SLA guidance |
-| Decision records (ADR) | [x] `p1` | [docs/spec-templates/cf-sdlc/ADR/template.md](./spec-templates/cf-sdlc/ADR/template.md), [docs/adrs/](./adrs) | Add ADR index by domain |
-| Design documents | [x] `p1` | [docs/spec-templates/cf-sdlc/DESIGN/template.md](./spec-templates/cf-sdlc/DESIGN/template.md), module docs | Add quality gates for design docs |
+| Decision records (ADR) | [x] `p1` | [docs/spec-templates/cyberware-sdlc/ADR/template.md](./spec-templates/cyberware-sdlc/ADR/template.md), [docs/adrs/](./adrs) | Add ADR index by domain |
+| Design documents | [x] `p1` | [docs/spec-templates/cyberware-sdlc/DESIGN/template.md](./spec-templates/cyberware-sdlc/DESIGN/template.md), module docs | Add quality gates for design docs |
 | Common workflows | [x] `p2` | [Makefile](../Makefile), [tools/scripts/ci.py](../tools/scripts/ci.py), [docs/pr-review/README.md](./pr-review/README.md) | Add workflow cookbook |
 | Anti-patterns | [x] `p2` | [docs/checklists/](./checklists), [tools/dylint_lints/README.md](../tools/dylint_lints/README.md) | Add unified anti-pattern catalog |
 | Common mistakes | [x] `p2` | [tools/dylint_lints/AGENTS.md](../tools/dylint_lints/AGENTS.md) pitfalls, checklists | Add “top mistakes” short guide |

@@ -1,10 +1,10 @@
 # File Parser Module
 
-File parsing module for CyberFabric / ModKit.
+File parsing module for CyberWare / ModKit.
 
 ## Overview
 
-The `cf-file-parser` crate implements the `file-parser` module and registers REST routes.
+The `cyberware-file-parser` crate implements the `file-parser` module and registers REST routes.
 
 All document extraction is handled by a single unified backend — [`kreuzberg =4.9.4`](https://github.com/kreuzberg-dev/kreuzberg) — which replaces the previous per-format library set (`tl`, `pdf-extract`, `calamine`, `pptx-to-md`).
 
@@ -52,7 +52,7 @@ This module depends on [`kreuzberg`](https://github.com/kreuzberg-dev/kreuzberg)
 
 > ℹ️ **EL-2.0 is permitted for this use case.** The `deny.toml` license policy includes
 > an explicit exception for `kreuzberg =4.9.4` with documented rationale:
-> CyberFabric's document parsing is incidental to the platform — it is not sold as a
+> CyberWare's document parsing is incidental to the platform — it is not sold as a
 > standalone document-parsing product competing with kreuzberg.
 >
 > **EL-2.0 key restrictions to be aware of:**

@@ -53,7 +53,7 @@ This plugin has no direct human actors. It is consumed exclusively by the Simple
 
 ## 3. Operational Concept & Environment
 
-The plugin operates within the standard CyberFabric modkit lifecycle. It registers itself as a scoped client in ClientHub with a GTS plugin instance ID, enabling the main module's Storage Router to discover and invoke it. The plugin uses the platform's shared database connection pool managed by modkit-db.
+The plugin operates within the standard CyberWare ModKit lifecycle. It registers itself as a scoped client in ClientHub with a GTS plugin instance ID, enabling the main module's Storage Router to discover and invoke it. The plugin uses the platform's shared database connection pool managed by modkit-db.
 
 ## 4. Scope
 
@@ -156,7 +156,7 @@ The plugin **MUST** store resource group membership data in a dedicated junction
 
 The plugin **MUST** work on PostgreSQL, MariaDB, and SQLite without requiring database-specific configuration or conditional SQL.
 
-**Rationale**: Enables the Simple Resource Registry to run on any CyberFabric deployment target.
+**Rationale**: Enables the Simple Resource Registry to run on any CyberWare deployment target.
 **Actors**: `cpt-cf-srr-rdb-actor-srr-main`
 
 ## 6. Non-Functional Requirements

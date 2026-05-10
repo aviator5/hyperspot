@@ -4,8 +4,8 @@ Simple settings module.
 
 ## Overview
 
-The `cf-simple-user-settings` crate implements the module runtime and storage.
-The public API surface is defined in `cf-simple-user-settings-sdk` and is re-exported here.
+The `cyberware-simple-user-settings` crate implements the module runtime and storage.
+The public API surface is defined in `cyberware-simple-user-settings-sdk` and is re-exported here.
 
 ## Configuration
 

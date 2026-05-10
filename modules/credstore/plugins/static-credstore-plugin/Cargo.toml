@@ -1,12 +1,12 @@
 [package]
-name = "cf-static-credstore-plugin"
+name = "cyberware-static-credstore-plugin"
 version = "0.1.18"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "CredStore plugin with static secret mapping for development and testing"
 repository.workspace = true
-keywords = ["cyberfabric", "cyberfabric-module"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-module"]
 
 [lib]
 name = "static_credstore_plugin"
@@ -16,8 +16,8 @@ workspace = true
 
 [dependencies]
 # Local dependencies
-credstore-sdk = { package = "cf-credstore-sdk", version = "0.1.24", path = "../../credstore-sdk" }
-types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.2.2", path = "../../../system/types-registry/types-registry-sdk" }
+credstore-sdk = { package = "cyberware-credstore-sdk", version = "0.1.24", path = "../../credstore-sdk" }
+types-registry-sdk = { package = "cyberware-types-registry-sdk", version = "0.2.2", path = "../../../system/types-registry/types-registry-sdk" }
 
 # ModKit dependencies
 modkit = { workspace = true }

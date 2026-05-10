@@ -165,7 +165,7 @@ All modules are now on `CanonicalError`. Remove legacy infrastructure and finali
 
 > Traces to: `cpt-cf-errors-fr-schema-drift-prevention`
 
-- [ ] 5.1 Add `cargo-semver-checks` to CI for `cf-modkit-errors` crate
+- [ ] 5.1 Add `cargo-semver-checks` to CI for `cyberware-modkit-errors` crate
 - [ ] 5.2 Export GTS schemas to `schemas/*.json` and add CI step to diff against committed baselines
 - [ ] 5.3 Add `cargo insta test --check` to CI to reject unapproved snapshot changes
 

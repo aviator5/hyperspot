@@ -4,7 +4,7 @@ Outbound API Gateway module. Manages upstreams and routes, enforces auth and rat
 
 ## Overview
 
-The `cf-oagw` module provides:
+The `cyberware-oagw` module provides:
 
 - **Upstream management** — CRUD for external upstream services with alias-based resolution
 - **Route management** — CRUD for routes with HTTP/gRPC match rules, plugins, and rate limits

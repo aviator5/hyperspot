@@ -3262,7 +3262,7 @@ async fn create_child_propagates_gts_timeout_as_service_unavailable() {
 // The `tenants` entity is declared `no_tenant, no_resource, no_owner,
 // no_type` (`entity/tenants.rs`), so a PDP-narrowed permit compiles
 // to `WHERE false` at the secure-extension layer until
-// `InTenantSubtree` lands (cyberfabric-core#1813). The service-level
+// `InTenantSubtree` lands (cyberware-rust#1813). The service-level
 // PEP gate authorizes the caller, but the **repo** call below it
 // must use `AccessScope::allow_all` — otherwise an authorized
 // read/update/soft-delete silently turns into `NotFound` for any

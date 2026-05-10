@@ -4,7 +4,7 @@ System module for service discovery.
 
 ## Overview
 
-The `cf-module-orchestrator` crate implements the `module_orchestrator` module.
+The `cyberware-module-orchestrator` crate implements the `module_orchestrator` module.
 
 It:
 

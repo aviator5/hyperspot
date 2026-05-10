@@ -2,11 +2,11 @@
 
 # AuthZ Resolver
 
-Authorization resolution for CyberFabric — evaluates access requests and produces SQL-compilable constraints.
+Authorization resolution for CyberWare — evaluates access requests and produces SQL-compilable constraints.
 
 ## Overview
 
-The authorization design that CyberFabric operates on is described in [DESIGN.md](../../../docs/arch/authorization/DESIGN.md).
+The authorization design that CyberWare operates on is described in [DESIGN.md](../../../docs/arch/authorization/DESIGN.md).
 The decision to use AuthZEN 1.0 with constraint extensions is documented in
 [ADR-0001](../../../docs/arch/authorization/adr/0001-pdp-pep-authorization-model.md) and
 the split from authentication in [ADR-0002](../../../docs/arch/authorization/adr/0002-split-authn-and-authz-resolvers.md).
@@ -106,7 +106,7 @@ Unknown properties cause the containing constraint to fail. If all constraints f
 
 Plugins implement [`AuthZResolverPluginClient`](authz-resolver-sdk/src/plugin_api.rs) and register via GTS.
 
-CyberFabric includes one plugin out of the box:
+CyberWare includes one plugin out of the box:
 - [`static_authz_plugin`](plugins/static-authz-plugin/) — Tenant-scoped plugin for development and testing (denies access when no valid tenant is resolved)
 
 ## Configuration

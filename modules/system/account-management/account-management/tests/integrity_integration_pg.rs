@@ -40,7 +40,7 @@
 //!
 //! Gated behind `#[cfg(feature = "postgres")]` so the default
 //! `cargo test` run does not require Docker. Enable explicitly:
-//! `cargo test -p cf-account-management --features postgres
+//! `cargo test -p cyberware-account-management --features postgres
 //!  --test integrity_integration_pg`.
 
 #![cfg(feature = "postgres")]

@@ -96,7 +96,7 @@ reason = "Ignore module 'model-registry' (PRD/DESIGN headings need restructuring
 patterns = ["modules/model-registry/*"]
 
 [[systems]]
-name = "cyberfabric"
+name = "cyberware"
 slug = "cf"
 kit = "sdlc"
 

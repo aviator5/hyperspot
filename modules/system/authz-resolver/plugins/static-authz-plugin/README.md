@@ -41,7 +41,7 @@ modules:
 The server binary includes this plugin only when built with the `static-authz` feature:
 
 ```bash
-cargo build --bin cf-server --features static-authz
+cargo build --bin cyberware-server --features static-authz
 ```
 
 The `make example` target enables this feature automatically.

@@ -1,5 +1,5 @@
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware"
 
 modules:
   api-gateway:

@@ -16,7 +16,7 @@ use serde::Deserialize;
 use crate::domain::bootstrap::BootstrapConfig;
 use crate::domain::integrity_check::IntegrityCheckConfig;
 
-/// Module configuration for `cf-account-management`.
+/// Module configuration for `cyberware-account-management`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AccountManagementConfig {

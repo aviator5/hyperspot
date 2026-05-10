@@ -235,7 +235,7 @@ details = """\
 summary = "RalphEx version discovery fix"
 details = """\
 - **Fix: ralphex version discovery** — version regex now accepts semver build metadata suffixes (e.g. `v0.26.2-7a637fa-20260331T171815`), fixing false "incompatible" reports for valid binaries
-- **Fix: ralphex URL references** — updated all ralphex URLs from cyberfabric to umputun
+- **Fix: ralphex URL references** — updated all ralphex URLs from cyberware to umputun
 """
 
 ["v3.6.0-beta"]

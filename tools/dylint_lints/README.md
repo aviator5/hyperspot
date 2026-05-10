@@ -1,6 +1,6 @@
-# CyberFabric Dylint Linters
+# CyberWare Dylint Linters
 
-Custom [dylint](https://github.com/trailofbits/dylint) linters enforcing CyberFabric's architectural patterns, layer separation, and REST API conventions.
+Custom [dylint](https://github.com/trailofbits/dylint) linters enforcing CyberWare's architectural patterns, layer separation, and REST API conventions.
 
 ## Quick Start
 

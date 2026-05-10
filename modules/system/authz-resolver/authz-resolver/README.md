@@ -1,17 +1,17 @@
 # AuthZ Resolver
 
-Main module for authorization in CyberFabric. Discovers AuthZ plugins via GTS types-registry and routes policy evaluation to the selected plugin (PDP).
+Main module for authorization in CyberWare. Discovers AuthZ plugins via GTS types-registry and routes policy evaluation to the selected plugin (PDP).
 
 ## Overview
 
-The `cf-authz-resolver` module provides:
+The `cyberware-authz-resolver` module provides:
 
 - **Plugin discovery** — Finds AuthZ plugins via GTS types-registry
 - **Vendor-based selection** — Selects plugin by vendor and priority
 - **Policy evaluation routing** — Delegates AuthZEN-based evaluation requests to the active PDP plugin
 - **ClientHub integration** — Registers `AuthZResolverClient` for inter-module use
 
-This is a **main module** — it contains no authorization logic itself. All operations are delegated to the active plugin (e.g., `cf-static-authz-plugin` for development, or a custom implementation).
+This is a **main module** — it contains no authorization logic itself. All operations are delegated to the active plugin (e.g., `cyberware-static-authz-plugin` for development, or a custom implementation).
 
 ## Architecture
 
@@ -61,12 +61,12 @@ The module is configured via the server's YAML config. Plugin selection is autom
 
 ## Writing a Plugin
 
-Implement the `AuthZResolverPluginClient` trait from `cf-authz-resolver-sdk` and register it with a GTS instance ID derived from the `AuthZResolverPluginSpecV1` schema.
+Implement the `AuthZResolverPluginClient` trait from `cyberware-authz-resolver-sdk` and register it with a GTS instance ID derived from the `AuthZResolverPluginSpecV1` schema.
 
 ## Testing
 
 ```bash
-cargo test -p cf-authz-resolver
+cargo test -p cyberware-authz-resolver
 ```
 
 ## License

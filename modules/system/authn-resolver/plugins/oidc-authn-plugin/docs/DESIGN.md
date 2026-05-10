@@ -41,7 +41,7 @@ Created:  2026-04-09 by Diffora
 
 ### 1.1 Architectural Vision
 
-The OIDC AuthN Resolver Plugin is a vendor-specific implementation of the AuthN Resolver plugin interface that integrates with any OpenID Connect-compliant Identity Provider (IdP) for authentication. It follows the CyberFabric gateway + plugin pattern: the AuthN Resolver gateway module exposes a minimalist `authenticate()` interface to platform consumers, and the OIDC plugin provides the concrete validation logic behind that interface.
+The OIDC AuthN Resolver Plugin is a vendor-specific implementation of the AuthN Resolver plugin interface that integrates with any OpenID Connect-compliant Identity Provider (IdP) for authentication. It follows the CyberWare gateway + plugin pattern: the AuthN Resolver gateway module exposes a minimalist `authenticate()` interface to platform consumers, and the OIDC plugin provides the concrete validation logic behind that interface.
 
 The plugin handles three core responsibilities: (1) **JWT local validation** — verify JWT access tokens using cached JWKS fetched from the IdP's standard OIDC endpoints; (2) **SecurityContext production** — extract claims from validated tokens using vendor-configurable claim mapping (`jwt.claim_mapping`) and map them to the platform's `SecurityContext` structure; (3) **S2S client credentials exchange** — obtain access tokens via the OAuth2 `client_credentials` grant for module-to-module communication when no incoming HTTP request exists.
 
@@ -58,7 +58,7 @@ C4Context
     Person(user, "User", "Platform user")
     Person(dev, "Developer", "API consumer")
 
-    Enterprise_Boundary(platform, "CyberFabric Platform") {
+    Enterprise_Boundary(platform, "CyberWare Platform") {
         System(gateway, "API Gateway", "HTTP entrypoint")
         System(authn, "AuthN Resolver", "Authentication gateway with OIDC plugin")
         System(modules, "Domain Modules", "PEP-protected services")
@@ -84,7 +84,7 @@ C4Context
 | OIDC auto-configuration | `cpt-cf-authn-plugin-fr-oidc-discovery`, `cpt-cf-authn-plugin-fr-jwks-caching` | OIDC Discovery component fetches and caches the IdP's `.well-known/openid-configuration` to resolve `jwks_uri` and `token_endpoint` dynamically. |
 | First-party vs third-party app detection | `cpt-cf-authn-plugin-fr-first-party-detection` | Claim Mapper checks `client_id`/`azp` against a configured first-party clients list. First-party apps receive unrestricted scopes (`["*"]`); third-party apps receive only their granted scopes. |
 | S2S client credentials exchange | `cpt-cf-authn-plugin-fr-s2s-exchange`, `cpt-cf-authn-plugin-fr-s2s-caching` | Token Client component implements OAuth2 `client_credentials` grant (RFC 6749 §4.4) for service-to-service authentication, with token caching and IdP endpoint resolution. |
-| Plugin discovery and registration | `cpt-cf-authn-plugin-fr-clienthub-registration` | Plugin registers with CyberFabric ClientHub using GTS schema identity for vendor-based selection and priority-based fallback. |
+| Plugin discovery and registration | `cpt-cf-authn-plugin-fr-clienthub-registration` | Plugin registers with CyberWare ClientHub using GTS schema identity for vendor-based selection and priority-based fallback. |
 | Resilience & timeouts | `cpt-cf-authn-plugin-fr-request-timeout`, `cpt-cf-authn-plugin-fr-retry-policy`, `cpt-cf-authn-plugin-fr-circuit-breaker` | HTTP Client component applies `http_client.request_timeout` per attempt and retries transient failures (connection errors, 5xx, 429) with exponential backoff + jitter per `retry_policy`. Circuit Breaker component keys state by outbound HTTP host and honors the global `circuit_breaker.enabled` toggle. Retries run **inside** the breaker call so one logical operation equals one breaker attempt. |
 
 #### NFR Allocation
@@ -164,7 +164,7 @@ Tenant identity is carried as a custom claim in every access token. The claim na
 
 The gateway exposes a single `authenticate(bearer_token)` method and a single `exchange_client_credentials(request)` method. Plugin-internal complexity (JWKS caching, key rotation, discovery, claim mapping) is hidden from consumers. This keeps the contract simple, easy to mock in tests, and decoupled from IdP-specific details.
 
-**ADRs**: CyberFabric ADR 0003 — AuthN Resolver Minimalist Interface
+**ADRs**: CyberWare ADR 0003 — AuthN Resolver Minimalist Interface
 
 **Principle conflict resolution**: No conflicts exist among the current five principles. JWT-First and Fail-Closed are complementary — JWT-First defines the happy path optimization, Fail-Closed defines the error behavior. If future design decisions create tension, Fail-Closed takes precedence as the foundational security commitment.
 
@@ -198,7 +198,7 @@ The plugin is identified by a chained GTS schema ID: `gts.cf.core.modkit.plugin.
 
 - [ ] `p2` - **ID**: `cpt-cf-authn-plugin-constraint-clienthub`
 
-The plugin registers `dyn AuthNResolverPluginClient` with CyberFabric ClientHub using `ClientScope::gts_id()` derived from the plugin's GTS schema ID. The gateway resolves the active plugin at runtime via ClientHub lookup, supporting vendor-based explicit selection and priority-based fallback when multiple plugins are registered.
+The plugin registers `dyn AuthNResolverPluginClient` with CyberWare ClientHub using `ClientScope::gts_id()` derived from the plugin's GTS schema ID. The gateway resolves the active plugin at runtime via ClientHub lookup, supporting vendor-based explicit selection and priority-based fallback when multiple plugins are registered.
 
 **ADRs**: Platform convention — ClientHub registration defined by ModKit plugin framework.
 
@@ -214,7 +214,7 @@ This plugin validates only JWT access tokens. Opaque tokens (non-JWT bearer toke
 
 - [ ] `p2` - **ID**: `cpt-cf-authn-plugin-constraint-no-authz`
 
-The plugin does not evaluate allow/deny decisions, interpret authorization policies, or generate SQL predicates for tenant scoping. These responsibilities belong to AuthZ Resolver, Tenant Resolver, and the CyberFabric framework respectively. The plugin's output (`SecurityContext`) is input to the AuthZ pipeline.
+The plugin does not evaluate allow/deny decisions, interpret authorization policies, or generate SQL predicates for tenant scoping. These responsibilities belong to AuthZ Resolver, Tenant Resolver, and the CyberWare framework respectively. The plugin's output (`SecurityContext`) is input to the AuthZ pipeline.
 
 **ADRs**: [ADR 0002: Split AuthN and AuthZ Resolvers](../../../../../../docs/arch/authorization/ADR/0002-split-authn-authz-resolvers.md).
 
@@ -427,7 +427,7 @@ Does not validate JWT signatures. Does not fetch JWKS or interact with the IdP. 
 | `jwt.claim_mapping.subject_type` | string | — (vendor-specific, no default) | Claim name for subject type (e.g., `"user_type"`, `"sub_type"`) |
 | `jwt.claim_mapping.subject_tenant_id` | string | — (vendor-specific, e.g., `"tenant_id"`, `"org_id"`, `"account_id"`) | Claim name for subject's tenant ID |
 | `jwt.claim_mapping.token_scopes` | string | `"scope"` | Claim name for token scopes (can be `"permissions"`, `"scp"`) |
-| `jwt.first_party_clients` | string[] | — | Client IDs considered first-party (platform extension — not in CyberFabric reference) |
+| `jwt.first_party_clients` | string[] | — | Client IDs considered first-party (platform extension — not in CyberWare reference) |
 | `jwt.required_claims` | string[] | — | Additional claims that must be present beyond the always-required `subject_id` and `subject_tenant_id`. Tokens missing any listed claim are rejected with `Unauthorized("missing {claim}")`. |
 
 **Operations**:
@@ -689,7 +689,7 @@ Implemented by each vendor-specific plugin (this OIDC plugin, the static dev plu
 
 #### Plugin Registration & Discovery
 
-The OIDC plugin integrates with CyberFabric's plugin framework using GTS identifiers, ClientHub registration, and vendor-based selection.
+The OIDC plugin integrates with CyberWare's plugin framework using GTS identifiers, ClientHub registration, and vendor-based selection.
 
 **GTS Identity**:
 
@@ -1320,8 +1320,8 @@ The plugin is stateless. Recovery after restart consists of: (1) re-fetching OID
 - **PRD**: [`PRD.md`](PRD.md)
 - **ADRs**: No standalone ADRs for this plugin — key decisions documented in Principles/Constraints sections above.
 - **Plugin Design Authority**: This document is the authoritative OIDC AuthN plugin design: configuration schema, JWT validation flow, claim mapping, caching strategy, S2S flow, and error handling.
-- **CyberFabric Architecture References**:
-  - [CyberFabric Auth Design](../../../../../../docs/arch/authorization/DESIGN.md) — Gateway + Plugin architecture, AuthN/AuthZ separation, SecurityContext structure, Token Scopes
+- **CyberWare Architecture References**:
+  - [CyberWare Auth Design](../../../../../../docs/arch/authorization/DESIGN.md) — Gateway + Plugin architecture, AuthN/AuthZ separation, SecurityContext structure, Token Scopes
   - [ADR 0002: Split AuthN and AuthZ Resolvers](../../../../../../docs/arch/authorization/ADR/0002-split-authn-authz-resolvers.md)
   - [ADR 0003: AuthN Resolver Minimalist Interface](../../../../../../docs/arch/authorization/ADR/0003-authn-resolver-minimalist-interface.md)
 - **Standards**:

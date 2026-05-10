@@ -16,18 +16,18 @@ use std::sync::Arc;
 use common::{make_ctx, make_group_service, make_membership_service, test_db};
 use uuid::Uuid;
 
-use cf_resource_group::domain::seeding::{
+use cyberware_resource_group::domain::seeding::{
     GroupSeedDef, MembershipSeedDef, seed_groups, seed_memberships, seed_types,
 };
-use cf_resource_group::domain::type_service::TypeService;
-use cf_resource_group::infra::storage::entity::gts_type::{
+use cyberware_resource_group::domain::type_service::TypeService;
+use cyberware_resource_group::infra::storage::entity::gts_type::{
     Column as TypeColumn, Entity as TypeEntity,
 };
-use cf_resource_group::infra::storage::entity::resource_group::Entity as GroupEntity;
-use cf_resource_group::infra::storage::entity::resource_group_membership::{
+use cyberware_resource_group::infra::storage::entity::resource_group::Entity as GroupEntity;
+use cyberware_resource_group::infra::storage::entity::resource_group_membership::{
     Column as MbrColumn, Entity as MbrEntity,
 };
-use cf_resource_group::infra::storage::type_repo::TypeRepository;
+use cyberware_resource_group::infra::storage::type_repo::TypeRepository;
 use modkit_db::secure::SecureEntityExt;
 use modkit_security::AccessScope;
 use resource_group_sdk::CreateTypeRequest;

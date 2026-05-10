@@ -93,7 +93,7 @@ See [PRD.md](./PRD.md) section 1 "Overview" — Key Problems Solved:
 | `cpt-cf-llm-gateway-adr-file-storage` | FileStorage for all media handling |
 | `cpt-cf-llm-gateway-adr-circuit-breaking` | Circuit breaking at OAGW + health-based routing at Gateway |
 | `cpt-cf-llm-gateway-adr-open-responses-protocol` | Open Responses protocol for LLM completion requests |
-| `cpt-cf-llm-gateway-adr-image-generation-api` | Responses API with custom CyberFabric extensions for image generation |
+| `cpt-cf-llm-gateway-adr-image-generation-api` | Responses API with custom CyberWare extensions for image generation |
 | `cpt-cf-llm-gateway-adr-no-stored-responses` | No support for `store=true` or `previous_response_id` — stateless design preserved |
 
 ### 1.3 Architecture Layers
@@ -215,9 +215,9 @@ Bidirectional items (used as both input context and output):
 Output-oriented items (model → consumer):
 - MessageOutput — Model message (type: "message", id, status, role: user | assistant | system | developer, content: OutputContentPart[])
 - ReasoningOutput — Model reasoning (type: "reasoning", id, summary, content: ReasoningText[] | null, encrypted_content)
-- DataOutput — CyberFabric extension: binary data output (type: "cyberfabric:data", id, status: in_progress | completed, mime_type, base64: string | null, url: string | null). Generic binary output item used for image generation and extensible to audio/video. See [ADR-0006](./ADR/0006-cpt-cf-llm-gateway-adr-image-generation-api.md).
+- DataOutput — CyberWare extension: binary data output (type: "cybeware:data", id, status: in_progress | completed, mime_type, base64: string | null, url: string | null). Generic binary output item used for image generation and extensible to audio/video. See [ADR-0006](./ADR/0006-cpt-cf-llm-gateway-adr-image-generation-api.md).
 
-Provider-specific items use extension format: `{provider_slug}:{item_type}` (e.g., `openai:web_search_call`). CyberFabric extensions use the `cyberfabric:` prefix (e.g., `cyberfabric:data`).
+Provider-specific items use extension format: `{provider_slug}:{item_type}` (e.g., `openai:web_search_call`). CyberWare extensions use the `cyberfabric:` prefix (e.g., `cyberfabric:data`).
 
 *Content Parts (`content/`):*
 
@@ -239,12 +239,12 @@ Annotations:
 
 *Tools (`tools/`):*
 
-Tool definitions share a single base type (`Tool`) with GTS type inheritance, discriminated by `type` field. The Open Responses `function` tool type is the standard. Gateway extends with CyberFabric-specific tool types for GTS Type Registry integration.
+Tool definitions share a single base type (`Tool`) with GTS type inheritance, discriminated by `type` field. The Open Responses `function` tool type is the standard. Gateway extends with CyberWare-specific tool types for GTS Type Registry integration.
 
 - FunctionTool — Function definition (type: "function", name, description, parameters: JSONSchema, strict: boolean). Open Responses standard.
-- ToolReference — CyberFabric extension: reference to Type Registry (type: "reference", schema_id). Gateway resolves schema_id via Type Registry before forwarding to provider.
-- ToolInlineGTS — CyberFabric extension: inline GTS schema (type: "inline_gts", schema). Gateway resolves GTS schema to JSON Schema before forwarding.
-- ImageGenerationTool — CyberFabric extension: built-in image generation tool (type: "cyberfabric:image_generation"). Follows the Open Responses hosted tool extension format. Parameters: aspect_ratio (1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9), resolution (megapixels: 0.5, 1, 2, 4), quality (low, medium, high, auto), output_format (png, jpeg, webp), output_compression (0–100, for jpeg), response_format (base64, url). See [ADR-0006](./ADR/0006-cpt-cf-llm-gateway-adr-image-generation-api.md).
+- ToolReference — CyberWare extension: reference to Type Registry (type: "reference", schema_id). Gateway resolves schema_id via Type Registry before forwarding to provider.
+- ToolInlineGTS — CyberWare extension: inline GTS schema (type: "inline_gts", schema). Gateway resolves GTS schema to JSON Schema before forwarding.
+- ImageGenerationTool — CyberWare extension: built-in image generation tool (type: "cyberfabric:image_generation"). Follows the Open Responses hosted tool extension format. Parameters: aspect_ratio (1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9), resolution (megapixels: 0.5, 1, 2, 4), quality (low, medium, high, auto), output_format (png, jpeg, webp), output_compression (0–100, for jpeg), response_format (base64, url). See [ADR-0006](./ADR/0006-cpt-cf-llm-gateway-adr-image-generation-api.md).
 
 Tool control:
 - tool_choice: "auto" (default) | "required" | "none" | {type: "function", name: string}
@@ -324,7 +324,7 @@ graph TB
    - Provider-specific request/response translation
  - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-component-hook-plugin`
    - Hook Plugin
-   - Pre-call and post-response interception following CyberFabric plugin architecture. Multiple plugins can be enabled and are invoked in order. Pre-call plugins can modify or block requests before the provider adapter. Post-call plugins run after the full response is available (after streaming completes, or after async/batch job finishes) and are observe-only — the response has already been delivered or is delivered unconditionally, so plugin outcome has no effect on response delivery.
+   - Pre-call and post-response interception following CyberWare plugin architecture. Multiple plugins can be enabled and are invoked in order. Pre-call plugins can modify or block requests before the provider adapter. Post-call plugins run after the full response is available (after streaming completes, or after async/batch job finishes) and are observe-only — the response has already been delivered or is delivered unconditionally, so plugin outcome has no effect on response delivery.
  - [ ] `p1` - **ID**: `cpt-cf-llm-gateway-component-quota-manager`
    - Quota Manager
    - Pre-request AI credit quota checks (pending: specific component to be determined — see PRD Open Questions)
@@ -512,8 +512,8 @@ Event types:
 | `response.function_call_arguments.delta` | Function call arguments delta (incremental JSON) |
 | `response.reasoning_summary_part.added` | Reasoning summary part started |
 | `response.reasoning_summary_part.done` | Reasoning summary part completed |
-| `cyberfabric:response.data.in_progress` | CyberFabric extension: binary data output item started processing (e.g., image generation in progress) |
-| `cyberfabric:response.data.done` | CyberFabric extension: binary data output item completed with final data (base64 or URL) |
+| `cyberfabric:response.data.in_progress` | CyberWare extension: binary data output item started processing (e.g., image generation in progress) |
+| `cyberfabric:response.data.done` | CyberWare extension: binary data output item completed with final data (base64 or URL) |
 
 Format:
 
@@ -552,7 +552,7 @@ Key streaming semantics:
 - Item lifecycle: added → content deltas → done
 - Response lifecycle: created → queued → in_progress → completed | failed | incomplete
 - Provider-specific streaming events use extension format: `{provider_slug}:{event_type}`
-- CyberFabric extension events use `cyberfabric:` prefix: `cyberfabric:response.data.in_progress` (binary output started), `cyberfabric:response.data.done` (binary output completed with data)
+- CyberWare extension events use `cyberfabric:` prefix: `cyberfabric:response.data.in_progress` (binary output started), `cyberfabric:response.data.done` (binary output completed with data)
 
 **Streaming-specific constraints**:
 - **No provider fallback after first delta**: Provider fallback (see `cpt-cf-llm-gateway-seq-provider-fallback-v1`) is only attempted before streaming begins. Once any delta event has been sent to the consumer, the stream is committed to the current provider — switching providers mid-stream is not possible.
@@ -563,7 +563,7 @@ Key streaming semantics:
 
 **ID**: `cpt-cf-llm-gateway-interface-hook-plugin-sdk-v1`
 
-**Technology**: ModKit SDK trait (`LlmGatewayHookPluginClient`), resolved via ClientHub scoped clients following CyberFabric plugin architecture (see `docs/MODKIT_PLUGINS.md`)
+**Technology**: ModKit SDK trait (`LlmGatewayHookPluginClient`), resolved via ClientHub scoped clients following CyberWare plugin architecture (see `docs/MODKIT_PLUGINS.md`)
 
 **GTS Schema ID**: `gts.cf.core.modkit.plugin.v1~x.llmgw.hook_plugin.v1~`
 
@@ -1430,7 +1430,7 @@ Gateway integrates with external LLM providers exclusively through Outbound API 
 
 #### Operations
 
-Infrastructure concerns (deployment, health checks, distributed tracing) are handled by the CyberFabric platform. Gateway defines module-level OpenTelemetry metrics (section 3.6) covering request lifecycle, provider interactions, fallback events, streaming state, hook actions, budget operations, schema validation outcomes, and time-to-first-token latency (NFR `cpt-cf-llm-gateway-nfr-observability-v1`). Structured audit events are emitted via the Audit Module (`cpt-cf-llm-gateway-fr-audit-events-v1`).
+Infrastructure concerns (deployment, health checks, distributed tracing) are handled by the CyberWare middleware. Gateway defines module-level OpenTelemetry metrics (section 3.6) covering request lifecycle, provider interactions, fallback events, streaming state, hook actions, budget operations, schema validation outcomes, and time-to-first-token latency (NFR `cpt-cf-llm-gateway-nfr-observability-v1`). Structured audit events are emitted via the Audit Module (`cpt-cf-llm-gateway-fr-audit-events-v1`).
 
 #### Maintainability
 

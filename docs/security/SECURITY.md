@@ -367,7 +367,7 @@ The project uses `aws-lc-rs` (via `rustls`) as its primary TLS cryptographic bac
 **FIPS-140-3 support:** the application can be built with FIPS-140-3 approved cryptography by enabling the `fips` feature flag:
 
 ```sh
-cargo build -p cf-server --features fips
+cargo build -p cyberware-server --features fips
 ```
 
 This switches the underlying cryptographic module from `aws-lc-sys` to `aws-lc-fips-sys` — the FIPS-validated AWS-LC module (NIST Certificate #4816). At startup, the FIPS crypto provider is installed as the process-wide default before any TLS, database, JWT, or other cryptographic operations occur. Runtime assertions verify that TLS configurations are operating in FIPS mode; the application fails fast if FIPS mode is expected but not active.
@@ -420,7 +420,7 @@ Multiple automated scanners run on every pull request and/or on schedule:
 | **[Aikido](https://www.aikido.dev/)** | Application security posture management | Configured at repository/organization level |
 
 The OpenSSF Scorecard badge is displayed in the project README:
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cyberfabric/cyberfabric-core/badge)](https://scorecard.dev/viewer/?uri=github.com/cyberfabric/cyberfabric-core)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cyberfabric/cyberware-rust/badge)](https://scorecard.dev/viewer/?uri=github.com/cyberfabric/cyberware-rust)
 
 ## 12. PR Review Bots
 
@@ -434,7 +434,7 @@ Every pull request is reviewed by automated bots before human review:
 
 ## 13. Specification Templates & SDLC
 
-> Source: [`docs/spec-templates/`](../spec-templates/) · [`docs/spec-templates/cf-sdlc/`](../spec-templates/cf-sdlc/)
+> Source: [`docs/spec-templates/`](../spec-templates/) · [`docs/spec-templates/cyberware-sdlc/`](../spec-templates/cyberware-sdlc/)
 
 Cyber Fabric follows a **spec-driven development** lifecycle where PRD and DESIGN documents are written before implementation. Security is addressed at multiple points:
 

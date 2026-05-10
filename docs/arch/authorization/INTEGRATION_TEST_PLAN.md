@@ -3,7 +3,7 @@
 
 # AuthZ + Resource Group Integration Test Plan
 
-Design-time test plan for verifying the RG ↔ AuthZ interaction locally in cf-server. Covers three phases: tenant scoping (`p1`), group-based predicates (`p1`), and MTLS bypass (`p2` — deferred, not implemented yet).
+Design-time test plan for verifying the RG ↔ AuthZ interaction locally in cyberware-server. Covers three phases: tenant scoping (`p1`), group-based predicates (`p1`), and MTLS bypass (`p2` — deferred, not implemented yet).
 
 For background on how AuthZ uses RG data, see [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md). For concrete SQL-level scenarios, see [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md) scenarios S14–S21.
 
@@ -52,8 +52,8 @@ Follows existing project conventions: `testing/e2e/modules/{module}/` for HTTP-l
 
 ```bash
 docker run -d --name rg-postgres \
-  -e POSTGRES_USER=cyberfabric \
-  -e POSTGRES_PASSWORD=cyberfabric \
+  -e POSTGRES_USER=cyberware \
+  -e POSTGRES_PASSWORD=cyberware \
   -e POSTGRES_DB=resource_group \
   -p 5433:5432 postgres:16-alpine
 ```
@@ -66,7 +66,7 @@ In `config/quickstart.yaml`, the resource-group module requires PostgreSQL:
 modules:
   resource-group:
     database:
-      dsn: "postgres://cyberfabric:cyberfabric@127.0.0.1:5433/resource_group"
+      dsn: "postgres://cyberware:cyberware@127.0.0.1:5433/resource_group"
       pool:
         max_conns: 5
         acquire_timeout: "30s"
@@ -77,10 +77,10 @@ modules:
 
 ```bash
 # Without AuthZ (dev mode, auth_disabled: true)
-cargo run --bin cf-server -- --config config/quickstart.yaml run
+cargo run --bin cyberware-server -- --config config/quickstart.yaml run
 
 # With AuthZ (auth_disabled: false + static plugins)
-cargo run --bin cf-server \
+cargo run --bin cyberware-server \
   --features static-authn,static-authz \
   -- --config config/quickstart.yaml run
 ```
@@ -89,7 +89,7 @@ cargo run --bin cf-server \
 
 ```bash
 # Rust integration tests (no server/DB required)
-cargo test -p cf-resource-group --test authz_integration_test --test tenant_scoping_test
+cargo test -p cyberware-resource-group --test authz_integration_test --test tenant_scoping_test
 
 # E2E tests (requires running server + PostgreSQL)
 E2E_BASE_URL=http://localhost:8087 pytest testing/e2e/modules/resource_group/ -v

@@ -1,10 +1,10 @@
 # ModKit Canonical Errors
 
-Canonical error types for CyberFabric modules, based on the [Google AIP-193](https://google.aip.dev/193) error model.
+Canonical error types for CyberWare modules, based on the [Google AIP-193](https://google.aip.dev/193) error model.
 
 ## Overview
 
-The `cf-modkit-canonical-errors` crate provides:
+The `cyberware-modkit-canonical-errors` crate provides:
 
 - `CanonicalError` – a structured error type with category, message, and rich context
 - `resource_error!` – a macro for declaring resource-scoped error types with generated constructors

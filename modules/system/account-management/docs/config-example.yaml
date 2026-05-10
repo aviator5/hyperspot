@@ -6,7 +6,7 @@
 #   - PRD.md  (depth-threshold semantics, retention defaults)
 #   - features/feature-tenant-hierarchy-management.md (retention + reaper pipelines)
 #
-# Schema source of truth: cf-account-management `crate::config::AccountManagementConfig`.
+# Schema source of truth: cyberware-account-management `crate::config::AccountManagementConfig`.
 # The struct is split into sub-sections (`listing`, `hierarchy`, `retention`,
 # `reaper`, `idp`) so related knobs travel together. Defaults below match
 # `Default::default()` and `validate()` rejects `0` / out-of-range values for

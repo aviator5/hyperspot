@@ -51,7 +51,7 @@ STANDARDS ALIGNMENT:
 
 ## Context and Problem Statement
 
-The serverless-runtime module has two legitimate places to put execution-tier concerns — invocation lifecycle, scheduling, event-triggered dispatch, durable timers, checkpoint persistence, and retry orchestration. The recent DESIGN.md rewrite (PR [#1279](https://github.com/cyberfabric/cyberfabric-core/pull/1279), commit [`1a5ae2b7`](https://github.com/cyberfabric/cyberfabric-core/commit/1a5ae2b7), merged as [`efdef7d0`](https://github.com/cyberfabric/cyberfabric-core/commit/efdef7d0)) places these in a stateful host module (`sless-orchestrator`) and exposes them to runtime plugins through an `ExecutionContext` callback surface, with plugins declaring an `autonomous` capability to bypass that surface when their backend brings its own durability.
+The serverless-runtime module has two legitimate places to put execution-tier concerns — invocation lifecycle, scheduling, event-triggered dispatch, durable timers, checkpoint persistence, and retry orchestration. The recent DESIGN.md rewrite (PR [#1279](https://github.com/cyberfabric/cyberware-rust/pull/1279), commit [`1a5ae2b7`](https://github.com/cyberfabric/cyberware-rust/commit/1a5ae2b7), merged as [`efdef7d0`](https://github.com/cyberfabric/cyberware-rust/commit/efdef7d0)) places these in a stateful host module (`sless-orchestrator`) and exposes them to runtime plugins through an `ExecutionContext` callback surface, with plugins declaring an `autonomous` capability to bypass that surface when their backend brings its own durability.
 
 This ADR revisits that boundary and asks: for the set of runtime backends this platform is actually committed to — or will plausibly add — does host-owned orchestration pay for itself, or is its shape driven by one backend class at a cost to every other backend?
 
@@ -174,9 +174,9 @@ A stateful `sless-orchestrator` module owns Registry, Invocation Engine, Schedul
 ## More Information
 
 **PR 1279 reference**:
-- Pull request: https://github.com/cyberfabric/cyberfabric-core/pull/1279
-- Source commit: [`1a5ae2b7`](https://github.com/cyberfabric/cyberfabric-core/commit/1a5ae2b7) — `docs(serverless-runtime): GTS renames, sibling type hierarchy, schema fixes`
-- Merge commit: [`efdef7d0`](https://github.com/cyberfabric/cyberfabric-core/commit/efdef7d0)
+- Pull request: https://github.com/cyberfabric/cyberware-rust/pull/1279
+- Source commit: [`1a5ae2b7`](https://github.com/cyberfabric/cyberware-rust/commit/1a5ae2b7) — `docs(serverless-runtime): GTS renames, sibling type hierarchy, schema fixes`
+- Merge commit: [`efdef7d0`](https://github.com/cyberfabric/cyberware-rust/commit/efdef7d0)
 
 **Evidence that Option B expects its primary backend to bypass its own callback surface**: current DESIGN.md (post-merge of PR 1279) states in its discussion of adapter behaviour by type that autonomous adapters such as Temporal may bypass `ExecutionContext` in favour of their own infrastructure. Option C takes that observation as the premise for a simpler boundary: if the adapter is autonomous anyway, no callback surface needs to exist.
 

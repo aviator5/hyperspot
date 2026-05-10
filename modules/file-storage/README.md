@@ -1,6 +1,6 @@
 # FileStorage
 
-Universal file storage and management service for the CyberFabric platform.
+Universal file storage and management service for the CyberWare middleware.
 
 ## Overview
 
@@ -23,7 +23,7 @@ modules and users. It replaces ad-hoc per-module file handling with a centralize
 | Actor               | Description                                                                   |
 |---------------------|-------------------------------------------------------------------------------|
 | Platform User       | Authenticated user managing files via UI or API                               |
-| CyberFabric Modules | Any module requiring file operations (e.g., LLM Gateway, document management) |
+| CyberWare Modules | Any module requiring file operations (e.g., LLM Gateway, document management) |
 
 ### Dependencies
 

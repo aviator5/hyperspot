@@ -25,11 +25,11 @@ use modkit_db::{DBProvider, DbError};
 use modkit_odata::ODataQuery;
 use modkit_security::pep_properties;
 
-use cf_resource_group::domain::group_service::{GroupService, QueryProfile};
-use cf_resource_group::domain::type_service::TypeService;
-use cf_resource_group::infra::storage::group_repo::GroupRepository;
-use cf_resource_group::infra::storage::membership_repo::MembershipRepository;
-use cf_resource_group::infra::storage::type_repo::TypeRepository;
+use cyberware_resource_group::domain::group_service::{GroupService, QueryProfile};
+use cyberware_resource_group::domain::type_service::TypeService;
+use cyberware_resource_group::infra::storage::group_repo::GroupRepository;
+use cyberware_resource_group::infra::storage::membership_repo::MembershipRepository;
+use cyberware_resource_group::infra::storage::type_repo::TypeRepository;
 
 use common::{make_ctx, test_db};
 
@@ -446,7 +446,7 @@ async fn group_based_in_group_predicate_produces_combined_scope() {
     let scope = enforcer
         .access_scope(
             &ctx,
-            &cf_resource_group::domain::group_service::RG_GROUP_RESOURCE,
+            &cyberware_resource_group::domain::group_service::RG_GROUP_RESOURCE,
             "list",
             None,
         )
@@ -555,13 +555,14 @@ async fn group_based_membership_data_correctly_stored() {
     // Add memberships via MembershipService (with PolicyEnforcer)
     let authz: Arc<dyn AuthZResolverClient> = Arc::new(TenantScopingAuthZ);
     let enforcer = PolicyEnforcer::new(authz);
-    let membership_svc = cf_resource_group::domain::membership_service::MembershipService::new(
-        db.clone(),
-        enforcer,
-        Arc::new(GroupRepository),
-        Arc::new(TypeRepository),
-        Arc::new(MembershipRepository),
-    );
+    let membership_svc =
+        cyberware_resource_group::domain::membership_service::MembershipService::new(
+            db.clone(),
+            enforcer,
+            Arc::new(GroupRepository),
+            Arc::new(TypeRepository),
+            Arc::new(MembershipRepository),
+        );
 
     // task-001, task-002 → ProjectA
     membership_svc

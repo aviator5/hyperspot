@@ -1,10 +1,10 @@
 # ModKit Security
 
-Security context and authorization primitives for CyberFabric / ModKit.
+Security context and authorization primitives for CyberWare / ModKit.
 
 ## Overview
 
-The `cf-modkit-security` crate provides:
+The `cyberware-modkit-security` crate provides:
 
 - `SecurityContext`
 - `AccessScope`

@@ -106,7 +106,7 @@ Included in `oagw` crate (`infra/plugin/`):
 Separate modkit modules implementing plugin traits:
 
 ```rust
-// cf-oagw-plugin-oauth2-pkce/src/lib.rs
+// cyberware-oagw-plugin-oauth2-pkce/src/lib.rs
 
 pub struct OAuth2PkceAuthPlugin {
     // ...

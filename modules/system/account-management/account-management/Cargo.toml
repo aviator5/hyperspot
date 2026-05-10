@@ -1,12 +1,12 @@
 [package]
-name = "cf-account-management"
+name = "cyberware-account-management"
 version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Account Management module — tenant hierarchy storage floor"
 repository.workspace = true
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["web-programming"]
 
 [lib]

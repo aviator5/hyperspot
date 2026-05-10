@@ -2,13 +2,13 @@
 
 # Resource Group Model — AuthZ Perspective
 
-This document describes how CyberFabric's authorization system uses Resource Groups (RG) for access control. For the full RG module design (domain model, API contracts, database schemas, type system), see [RG Technical Design](../../../modules/system/resource-group/docs/DESIGN.md).
+This document describes how CyberWare's authorization system uses Resource Groups (RG) for access control. For the full RG module design (domain model, API contracts, database schemas, type system), see [RG Technical Design](../../../modules/system/resource-group/docs/DESIGN.md).
 
 ---
 
 ## Overview
 
-CyberFabric uses **resource groups** as an optional organizational layer for grouping resources. The primary purpose from the AuthZ perspective is **access control** — granting permissions at the group level rather than per-resource.
+CyberWare uses **resource groups** as an optional organizational layer for grouping resources. The primary purpose from the AuthZ perspective is **access control** — granting permissions at the group level rather than per-resource.
 
 ```
 Tenant T1

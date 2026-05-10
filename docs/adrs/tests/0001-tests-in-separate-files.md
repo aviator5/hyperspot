@@ -16,7 +16,7 @@ decision-makers: ffedoroff, Artifizer
 
 ## Context and Problem Statement
 
-Rust modules in the cyberfabric-core monorepo contain inline `#[cfg(test)] mod tests { ... }` blocks that mix production and test code in the same file. As modules grow, these inline test blocks cause large files (500+ lines of tests alongside production code), inaccurate LOC metrics, noisy PR diffs, and harder navigation for both humans and LLMs. Should the project adopt a stricter convention than the Rust Book default?
+Rust modules in the cyberware-rust monorepo contain inline `#[cfg(test)] mod tests { ... }` blocks that mix production and test code in the same file. As modules grow, these inline test blocks cause large files (500+ lines of tests alongside production code), inaccurate LOC metrics, noisy PR diffs, and harder navigation for both humans and LLMs. Should the project adopt a stricter convention than the Rust Book default?
 
 ## Decision Drivers
 

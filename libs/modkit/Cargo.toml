@@ -1,5 +1,5 @@
 [package]
-name = "cf-modkit"
+name = "cyberware-modkit"
 version = "0.6.10"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Core ModKit library"
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-modkit"]
+keywords = ["cyberfabric", "cyberware", "cyberware-modkit"]
 categories = ["development-tools"]
 
 [lib]
@@ -42,7 +42,7 @@ preview-outbox = ["db", "modkit-db/preview-outbox"]
 bootstrap = [
     "db",
     "dep:serde-saphyr",
-    "cf-system-sdks/directory_grpc",
+    "cyberware-system-sdks/directory_grpc",
     "dep:tracing-appender",
     "dep:file-rotate",
     "dep:tracing-log",
@@ -63,7 +63,7 @@ modkit-db = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }
 modkit-odata = { workspace = true }
 modkit-sdk = { workspace = true }
-cf-system-sdks = { workspace = true, features = ["directory"] }
+cyberware-system-sdks = { workspace = true, features = ["directory"] }
 
 # Core deps
 anyhow = { workspace = true }

@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: cyberfabric-mini-chat
+  repository: cybeware-mini-chat
   tag: latest
   pullPolicy: Never
 

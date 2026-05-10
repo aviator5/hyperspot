@@ -820,7 +820,7 @@ Prompt caching mitigates tool loop re-send cost (~10% for cached content).
 
 ## 14. Verification
 
-1. `cargo test -p cf-mini-chat` — all new tests pass
+1. `cargo test -p cyberware-mini-chat` — all new tests pass
 2. `make dev-clippy && make dev-fmt`
 3. **E2E Anthropic Platform:** text streaming → web_search → upload file → search_files → load_files → code_execution with file → images
 4. **E2E Microsoft Foundry:** same flow (Files API beta)

@@ -1,5 +1,5 @@
 [package]
-name = "cf-mini-chat-sdk"
+name = "cyberware-mini-chat-sdk"
 description = "SDK for mini-chat: policy plugin traits, models, and errors"
 version = "0.10.6"
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-modules"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-modules"]
 categories = ["artificial-intelligence"]
 
 

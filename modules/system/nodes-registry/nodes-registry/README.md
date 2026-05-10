@@ -1,10 +1,10 @@
 # Nodes Registry Module
 
-Node inventory and node system information for CyberFabric.
+Node inventory and node system information for CyberWare
 
 ## Overview
 
-The `cf-nodes-registry` crate implements the `nodes_registry` module.
+The `cyberware-nodes-registry` crate implements the `nodes_registry` module.
 
 The module manages node information (host/VM/container) and provides REST endpoints to:
 

@@ -1,10 +1,10 @@
 # ModKit DB
 
-Database abstractions for CyberFabric / ModKit with optional SeaORM integration.
+Database abstractions for CyberWare / ModKit with optional SeaORM integration.
 
 ## Overview
 
-The `cf-modkit-db` crate provides:
+The `cyberware-modkit-db` crate provides:
 
 - Typed database configuration / connection options
 - SQLx backend support (SQLite / Postgres / MySQL via features)

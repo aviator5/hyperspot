@@ -1,5 +1,5 @@
 [package]
-name = "cf-modkit-errors"
+name = "cyberware-modkit-errors"
 version = "0.7.0"
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "ModKit errors library"
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-modkit"]
+keywords = ["cyberfabric", "cyberware", "cyberware-modkit"]
 categories = ["web-programming"]
 
 [lib]

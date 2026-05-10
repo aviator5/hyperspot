@@ -1,17 +1,17 @@
 # Tenant Resolver
 
-Main module for tenant resolution in CyberFabric. Discovers plugins via GTS types-registry and routes tenant operations to the selected plugin.
+Main module for tenant resolution in CyberWare. Discovers plugins via GTS types-registry and routes tenant operations to the selected plugin.
 
 ## Overview
 
-The `cf-tenant-resolver` module provides:
+The `cyberware-tenant-resolver` module provides:
 
 - **Plugin discovery** — Finds tenant-resolver plugins via GTS types-registry
 - **Vendor-based selection** — Selects plugin by vendor and priority
 - **Self-access enforcement** — Source == target tenant is always allowed
 - **ClientHub integration** — Registers `TenantResolverClient` for inter-module use
 
-This is a **main module** — it contains no tenant data itself. All operations are delegated to the active plugin (e.g., `cf-static-tr-plugin`, `cf-single-tenant-tr-plugin`, or a custom implementation).
+This is a **main module** — it contains no tenant data itself. All operations are delegated to the active plugin (e.g., `cyberware-static-tr-plugin`, `cf-single-tenant-tr-plugin`, or a custom implementation).
 
 ## Architecture
 
@@ -60,12 +60,12 @@ The module is configured via the server's YAML config. Plugin selection is autom
 
 ## Writing a Plugin
 
-Implement the `TenantResolverPluginClient` trait from `cf-tenant-resolver-sdk` and register it with a GTS instance ID derived from the `TenantResolverPluginSpecV1` schema.
+Implement the `TenantResolverPluginClient` trait from `cyberware-tenant-resolver-sdk` and register it with a GTS instance ID derived from the `TenantResolverPluginSpecV1` schema.
 
 ## Testing
 
 ```bash
-cargo test -p cf-tenant-resolver
+cargo test -p cyberware-tenant-resolver
 ```
 
 ## License

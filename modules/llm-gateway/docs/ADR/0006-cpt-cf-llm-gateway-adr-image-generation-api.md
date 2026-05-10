@@ -15,7 +15,7 @@ date: 2026-03-18
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
   - [Dedicated Image Generation API (based on OpenAI `/images/generations`)](#dedicated-image-generation-api-based-on-openai-imagesgenerations)
-  - [Responses API with custom CyberFabric extensions](#responses-api-with-custom-cyberfabric-extensions)
+  - [Responses API with custom CyberWare extensions](#responses-api-with-custom-cyberware-extensions)
 - [More Information](#more-information)
 - [Traceability](#traceability)
 
@@ -40,11 +40,11 @@ LLM Gateway must support image generation as required by the product requirement
 ## Considered Options
 
 * Dedicated Image Generation API (based on OpenAI `/images/generations`)
-* Responses API with custom CyberFabric extensions
+* Responses API with custom CyberWare extensions
 
 ## Decision Outcome
 
-Chosen option: "Responses API with custom CyberFabric extensions", because it maintains the Responses API as the single public interface, natively supports multimodal input/output that fits well with latest OpenAI and Google models, includes async job support via `background: true`, and aligns with the industry trajectory of newer models handling image generation as part of their conversational response flow rather than through a separate endpoint.
+Chosen option: "Responses API with custom CyberWare extensions", because it maintains the Responses API as the single public interface, natively supports multimodal input/output that fits well with latest OpenAI and Google models, includes async job support via `background: true`, and aligns with the industry trajectory of newer models handling image generation as part of their conversational response flow rather than through a separate endpoint.
 
 ### Consequences
 
@@ -79,7 +79,7 @@ A separate REST endpoint modeled on the OpenAI Images API: `POST /images/generat
 * Bad, because introduces a second API paradigm alongside the Responses API, increasing consumer learning curve and SDK surface area
 * Bad, because each new binary modality (audio, video) would require yet another dedicated endpoint
 
-### Responses API with custom CyberFabric extensions
+### Responses API with custom CyberWare extensions
 
 Extend the existing `POST /responses` endpoint with a custom built-in tool (`cyberfabric:image_generation`) that the model or consumer can invoke, and a custom output item (`cyberfabric:data`) that carries the generated binary data. Custom streaming events (`cyberfabric:response.data.*`) signal progress and completion of binary output items.
 
@@ -128,6 +128,6 @@ This decision directly addresses the following requirements or design elements:
 
 * `cpt-cf-llm-gateway-fr-image-generation-v1` — Defines how image generation is exposed through the public API using the Responses API with custom extensions
 * `cpt-cf-llm-gateway-usecase-image-generation-v1` — The use case flow uses `POST /responses` with the `cyberfabric:image_generation` tool instead of a dedicated endpoint
-* `cpt-cf-llm-gateway-adr-open-responses-protocol` — Extends the Open Responses protocol with custom CyberFabric items, tools, and streaming events for binary output
+* `cpt-cf-llm-gateway-adr-open-responses-protocol` — Extends the Open Responses protocol with custom CyberWare items, tools, and streaming events for binary output
 * `cpt-cf-llm-gateway-component-api-layer` — API layer handles the new tool type and output item type within the existing Responses endpoint
 * `cpt-cf-llm-gateway-component-provider-adapters` — Adapters translate between `cyberfabric:image_generation` tool parameters and each provider's native image generation API

@@ -1,10 +1,10 @@
 # ModKit Transport gRPC
 
-gRPC transport helpers used by CyberFabric / ModKit.
+gRPC transport helpers used by CyberWare / ModKit.
 
 ## Overview
 
-The `cf-modkit-transport-grpc` crate provides:
+The `cyberware-modkit-transport-grpc` crate provides:
 
 - Helpers for attaching/extracting `SecurityContext` via gRPC metadata
 - Optional Windows named pipe transport helpers

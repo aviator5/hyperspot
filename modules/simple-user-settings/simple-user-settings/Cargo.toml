@@ -1,5 +1,5 @@
 [package]
-name = "cf-simple-user-settings"
+name = "cyberware-simple-user-settings"
 version = "0.1.0"
 publish = false
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 description = "Simple settings module"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["web-programming"]
 
 [lib]
@@ -18,10 +18,10 @@ name = "simple_user_settings"
 workspace = true
 
 [dependencies]
-simple-user-settings-sdk = { package = "cf-simple-user-settings-sdk", version = "0.1.0", path = "../simple-user-settings-sdk" }
+simple-user-settings-sdk = { package = "cyberware-simple-user-settings-sdk", version = "0.1.0", path = "../simple-user-settings-sdk" }
 
 # AuthZ resolver for authorization (PEP flow)
-authz-resolver-sdk = { package = "cf-authz-resolver-sdk", path = "../../../modules/system/authz-resolver/authz-resolver-sdk" }
+authz-resolver-sdk = { package = "cyberware-authz-resolver-sdk", path = "../../../modules/system/authz-resolver/authz-resolver-sdk" }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }

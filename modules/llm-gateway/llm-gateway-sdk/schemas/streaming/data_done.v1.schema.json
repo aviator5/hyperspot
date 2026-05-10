@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "gts://gts.cf.llmgw.streaming.event.v1~x.llmgw.streaming.data_done.v1~",
-  "title": "CyberFabric data output done event",
-  "description": "A streaming event indicating a binary data output item has completed with final data. CyberFabric extension event.",
+  "title": "CyberWare data output done event",
+  "description": "A streaming event indicating a binary data output item has completed with final data. CyberWare extension event.",
   "allOf": [
     { "$ref": "gts://gts.cf.llmgw.streaming.event.v1~" },
     {

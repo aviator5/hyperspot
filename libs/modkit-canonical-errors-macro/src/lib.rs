@@ -38,7 +38,7 @@ pub fn resource_error(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-const CANONICAL_ERRORS_PKG: &str = "cf-modkit-canonical-errors";
+const CANONICAL_ERRORS_PKG: &str = "cyberware-modkit-canonical-errors";
 const CANONICAL_ERRORS_LIB: &str = "modkit_canonical_errors";
 
 /// Resolves the path to the `modkit_canonical_errors` crate at the expansion site.
@@ -46,13 +46,13 @@ const CANONICAL_ERRORS_LIB: &str = "modkit_canonical_errors";
 /// Uses `CARGO_PKG_NAME` to detect when the macro is invoked from within the
 /// canonical-errors package itself (e.g. integration tests), where the lib name
 /// (`modkit_canonical_errors`) differs from the package name
-/// (`cf-modkit-canonical-errors`). For external consumers the resolution is
+/// (`cyberware-modkit-canonical-errors`). For external consumers the resolution is
 /// delegated to `proc_macro_crate`.
 fn resolve_crate_path(gts_lit: &LitStr) -> syn::Result<TokenStream2> {
     let in_self = std::env::var("CARGO_PKG_NAME").is_ok_and(|p| p == CANONICAL_ERRORS_PKG);
 
     if in_self {
-        // Inside the cf-modkit-canonical-errors package.
+        // Inside the cyberware-modkit-canonical-errors package.
         // `crate` is correct only for the lib target; integration tests and
         // examples access the library as an extern crate by its [lib] name.
         let is_lib = std::env::var("CARGO_CRATE_NAME").is_ok_and(|c| c == CANONICAL_ERRORS_LIB);
@@ -83,7 +83,7 @@ fn resolve_crate_path(gts_lit: &LitStr) -> syn::Result<TokenStream2> {
         }
         Err(_) => Err(syn::Error::new_spanned(
             gts_lit,
-            "cf-modkit-canonical-errors must be a direct dependency",
+            "cyberware-modkit-canonical-errors must be a direct dependency",
         )),
     }
 }

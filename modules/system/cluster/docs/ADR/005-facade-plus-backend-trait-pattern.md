@@ -31,7 +31,7 @@ date: 2026-04-27
 
 ## Context and Problem Statement
 
-The cluster module exposes four coordination primitives — distributed cache, leader election, distributed lock, service discovery — to every CyberFabric module. The shape of those four primitives in the Rust type system is the most consequential structural decision in the SDK: it determines what consumers hold, what plugins implement, how operator config maps to code, and what evolution looks like over time.
+The cluster module exposes four coordination primitives — distributed cache, leader election, distributed lock, service discovery — to every CyberWare module. The shape of those four primitives in the Rust type system is the most consequential structural decision in the SDK: it determines what consumers hold, what plugins implement, how operator config maps to code, and what evolution looks like over time.
 
 Three sub-decisions are unavoidable and tightly coupled:
 
@@ -234,7 +234,7 @@ pub mod v2 { pub trait ClusterCache { ... } }
 - Good, because Cargo's semver model handles co-existing versions natively.
 - Bad, because a major version bump becomes a *new crate*, not a new release. Doc URLs change, dependency declarations churn, every consumer must add the new crate to `Cargo.toml`.
 - Bad, because shared code between versions (resolver, error types, common helpers) requires a third "core" crate that both versioned crates depend on, multiplying maintenance.
-- Bad, because the cluster module is consumed by every CyberFabric module — forcing all of them to update their crate declaration on a major version is a heavyweight migration. `*V1` / `*V2` types in one crate is lighter.
+- Bad, because the cluster module is consumed by every CyberWare module — forcing all of them to update their crate declaration on a major version is a heavyweight migration. `*V1` / `*V2` types in one crate is lighter.
 - Neutral, because this approach is established in some ecosystems (e.g., `axum` 0.6 / 0.7 differences); we choose against it because cluster's audience is internal modules, not external consumers, where lightweight migration matters more than crate-level isolation.
 
 ## More Information

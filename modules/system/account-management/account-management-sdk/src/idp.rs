@@ -38,7 +38,7 @@
 //! The `provider_detail` strings carried by the failure variants are
 //! routed through AM's redaction pipeline before reaching public
 //! envelopes (see the impl-side `From<ProvisionFailure>
-//! for DomainError` boundary in `cf-account-management::domain::idp`).
+//! for DomainError` boundary in `cyberware-account-management::domain::idp`).
 //! Plugin authors do not need to redact themselves — they pass the
 //! raw vendor text and AM owns the public-surface mapping.
 

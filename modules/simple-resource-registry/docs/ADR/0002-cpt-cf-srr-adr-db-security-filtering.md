@@ -30,7 +30,7 @@ Every resource operation (GET, PUT, DELETE, LIST) must enforce three orthogonal 
 ## Decision Drivers
 
 * Must not leak resource existence to unauthorized callers (no 403 revealing "resource exists but you lack access")
-* Must align with CyberFabric's SecureORM pattern for tenant isolation
+* Must align with CyberWare's SecureORM pattern for tenant isolation
 * Must produce consistent behavior across GET, PUT, DELETE, and LIST operations
 * Must avoid double-query patterns (fetch → check → re-fetch) for performance
 * Must work across all storage backends (not just relational databases)

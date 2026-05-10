@@ -22,7 +22,7 @@ fn workspace_root() -> std::path::PathBuf {
 #[test]
 fn test_system_modules_are_exempt() {
     let output = Command::new("cargo")
-        .args(&["check", "-p", "cf-tenant-resolver-sdk", "--message-format=json"])
+        .args(&["check", "-p", "cyberware-tenant-resolver-sdk", "--message-format=json"])
         .current_dir(workspace_root())
         .output()
         .expect("Failed to run cargo check on system module");
@@ -59,7 +59,7 @@ fn test_system_modules_are_exempt() {
 #[test]
 fn test_non_system_modules_require_versioning() {
     let output = Command::new("cargo")
-        .args(&["check", "-p", "cf-simple-user-settings-sdk", "--message-format=json"])
+        .args(&["check", "-p", "cyberware-simple-user-settings-sdk", "--message-format=json"])
         .current_dir(workspace_root())
         .output()
         .expect("Failed to run cargo check on non-system module");

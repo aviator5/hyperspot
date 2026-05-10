@@ -14,12 +14,12 @@ use common::{create_root_type, make_ctx, make_group_service, make_membership_ser
 use modkit_odata::ODataQuery;
 use uuid::Uuid;
 
-use cf_resource_group::domain::error::DomainError;
-use cf_resource_group::domain::type_service::TypeService;
-use cf_resource_group::infra::storage::entity::resource_group_membership::{
+use cyberware_resource_group::domain::error::DomainError;
+use cyberware_resource_group::domain::type_service::TypeService;
+use cyberware_resource_group::infra::storage::entity::resource_group_membership::{
     Column as MbrColumn, Entity as MbrEntity,
 };
-use cf_resource_group::infra::storage::type_repo::TypeRepository;
+use cyberware_resource_group::infra::storage::type_repo::TypeRepository;
 use modkit_db::secure::SecureEntityExt;
 use modkit_security::AccessScope;
 use resource_group_sdk::CreateTypeRequest;

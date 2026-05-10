@@ -62,7 +62,7 @@ The Resource Group (RG) module needs a type identification standard for its hier
 * DB-enforced referential integrity — type relationships (allowed parents, allowed memberships) must be enforced at the database level, not just application code
 * Compact storage — the type system must scale to millions of groups without storage overhead from long string type identifiers in every row
 * Separation of concerns — type-level metadata (topology rules like `can_be_root`, `allowed_parents`) must be distinct from instance-level data (group fields like `name`, `barrier`)
-* Alignment with platform type conventions — RG should use the same type system as other CyberFabric modules
+* Alignment with platform type conventions — RG should use the same type system as other CyberWare modules
 
 ## Considered Options
 

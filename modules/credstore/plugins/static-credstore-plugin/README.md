@@ -4,7 +4,7 @@ CredStore storage-backend plugin that serves pre-configured secrets from YAML co
 
 ## Overview
 
-The `cf-static-credstore-plugin` module provides:
+The `cyberware-static-credstore-plugin` module provides:
 
 - **Static secret mapping** — secrets defined in YAML config, loaded and validated at init
 - **Four sharing scopes** — Private, Tenant, Shared (tenant-scoped), and Global
@@ -117,7 +117,7 @@ domain/
 ## Testing
 
 ```bash
-cargo test -p cf-static-credstore-plugin
+cargo test -p cyberware-static-credstore-plugin
 ```
 
 The test suite covers:

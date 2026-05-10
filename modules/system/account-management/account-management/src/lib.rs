@@ -21,7 +21,7 @@
 //! them at the top of the crate doc, not buried in feature specs.
 //!
 //! * **`InTenantSubtree` predicate / SQL-level subtree clamp** —
-//!   tracked in `cyberfabric-core#1813`. Today AM authorization is
+//!   tracked in `cyberware-rust#1813`. Today AM authorization is
 //!   single-layer: the service-level PDP gate
 //!   ([`crate::domain::tenant::service::TenantService`]) is the only
 //!   enforcement layer. The `tenants` and `tenant_closure` entities
@@ -37,7 +37,7 @@
 //!   flips to `true`.
 //!
 //! REST handlers MUST NOT be added on top of `TenantRepo` until
-//! `cyberfabric-core#1813` is closed. The methods currently relying
+//! `cyberware-rust#1813` is closed. The methods currently relying
 //! on this single-layer enforcement are:
 //!
 //! * [`TenantService::create_child`](crate::domain::tenant::service::TenantService::create_child)
@@ -47,7 +47,7 @@
 //! * [`TenantService::soft_delete`](crate::domain::tenant::service::TenantService::soft_delete)
 //!
 //! Reviewers of follow-on PRs that wire any of the above into a REST
-//! handler MUST verify `cyberfabric-core#1813` is closed before
+//! handler MUST verify `cyberware-rust#1813` is closed before
 //! approving the wiring.
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 

@@ -1,5 +1,5 @@
 [package]
-name = "cf-modkit-macros-tests"
+name = "cyberware-modkit-macros-tests"
 version = "0.6.1"
 edition.workspace = true
 license.workspace = true

@@ -214,16 +214,16 @@ pub fn is_in_modkit_db_path(source_map: &SourceMap, span: Span) -> bool {
         || check_span_path(source_map, span, "modkit-db/src/")
 }
 
-/// Check if span is within apps/cf-server - the main server binary
+/// Check if span is within apps/cyberware-example-server - the main server binary
 /// This path is excluded from sqlx restrictions as it needs driver linkage workaround
-pub fn is_in_cyberfabric_server_path(source_map: &SourceMap, span: Span) -> bool {
+pub fn is_in_cyberware_server_path(source_map: &SourceMap, span: Span) -> bool {
     // Multiple checks handle different path contexts:
-    // - "/apps/cf-server/" - absolute path from workspace root
-    // - "apps/cf-server/" - relative path in some contexts
-    // - "cf-server/src/" - simulated_dir paths in tests
-    check_span_path(source_map, span, "/apps/cf-server/")
-        || check_span_path(source_map, span, "apps/cf-server/")
-        || check_span_path(source_map, span, "cf-server/src/")
+    // - "/apps/cyberware-example-server/" - absolute path from workspace root
+    // - "apps/cyberware-example-server/" - relative path in some contexts
+    // - "cyberware-example-server/src/" - simulated_dir paths in tests
+    check_span_path(source_map, span, "/apps/cyberware-example-server/")
+        || check_span_path(source_map, span, "apps/cyberware-example-server/")
+        || check_span_path(source_map, span, "cyberware-example-server/src/")
 }
 
 pub fn check_derive_attrs<F>(item: &rustc_ast::Item, mut f: F)

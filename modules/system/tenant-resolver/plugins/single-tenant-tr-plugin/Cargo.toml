@@ -1,5 +1,5 @@
 [package]
-name = "cf-single-tenant-tr-plugin"
+name = "cyberware-single-tenant-tr-plugin"
 version = "0.1.22"
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 description = "Zero-config tenant resolver plugin for single-tenant deployments"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["web-programming"]
 
 [lib]
@@ -18,8 +18,8 @@ workspace = true
 
 [dependencies]
 # Local dependencies
-tenant-resolver-sdk = { package = "cf-tenant-resolver-sdk", version = "0.3.6", path = "../../tenant-resolver-sdk" }
-types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.2.2", path = "../../../types-registry/types-registry-sdk" }
+tenant-resolver-sdk = { package = "cyberware-tenant-resolver-sdk", version = "0.3.6", path = "../../tenant-resolver-sdk" }
+types-registry-sdk = { package = "cyberware-types-registry-sdk", version = "0.2.2", path = "../../../types-registry/types-registry-sdk" }
 
 # ModKit dependencies
 modkit = { workspace = true }

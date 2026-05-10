@@ -1,6 +1,6 @@
-# CyberFabric Server - Quickstart Guide
+# CyberWare Server - Quickstart Guide
 
-Start CyberFabric server and verify it works. For project overview, see [README.md](../README.md).
+Start CyberWare example server and verify it works. For project overview, see [README.md](../README.md).
 
 ---
 
@@ -54,7 +54,7 @@ Each module has a QUICKSTART.md with minimal curl examples:
 ## Stop the Server
 
 ```bash
-pkill -f cf-server
+pkill -f cyberware-server
 ```
 
 ---
@@ -63,7 +63,7 @@ pkill -f cf-server
 
 | Issue | Solution |
 |-------|----------|
-| Port 8087 in use | `pkill -f cf-server` |
+| Port 8087 in use | `pkill -f cyberware-server` |
 | Empty tenant-resolver | Use `make example` instead of `make quickstart` |
 | Connection refused | Server not running - check logs |
 

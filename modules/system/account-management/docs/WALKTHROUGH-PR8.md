@@ -1,6 +1,6 @@
 # AM PR #8 — Разбор реализации (для джуниоров)
 
-**PR**: https://github.com/diffora/cyberfabric-core/pull/8
+**PR**: https://github.com/diffora/cyberware-rust/pull/8
 **Branch**: `am/03-integrity-and-bootstrap`
 **Что доехало в этот PR**: три большие фичи в модуле `account-management` (`AM`), плюс инфраструктура и тесты к ним.
 
@@ -243,7 +243,7 @@ PASS 3: ЭМИТ INSERT-ОВ И UPDATE-ОВ
 
 ### 5.1 Зачем нужно
 
-При **первом старте платформы** (`module::init` в `cyberfabric-core`) или **после крэша** надо создать корневой тенант.
+При **первом старте платформы** (`module::init` в `cyberware-rust`) или **после крэша** надо создать корневой тенант.
 
 Усложнения:
 - **Два шага в разных системах**: создать row в нашей БД (`tenants`) и создать соответствующего root-тенанта в IdP (внешний `provision_tenant` round-trip).

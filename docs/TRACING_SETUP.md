@@ -2,11 +2,11 @@
 # Distributed Tracing Setup
 
 This guide walks you through setting up **OpenTelemetry distributed tracing** with **Jaeger** or **Uptrace** for the
-CyberFabric framework for testing purposes.
+CyberWare framework for testing purposes.
 
 ## Overview
 
-The CyberFabric framework includes first-class support for distributed tracing with:
+The CyberWare framework includes first-class support for distributed tracing with:
 
 - **Automatic trace context extraction** from incoming HTTP requests (W3C Trace Context)
 - **Automatic trace context injection** for outgoing HTTP requests
@@ -34,14 +34,14 @@ Create a configuration file (e.g., `config/with-tracing.yaml`):
 
 ```yaml
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cyberware"
   host: "127.0.0.1"
   port: 8087
 
 # Enable OpenTelemetry tracing
 tracing:
   enabled: true
-  service_name: "cyberfabric-api"
+  service_name: "cyberware-api"
 
   exporter:
     kind: "otlp_grpc"
@@ -62,18 +62,18 @@ tracing:
 logging:
   default:
     console_level: "info"
-    file: "logs/cyberfabric.log"
+    file: "logs/cyberware.log"
 ```
 
 ### 3. Run the Server
 
 ```bash
-cargo run --bin cf-server -- --config config/with-tracing.yaml
+cargo run --bin cyberware-server -- --config config/with-tracing.yaml
 ```
 
 ### 4. View Traces
 
-Open [http://localhost:16686](http://localhost:16686) and search for service `cyberfabric-api`.
+Open [http://localhost:16686](http://localhost:16686) and search for service `cyberware-api`.
 
 ---
 
@@ -118,7 +118,7 @@ services:
 ```yaml
 tracing:
   enabled: true
-  service_name: "cyberfabric-api"
+  service_name: "cyberware-api"
 
   exporter:
     kind: "otlp_grpc"
@@ -133,18 +133,18 @@ tracing:
   resource:
     service.version: "1.3.7"
     deployment.environment: "dev"
-    service.namespace: "cyberfabric"
+    service.namespace: "cyberware"
 ```
 
 ### 3. Run the Server
 
 ```bash
-cargo run --bin cf-server -- --config config/with-tracing.yaml
+cargo run --bin cyberware-server -- --config config/with-tracing.yaml
 ```
 
 ### 4. View Traces
 
-Open [http://localhost:14318](http://localhost:14318) and search for service `cyberfabric-api`.
+Open [http://localhost:14318](http://localhost:14318) and search for service `cyberware-api`.
 
 ---
 
@@ -222,9 +222,9 @@ tracing:
   resource:
     service.version: "1.2.3"
     deployment.environment: "production"
-    service.namespace: "cyberfabric"
+    service.namespace: "cyberware"
     k8s.cluster.name: "prod-cluster"
-    k8s.namespace.name: "cyberfabric-ns"
+    k8s.namespace.name: "cyberware-ns"
 ```
 
 ### HTTP Options
@@ -354,7 +354,7 @@ You can override any config via environment variables:
 ```bash
 # Enable tracing
 export APP__TRACING__ENABLED=true
-export APP__TRACING__SERVICE_NAME=cyberfabric-prod
+export APP__TRACING__SERVICE_NAME=cyberware-prod
 
 # Configure exporter
 export APP__TRACING__EXPORTER__KIND=otlp_grpc

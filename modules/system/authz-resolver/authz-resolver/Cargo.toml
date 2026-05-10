@@ -1,5 +1,5 @@
 [package]
-name = "cf-authz-resolver"
+name = "cyberware-authz-resolver"
 version = "0.1.23"
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 description = "AuthZ resolver module - discovers and routes to plugins"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system", "authorization"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system", "authorization"]
 categories = ["authentication"]
 
 [lib]
@@ -18,8 +18,8 @@ workspace = true
 
 [dependencies]
 # Local dependencies
-authz-resolver-sdk = { package = "cf-authz-resolver-sdk", version = "0.3.6", path = "../authz-resolver-sdk" }
-types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.2.2", path = "../../types-registry/types-registry-sdk" }
+authz-resolver-sdk = { package = "cyberware-authz-resolver-sdk", version = "0.3.6", path = "../authz-resolver-sdk" }
+types-registry-sdk = { package = "cyberware-types-registry-sdk", version = "0.2.2", path = "../../types-registry/types-registry-sdk" }
 
 # ModKit dependencies
 modkit = { workspace = true }

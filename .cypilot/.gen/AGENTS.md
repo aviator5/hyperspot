@@ -1,4 +1,4 @@
-# Cypilot: cyberfabric
+# Cypilot: cyberware
 
 ## Navigation Rules
 

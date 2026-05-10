@@ -6,7 +6,7 @@ The lints should follow the norms established in the `https://github.com/cyberfa
 Key Principles
 - One question at a time - Don't overwhelm with multiple questions
 - Multiple choice preferred - Easier to answer than open-ended when possible
-- Explore alternatives - Always propose 2-3 approaches before settling, lead with your recommendation and explain why 
+- Explore alternatives - Always propose 2-3 approaches before settling, lead with your recommendation and explain why
 - Be flexible - Go back and clarify when something doesn't make sense
 
 Implement the following lint:

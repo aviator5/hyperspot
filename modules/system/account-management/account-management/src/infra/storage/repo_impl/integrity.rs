@@ -54,7 +54,7 @@
 //! See `infra::storage::integrity::lock` module docs for the gap.
 //! Migration to `modkit-coord` (`LeaseManager` +
 //! `Guard::with_ack_in_tx`) is tracked in
-//! <https://github.com/cyberfabric/cyberfabric-core/issues/1873>.
+//! <https://github.com/cyberfabric/cyberware-rust/issues/1873>.
 
 use modkit_db::secure::{
     DbTx, ScopeError, SecureDeleteExt, SecureInsertExt, SecureOnConflict, SecureUpdateExt,

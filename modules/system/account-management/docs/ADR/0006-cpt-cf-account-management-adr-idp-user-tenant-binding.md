@@ -99,7 +99,7 @@ The `IdpProviderPluginClient::create_user` contract requires the provider to set
 
 ## More Information
 
-The user-tenant binding is a security-critical data point: it determines the caller's tenant context for authorization. The CyberFabric authorization flow is:
+The user-tenant binding is a security-critical data point: it determines the caller's tenant context for authorization. The CyberWare authorization flow is:
 1. User authenticates → IdP issues a bearer token containing the tenant identity claim.
 2. AuthN Resolver validates the token and extracts the tenant identity → establishes `SecurityContext`.
 3. AuthZ Resolver evaluates policies using the tenant context from `SecurityContext`.

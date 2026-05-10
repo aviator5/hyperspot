@@ -77,8 +77,8 @@ date: {YYYY-MM-DD}
 
 | Artifact | Template | Examples |
 |----------|----------|----------|
-| PRD | `docs/spec-templates/cf-sdlc/PRD/template.md` | — |
-| ADR | `docs/spec-templates/cf-sdlc/ADR/template.md` | `docs/spec-templates/cf-sdlc/ADR/examples/*.md` |
-| DESIGN | `docs/spec-templates/cf-sdlc/DESIGN/template.md` | — |
-| DECOMPOSITION | `docs/spec-templates/cf-sdlc/DECOMPOSITION/template.md` | `docs/spec-templates/cf-sdlc/DECOMPOSITION/examples/example.md` |
-| FEATURE | `docs/spec-templates/cf-sdlc/FEATURE/template.md` | `docs/spec-templates/cf-sdlc/FEATURE/examples/*.md` |
+| PRD | `docs/spec-templates/cyberware-sdlc/PRD/template.md` | — |
+| ADR | `docs/spec-templates/cyberware-sdlc/ADR/template.md` | `docs/spec-templates/cyberware-sdlc/ADR/examples/*.md` |
+| DESIGN | `docs/spec-templates/cyberware-sdlc/DESIGN/template.md` | — |
+| DECOMPOSITION | `docs/spec-templates/cyberware-sdlc/DECOMPOSITION/template.md` | `docs/spec-templates/cyberware-sdlc/DECOMPOSITION/examples/example.md` |
+| FEATURE | `docs/spec-templates/cyberware-sdlc/FEATURE/template.md` | `docs/spec-templates/cyberware-sdlc/FEATURE/examples/*.md` |

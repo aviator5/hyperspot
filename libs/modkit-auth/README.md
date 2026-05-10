@@ -1,10 +1,10 @@
 # ModKit Auth
 
-Authentication infrastructure for CyberFabric / ModKit.
+Authentication infrastructure for CyberWare / ModKit.
 
 ## Overview
 
-The `cf-modkit-auth` crate provides:
+The `cyberware-modkit-auth` crate provides:
 
 - **JWT / JWKS** — `KeyProvider` trait, `JwksKeyProvider` with background key refresh, `ValidationConfig`, standard claim constants
 - **Token validation** — `TokenValidator` trait, `ClaimsError` / `AuthError` error types

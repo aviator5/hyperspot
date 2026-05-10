@@ -74,7 +74,7 @@
 //! storage.
 //!
 //! Migration is tracked in
-//! <https://github.com/cyberfabric/cyberfabric-core/issues/1873>.
+//! <https://github.com/cyberfabric/cyberware-rust/issues/1873>.
 //! Until that lands, AM ships single-replica or warns operators on
 //! multi-replica deployments via the loop's
 //! `RUNS{outcome=skipped_in_progress}` metric -- which today fires

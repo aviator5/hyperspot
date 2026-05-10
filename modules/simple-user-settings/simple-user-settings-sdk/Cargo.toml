@@ -1,5 +1,5 @@
 [package]
-name = "cf-simple-user-settings-sdk"
+name = "cyberware-simple-user-settings-sdk"
 version = "0.1.0"
 publish = false
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 description = "SDK for simple-user-settings module: API trait, types, and error definitions"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["web-programming"]
 
 [lib]

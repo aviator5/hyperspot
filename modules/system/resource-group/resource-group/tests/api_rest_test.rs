@@ -31,13 +31,13 @@ use modkit_db::{
 use modkit_security::{SecurityContext, pep_properties};
 use sea_orm_migration::MigratorTrait;
 
-use cf_resource_group::domain::group_service::{GroupService, QueryProfile};
-use cf_resource_group::domain::membership_service::MembershipService;
-use cf_resource_group::domain::type_service::TypeService;
-use cf_resource_group::infra::storage::group_repo::GroupRepository;
-use cf_resource_group::infra::storage::membership_repo::MembershipRepository;
-use cf_resource_group::infra::storage::migrations::Migrator;
-use cf_resource_group::infra::storage::type_repo::TypeRepository;
+use cyberware_resource_group::domain::group_service::{GroupService, QueryProfile};
+use cyberware_resource_group::domain::membership_service::MembershipService;
+use cyberware_resource_group::domain::type_service::TypeService;
+use cyberware_resource_group::infra::storage::group_repo::GroupRepository;
+use cyberware_resource_group::infra::storage::membership_repo::MembershipRepository;
+use cyberware_resource_group::infra::storage::migrations::Migrator;
+use cyberware_resource_group::infra::storage::type_repo::TypeRepository;
 
 // ── Noop OpenAPI Registry for tests ─────────────────────────────────────
 
@@ -149,7 +149,7 @@ async fn build_test_router() -> (Router, Arc<TypeService<TypeRepository>>) {
     ));
 
     let openapi = NoopOpenApiRegistry;
-    let router = cf_resource_group::api::rest::routes::register_routes(
+    let router = cyberware_resource_group::api::rest::routes::register_routes(
         Router::new(),
         &openapi,
         type_svc.clone(),
@@ -717,7 +717,7 @@ async fn build_shared_router() -> (
         Arc::new(TypeRepository),
         Arc::new(MembershipRepository),
     ));
-    let router = cf_resource_group::api::rest::routes::register_routes(
+    let router = cyberware_resource_group::api::rest::routes::register_routes(
         Router::new(),
         &NoopOpenApiRegistry,
         type_svc.clone(),

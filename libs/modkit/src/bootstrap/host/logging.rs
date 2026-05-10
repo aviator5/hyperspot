@@ -98,7 +98,7 @@ impl Write for RoutedWriterHandle {
 }
 
 /// Route log records to different files by target prefix:
-/// keys are *full* prefixes like "`cyberfabric::api_gateway`"
+/// keys are *full* prefixes like "`cyberware::api_gateway`"
 #[derive(Clone)]
 struct MultiFileRouter {
     default: Option<RotWriter>, // default file (from "default" section), optional
@@ -618,14 +618,14 @@ mod tests {
         let router = MultiFileRouter {
             default: None,
             by_prefix: vec![
-                ("cyberfabric::api_gateway".into(), specific),
-                ("cyberfabric".into(), broad),
+                ("cyberware::api_gateway".into(), specific),
+                ("cyberware".into(), broad),
             ],
         };
 
-        // "cyberfabric::api_gateway::handler" should match the longer prefix
+        // "cyberware::api_gateway::handler" should match the longer prefix
         let mut handle = router
-            .resolve_for("cyberfabric::api_gateway::handler")
+            .resolve_for("cyberware::api_gateway::handler")
             .expect("should resolve");
         handle.write_all(b"routed\n").unwrap();
         handle.flush().unwrap();
@@ -680,15 +680,15 @@ mod tests {
         let config = ConfigData {
             default_section: None,
             crate_sections: vec![
-                ("cyberfabric".to_owned(), &broad_section),
-                ("cyberfabric::api_gateway".to_owned(), &specific_section),
+                ("cyberware".to_owned(), &broad_section),
+                ("cyberware::api_gateway".to_owned(), &specific_section),
             ],
         };
 
         let router = build_file_router(&config, dir.path());
 
         let mut handle = router
-            .resolve_for("cyberfabric::api_gateway::handler")
+            .resolve_for("cyberware::api_gateway::handler")
             .expect("should resolve");
         handle.write_all(b"routed\n").unwrap();
         handle.flush().unwrap();
@@ -713,22 +713,22 @@ mod tests {
 
         let router = MultiFileRouter {
             default: None,
-            by_prefix: vec![("cyberfabric".into(), writer)],
+            by_prefix: vec![("cyberware".into(), writer)],
         };
 
         // Exact match
         assert!(
-            router.resolve_for("cyberfabric").is_some(),
+            router.resolve_for("cyberware").is_some(),
             "exact target should match"
         );
         // Submodule match
         assert!(
-            router.resolve_for("cyberfabric::sub").is_some(),
+            router.resolve_for("cyberware::sub").is_some(),
             "submodule target should match"
         );
         // Non-prefix string must NOT match
         assert!(
-            router.resolve_for("cyberfabric_extra").is_none(),
+            router.resolve_for("cyberware_extra").is_none(),
             "non-prefix target should not match"
         );
         assert!(

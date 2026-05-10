@@ -220,7 +220,7 @@ impl GtsRepository for InMemoryGtsRepository {
     // TODO(#1630): replace linear scan with O(1) UUID lookup once gts-rust
     // exposes a UUID-keyed index on `GtsOps`. Today every lookup re-parses
     // each gts_id and recomputes UUID v5 (SHA-1) per entity.
-    // https://github.com/cyberfabric/cyberfabric-core/issues/1630
+    // https://github.com/cyberfabric/cyberware-rust/issues/1630
     fn get_by_uuid(&self, id: Uuid) -> Result<GtsEntity, DomainError> {
         let persistent = self.persistent.lock();
         for (gts_id, gts_entity) in persistent.store.items() {

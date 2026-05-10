@@ -25,7 +25,7 @@
     },
     "file_id": {
       "type": "string",
-      "description": "FileStorage file identifier (CyberFabric extension)"
+      "description": "FileStorage file identifier (CyberWare extension)"
     }
   },
   "required": ["type"],

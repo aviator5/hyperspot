@@ -398,7 +398,7 @@ pub fn deferred_count(
 // Gated behind `#[cfg(feature = "postgres")]` because pulling up a
 // container per test requires Docker on the host and is therefore not
 // part of the default test run. Enable explicitly with
-// `cargo test -p cf-account-management --features postgres ...`.
+// `cargo test -p cyberware-account-management --features postgres ...`.
 
 #[cfg(feature = "postgres")]
 pub mod pg {

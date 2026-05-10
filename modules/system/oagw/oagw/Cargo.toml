@@ -1,5 +1,5 @@
 [package]
-name = "cf-oagw"
+name = "cyberware-oagw"
 description = "OAGW module - discovers and routes to plugins"
 version = "0.2.25"
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["web-programming"]
 
 [lib]
@@ -21,7 +21,7 @@ fips = ["modkit-http/fips"]
 test-utils = ["axum/ws", "dep:async-stream", "dep:futures", "dep:tower", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt"]
 
 [dependencies]
-oagw-sdk = { path = "../oagw-sdk", package="cf-oagw-sdk", version = "0.5.1", features = ["axum"] }
+oagw-sdk = { path = "../oagw-sdk", package="cyberware-oagw-sdk", version = "0.5.1", features = ["axum"] }
 modkit = { workspace = true }
 modkit-auth = { workspace = true }
 modkit-canonical-errors = { workspace = true, features = ["axum"] }
@@ -72,7 +72,7 @@ tower = { workspace = true, features = ["util"], optional = true }
 rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
-cf-oagw = { path = ".", features = ["test-utils"] }
+cyberware-oagw = { path = ".", features = ["test-utils"] }
 types-registry-sdk = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "net"] }
 tower = { workspace = true, features = ["util"] }

@@ -5,10 +5,10 @@
 # Based on quickstart.yaml but stripped to essentials.
 #
 # Usage:
-#   cargo run --bin cf-server --features mini-chat -- --config config/mini-chat.yaml run
+#   cargo run --bin cyberware-server --features mini-chat -- --config config/mini-chat.yaml run
 
 server:
-  home_dir: "~/.cyberfabric"
+  home_dir: "~/.cybeware"
 
 database:
   servers:
@@ -25,7 +25,7 @@ database:
 logging:
   default:
     console_level: info
-    file: "logs/cyberfabric.log"
+    file: "logs/cyberware.log"
     file_level: info
   sqlx:
     console_level: debug
@@ -64,7 +64,7 @@ modules:
 
   grpc-hub:
     config:
-      listen_addr: "uds:///tmp/cyberfabric-grpc"
+      listen_addr: "uds:///tmp/cybeware-grpc"
 
   authn-resolver:
     config:

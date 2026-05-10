@@ -5,7 +5,7 @@
 //! The handler retries twice (transient failure), then rejects on the 3rd attempt.
 //!
 //! Run:
-//!   cargo run -p cf-modkit-db --example `outbox_retry_reject` --features sqlite,preview-outbox
+//!   cargo run -p cyberware-modkit-db --example `outbox_retry_reject` --features sqlite,preview-outbox
 
 use std::time::{Duration, Instant};
 

@@ -1,10 +1,10 @@
 # AuthN Resolver
 
-Authentication resolution for CyberFabric — validates bearer tokens and produces a `SecurityContext`.
+Authentication resolution for CyberWare — validates bearer tokens and produces a `SecurityContext`.
 
 ## Overview
 
-The authorization design that CyberFabric operates on is described in [DESIGN.md](../../../docs/arch/authorization/DESIGN.md).
+The authorization design that CyberWare operates on is described in [DESIGN.md](../../../docs/arch/authorization/DESIGN.md).
 The decision to split authentication and authorization into separate resolvers is documented in
 [ADR-0002](../../../docs/arch/authorization/adr/0002-split-authn-and-authz-resolvers.md) and
 the minimalist interface choice in [ADR-0003](../../../docs/arch/authorization/adr/0003-authn-resolver-minimalist-interface.md).
@@ -34,7 +34,7 @@ See [`error.rs`](authn-resolver-sdk/src/error.rs): `Unauthorized`, `NoPluginAvai
 
 Plugins implement [`AuthNResolverPluginClient`](authn-resolver-sdk/src/plugin_api.rs) and register via GTS.
 
-CyberFabric includes one plugin out of the box:
+CyberWare includes one plugin out of the box:
 - [`static_authn_plugin`](plugins/static-authn-plugin/) — Config-based plugin for development and testing
 
 ## Configuration

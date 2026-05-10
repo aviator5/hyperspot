@@ -1,5 +1,5 @@
 [package]
-name = "cf-mini-chat"
+name = "cyberware-mini-chat"
 description = "Mini-chat module: multi-tenant AI chat"
 version = "0.1.31"
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-modules"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-modules"]
 categories = ["artificial-intelligence"]
 
 [lib]
@@ -26,7 +26,7 @@ k8s = ["dep:kube", "dep:k8s-openapi"]
 mini-chat-sdk = { workspace = true }
 
 # AuthN resolver for S2S client credentials exchange
-authn-resolver-sdk = { package = "cf-authn-resolver-sdk", version = "0.3.16", path = "../../system/authn-resolver/authn-resolver-sdk" }
+authn-resolver-sdk = { package = "cyberware-authn-resolver-sdk", version = "0.3.16", path = "../../system/authn-resolver/authn-resolver-sdk" }
 
 # AuthZ resolver for authorization (PEP flow)
 authz-resolver-sdk = { workspace = true }

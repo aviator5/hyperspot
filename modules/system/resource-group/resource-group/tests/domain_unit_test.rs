@@ -7,8 +7,8 @@
 //! Full domain service tests with mock repositories are deferred to
 //! TODO-16 (repository trait abstraction).
 
-use cf_resource_group::domain::error::DomainError;
-use cf_resource_group::domain::validation::{self, RG_TYPE_PREFIX};
+use cyberware_resource_group::domain::error::DomainError;
+use cyberware_resource_group::domain::validation::{self, RG_TYPE_PREFIX};
 
 // ── validate_type_code ──────────────────────────────────────────────────
 
@@ -741,8 +741,9 @@ fn modkit_db_error_maps_to_database() {
 // ── QueryProfile default (TC-SDK-17) ─────────────────────────────────────
 
 #[test]
-fn query_profile_default_values() {
-    use cf_resource_group::domain::group_service::QueryProfile;
+fn query_profile_defaults_are_sensible() {
+    use cyberware_resource_group::domain::group_service::QueryProfile;
+
     let profile = QueryProfile::default();
     assert_eq!(profile.max_depth, Some(10));
     assert_eq!(profile.max_width, None);

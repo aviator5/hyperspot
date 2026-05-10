@@ -1,6 +1,6 @@
 # AuthZ Resolver SDK
 
-SDK crate for the AuthZ Resolver module, providing the authorization evaluation API, constraint model, and PEP (Policy Enforcement Point) helpers for CyberFabric.
+SDK crate for the AuthZ Resolver module, providing the authorization evaluation API, constraint model, and PEP (Policy Enforcement Point) helpers for CyberWare.
 
 ## Overview
 

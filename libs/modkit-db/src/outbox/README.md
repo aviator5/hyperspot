@@ -110,7 +110,7 @@ handle.stop().await;
 ### Handler makes a remote HTTP call
 
 The most common case. Implement `LeasedMessageHandler` - one message, one
-result. Use `HttpClient` from `cf-modkit-http` for the outgoing call.
+result. Use `HttpClient` from `cyberware-modkit-http` for the outgoing call.
 
 **Cancellation is framework-managed.** The processor drops the handler
 future when the lease cancel point is reached (`lease_duration - ack_headroom`).
@@ -352,7 +352,7 @@ else is infrastructure noise that will resolve itself.
 Infrastructure overhead (scheduling, notifiers, semaphores) with no-op actions:
 
 ```bash
-cargo bench -p cf-modkit-db --features preview-outbox --bench worker_overhead
+cargo bench -p cyberware-modkit-db --features preview-outbox --bench worker_overhead
 ```
 
 ### Outbox Throughput
@@ -362,13 +362,13 @@ Requires a database feature flag:
 
 ```bash
 # SQLite (local, no external DB needed)
-cargo bench -p cf-modkit-db --features preview-outbox,sqlite --bench outbox_throughput
+cargo bench -p cyberware-modkit-db --features preview-outbox,sqlite --bench outbox_throughput
 
 # PostgreSQL
-cargo bench -p cf-modkit-db --features preview-outbox,pg --bench outbox_throughput -- postgres
+cargo bench -p cyberware-modkit-db --features preview-outbox,pg --bench outbox_throughput -- postgres
 
 # MySQL
-cargo bench -p cf-modkit-db --features preview-outbox,mysql --bench outbox_throughput -- mysql
+cargo bench -p cyberware-modkit-db --features preview-outbox,mysql --bench outbox_throughput -- mysql
 ```
 
 ### Makefile Targets
@@ -386,6 +386,6 @@ make bench-db-longhaul     # All engines, long-haul
 
 ```bash
 systemd-run --user --scope -p MemoryMax=4G -p CPUQuota=200% \
-  cargo bench -p cf-modkit-db --features preview-outbox --bench worker_overhead \
+  cargo bench -p cyberware-modkit-db --features preview-outbox --bench worker_overhead \
   -- --warm-up-time 1 --measurement-time 3 --sample-size 10
 ```

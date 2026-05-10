@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "gts://gts.cf.llmgw.items.item.v1~x.llmgw.items.data_output.v1~",
   "title": "DataOutput",
-  "description": "CyberFabric extension: binary data output item. Generic output item for binary data such as generated images, audio, or video.",
+  "description": "CyberWare extension: binary data output item. Generic output item for binary data such as generated images, audio, or video.",
   "allOf": [
     { "$ref": "gts://gts.cf.llmgw.items.item.v1~" },
     {

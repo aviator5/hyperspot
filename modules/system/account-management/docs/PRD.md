@@ -787,7 +787,7 @@ Categories AM uses today:
 - `Unimplemented` (HTTP 501) — IdP plugin does not support the requested operation
 - `Internal` (HTTP 500) — unclassified internal failure
 
-Rationale: anchoring AM's error contract to the AIP-193 canonical model means clients and operators react consistently across CyberFabric modules — every module that adopts `modkit-canonical-errors` shares the same envelope shape, the same HTTP semantics, and the same `errors[]` discriminator vocabulary. Fine-grained discriminators (`INVALID_TENANT_TYPE`, `TENANT_HAS_CHILDREN`, `PENDING_EXISTS`, `SERIALIZATION_CONFLICT`, …) live inside the canonical envelope as `reason` tokens on field/precondition/quota violations rather than as a private AM-side `code` field.
+Rationale: anchoring AM's error contract to the AIP-193 canonical model means clients and operators react consistently across CyberWare modules — every module that adopts `modkit-canonical-errors` shares the same envelope shape, the same HTTP semantics, and the same `errors[]` discriminator vocabulary. Fine-grained discriminators (`INVALID_TENANT_TYPE`, `TENANT_HAS_CHILDREN`, `PENDING_EXISTS`, `SERIALIZATION_CONFLICT`, …) live inside the canonical envelope as `reason` tokens on field/precondition/quota violations rather than as a private AM-side `code` field.
 
 The authoritative HTTP mapping, the `errors[]` violation vocabulary, and the GTS resource-type tags are documented in [DESIGN §3.8](./DESIGN.md#38-error-codes-reference). Provider-specific diagnostics appear in audit trails or in the audit-only `diagnostic` field without changing the public envelope.
 

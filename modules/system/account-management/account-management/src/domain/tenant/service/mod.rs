@@ -397,7 +397,7 @@ impl<R: TenantRepo> TenantService<R> {
     /// the Tenant Resolver Plugin lands, this flips to `true` and the
     /// compiled scope is plumbed into SQL filters. **Until then, AM
     /// authorization is single-layer (PDP gate only) — see
-    /// `cyberfabric-core#1813` and the crate-level `lib.rs`
+    /// `cyberware-rust#1813` and the crate-level `lib.rs`
     /// production-readiness note.**
     async fn authorize(
         &self,
@@ -406,7 +406,7 @@ impl<R: TenantRepo> TenantService<R> {
         owner_tenant_id: Uuid,
         resource_id: Option<Uuid>,
     ) -> Result<AccessScope, DomainError> {
-        // TODO(cyberfabric-core#1813): flip `require_constraints` to
+        // TODO(cyberware-rust#1813): flip `require_constraints` to
         // `true` once `InTenantSubtree` lands in the secure-builder
         // and the AM PEP can compile subtree predicates. Today the
         // PDP gate is the only enforcement layer; SQL-level subtree
@@ -1011,11 +1011,11 @@ impl<R: TenantRepo> TenantService<R> {
         // secure-extension layer and turn an authorized read into
         // `NotFound`. Subtree clamp at the database lands once the
         // `InTenantSubtree` predicate ships; tracked in
-        // cyberfabric-core#1813. Until then this matches
+        // cyberware-rust#1813. Until then this matches
         // `list_children`'s posture: the PDP gate is the single
         // enforcement layer; the repo read uses `allow_all` to fetch
         // the row, and the gate above already authorized the caller.
-        // TODO(cyberfabric-core#1813): once `InTenantSubtree` is wired,
+        // TODO(cyberware-rust#1813): once `InTenantSubtree` is wired,
         // forward the compiled scope so a PDP-narrowed permit (e.g.
         // `tenant_id IN subtree(...)`) clamps the row at the database.
         let _scope = self
@@ -1074,8 +1074,8 @@ impl<R: TenantRepo> TenantService<R> {
         // callers therefore pass and rely on `allow_all` semantics for
         // the actual SQL filter (`parent_id = …`). Subtree clamp at
         // the database lands once the `InTenantSubtree` predicate
-        // ships; tracked in cyberfabric-core#1813.
-        // TODO(cyberfabric-core#1813): once `InTenantSubtree` is wired,
+        // ships; tracked in cyberware-rust#1813.
+        // TODO(cyberware-rust#1813): once `InTenantSubtree` is wired,
         // a PDP-narrowed permit will compile into a JOIN on
         // `tenant_closure` and clamp the row set at the database.
         // Authorization runs but the compiled scope is intentionally
@@ -1162,9 +1162,9 @@ impl<R: TenantRepo> TenantService<R> {
         // to `WHERE false` and turn an authorized update into a
         // silent `NotFound`. The PDP gate is the single enforcement
         // layer until `InTenantSubtree` lands
-        // (cyberfabric-core#1813); the repo calls below use
+        // (cyberware-rust#1813); the repo calls below use
         // `allow_all` to match `list_children` / `read_tenant`.
-        // TODO(cyberfabric-core#1813): once `InTenantSubtree` is
+        // TODO(cyberware-rust#1813): once `InTenantSubtree` is
         // wired, forward the compiled scope so a PDP-narrowed permit
         // clamps the read AND the write at the database.
         let _scope = self
@@ -1259,13 +1259,13 @@ impl<R: TenantRepo> TenantService<R> {
         // so a PDP-narrowed permit would compile to `WHERE false` and
         // turn an authorized soft-delete into a silent `NotFound` /
         // failed-write. The PDP gate is the single enforcement layer
-        // until `InTenantSubtree` lands (cyberfabric-core#1813);
+        // until `InTenantSubtree` lands (cyberware-rust#1813);
         // matches `list_children` / `read_tenant` / `update_tenant`.
         // Structural precondition checks (`count_children`,
         // `count_ownership_links`) also use `allow_all` — those are
         // saga-internal guard counts, not data disclosure of the
         // tenant being acted on.
-        // TODO(cyberfabric-core#1813): once `InTenantSubtree` is
+        // TODO(cyberware-rust#1813): once `InTenantSubtree` is
         // wired, forward the compiled scope so a PDP-narrowed permit
         // clamps both the read and the soft-delete write.
         let _scope = self
@@ -1386,7 +1386,7 @@ impl<R: TenantRepo> TenantService<R> {
     /// `pub` would let the first admin REST handler or sibling
     /// module that reuses it bypass authorization by construction.
     /// REST exposure lands together with the `InTenantSubtree`
-    /// predicate (cyberfabric-core#1813) and will go through a
+    /// predicate (cyberware-rust#1813) and will go through a
     /// privileged-context wrapper at that point.
     pub(crate) async fn repair_hierarchy_integrity(
         &self,
@@ -1460,7 +1460,7 @@ impl<R: TenantRepo> TenantService<R> {
     /// because `tenants` and `tenant_closure` are declared
     /// `no_tenant/no_resource/no_owner/no_type`; per-caller subtree
     /// clamping lands with the `InTenantSubtree` predicate
-    /// (cyberfabric-core#1813).
+    /// (cyberware-rust#1813).
     ///
     /// # Errors
     ///
@@ -1476,7 +1476,7 @@ impl<R: TenantRepo> TenantService<R> {
     /// runs under the in-process scheduler with no
     /// `SecurityContext` and hardcodes [`AccessScope::allow_all`].
     /// REST exposure ships together with the `InTenantSubtree`
-    /// predicate (cyberfabric-core#1813).
+    /// predicate (cyberware-rust#1813).
     // @cpt-begin:cpt-cf-account-management-algo-tenant-hierarchy-management-hierarchy-integrity-check:p2:inst-algo-integ-service
     // @cpt-begin:cpt-cf-account-management-dod-tenant-hierarchy-management-integrity-diagnostics:p2:inst-dod-integrity-diagnostics-service
     // @cpt-begin:cpt-cf-account-management-dod-tenant-hierarchy-management-data-remediation:p2:inst-dod-data-remediation-integrity

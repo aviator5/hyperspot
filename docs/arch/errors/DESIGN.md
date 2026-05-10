@@ -4,7 +4,7 @@
 
 ### 1.1 Architectural Vision
 
-The canonical error system provides a single, universal error type (`CanonicalError`) that all CyberFabric modules use to express failures. It replaces the ad-hoc `Problem::new()` / `ErrDef` / `declare_errors!` / `ErrorCode` patterns with a typed, transport-agnostic model.
+The canonical error system provides a single, universal error type (`CanonicalError`) that all CyberWare modules use to express failures. It replaces the ad-hoc `Problem::new()` / `ErrDef` / `declare_errors!` / `ErrorCode` patterns with a typed, transport-agnostic model.
 
 **Canonical errors** are a closed set of 16 error categories (based on Google's canonical error codes). Each category has:
 - A typed context struct carrying machine-readable error details
@@ -238,7 +238,7 @@ Every error response consists of **contract parts** (fixed per category) and **v
 - `trace_id`
 - Context field values
 
-**Breaking changes** (require major version bump of `cf-modkit-errors`):
+**Breaking changes** (require major version bump of `cyberware-modkit-errors`):
 - Removing or renaming a canonical category
 - Changing the context type associated with a category
 - Removing or renaming a field in a context type schema
@@ -742,7 +742,7 @@ Not applicable. Errors are transient in-memory values. No persistent storage.
 |------|------|-----------|-----------------|
 | 1. Compile-time | `cargo build` | Typed enum variants, exhaustive `match`, `#[resource_error]` macro, `GtsSchema` const, Dylint lint rules (`dylint_lints/`), `#[non_exhaustive]` on enum + variants, `pub(crate)` internal constructors | Wrong context type, missing match arm, GTS typos, direct `Problem` construction, legacy error patterns, direct variant construction, bypassing builder API |
 | 2. Test-time | `cargo test` | Showcase tests with `assert_eq!` on full Problem JSON per category; JSON Schema equality assertions per context type | Field renames, default message changes, status code changes, schema drift |
-| 3. CI-time | PR merge gate | `cargo-semver-checks` on `cf-modkit-errors`; schema file diffing; snapshot CI gate | Removed types, changed signatures, schema evolution |
+| 3. CI-time | PR merge gate | `cargo-semver-checks` on `cyberware-modkit-errors`; schema file diffing; snapshot CI gate | Removed types, changed signatures, schema evolution |
 | 4. Design-time | Architecture | Single `Problem` conversion point; dedicated context constructors; `GtsSchema` generates schemas from types | Ad-hoc JSON construction, missing required fields, schema/code divergence |
 
 ## 4. Category Reference

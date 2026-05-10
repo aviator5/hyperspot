@@ -433,9 +433,9 @@ Performance: Native code, zero overhead.
 ### External Plugins (Modkit Modules)
 
 Separate modules implementing plugin traits from `oagw-sdk`:
-- `cf-oagw-plugin-oauth2-pkce` (custom auth)
-- `cf-oagw-plugin-jwt-auth` (JWT validation)
-- `cf-oagw-plugin-custom-guard` (tenant-specific rules)
+- `cyberware-oagw-plugin-oauth2-pkce` (custom auth)
+- `cyberware-oagw-plugin-jwt-auth` (JWT validation)
+- `cyberware-oagw-plugin-custom-guard` (tenant-specific rules)
 
 Registered during CP initialization via modkit.
 

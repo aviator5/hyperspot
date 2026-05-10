@@ -23,7 +23,7 @@ Each canonical error category needs a globally unique, machine-readable identifi
 
 * **Option A**: Plain string constants (e.g., `"not_found"`, `"invalid_argument"`)
 * **Option B**: GTS compound type identifiers (e.g., `gts.cf.core.errors.err.v1~cf.core.err.not_found.v1~`)
-* **Option C**: URN-style identifiers (e.g., `urn:cyberfabric:error:not_found:v1`)
+* **Option C**: URN-style identifiers (e.g., `urn:cyberware:error:not_found:v1`)
 
 ## Decision Outcome
 
@@ -67,7 +67,7 @@ Use the GTS compound type format: `gts.cf.core.errors.err.v1~cf.core.err.{catego
 
 ### Option C: URN-Style Identifiers
 
-Use URN format: `urn:cyberfabric:error:not_found:v1`
+Use URN format: `urn:cyberware:error:not_found:v1`
 
 * Good, because standard URN format (RFC 8141)
 * Good, because shorter than GTS identifiers

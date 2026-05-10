@@ -4,14 +4,14 @@ Plugin SDK for the mini-chat module: policy plugin traits, domain models, and er
 
 ## Overview
 
-The `cf-mini-chat-sdk` crate provides:
+The `cyberware-mini-chat-sdk` crate provides:
 
 - **Plugin trait** — `MiniChatModelPolicyPluginClientV1` for policy data providers (model catalog, kill switches, user limits)
 - **GTS spec** — `MiniChatModelPolicyPluginSpecV1` for types-registry discovery
 - **Domain models** — `PolicySnapshot`, `ModelCatalogEntry`, `UserLimits`, `KillSwitches`, `ModelTier`
 - **Error type** — `MiniChatModelPolicyPluginError`
 
-Plugin implementations (e.g. `cf-static-model-policy-plugin`) depend on this crate and register via `inventory`.
+Plugin implementations (e.g. `cyberware-static-model-policy-plugin`) depend on this crate and register via `inventory`.
 
 ## Usage
 

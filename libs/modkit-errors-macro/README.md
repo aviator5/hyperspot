@@ -4,7 +4,7 @@ Proc-macro for generating strongly-typed error catalogs from JSON.
 
 ## Overview
 
-The `cf-modkit-errors-macro` crate provides the `declare_errors!` macro.
+The `cyberware-modkit-errors-macro` crate provides the `declare_errors!` macro.
 
 ```rust,ignore
 declare_errors! {

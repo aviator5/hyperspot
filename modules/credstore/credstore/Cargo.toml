@@ -1,5 +1,5 @@
 [package]
-name = "cf-credstore"
+name = "cyberware-credstore"
 description = "credstore gateway module"
 version = "0.1.22"
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberware-system"]
 categories = ["security"]
 
 [lib]

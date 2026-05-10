@@ -551,220 +551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cf-modkit"
-version = "0.6.8"
-dependencies = [
- "anyhow",
- "arc-swap",
- "async-trait",
- "axum 0.8.9",
- "cf-modkit-canonical-errors",
- "cf-modkit-db",
- "cf-modkit-errors",
- "cf-modkit-macros",
- "cf-modkit-odata",
- "cf-modkit-sdk",
- "cf-modkit-utils",
- "cf-system-sdks",
- "dashmap",
- "figment",
- "futures-core",
- "futures-util",
- "gts",
- "gts-macros",
- "http",
- "inventory",
- "nix 0.31.2",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "parking_lot",
- "rustls",
- "schemars",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tonic",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "urlencoding",
- "utoipa",
- "uuid",
- "zip",
-]
-
-[[package]]
-name = "cf-modkit-canonical-errors"
-version = "0.7.2"
-dependencies = [
- "axum 0.8.9",
- "cf-modkit-canonical-errors-macro",
- "http",
- "serde",
- "serde_json",
- "tracing",
- "utoipa",
-]
-
-[[package]]
-name = "cf-modkit-canonical-errors-macro"
-version = "0.6.1"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "cf-modkit-db"
-version = "0.8.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "bigdecimal",
- "cf-modkit-db-macros",
- "cf-modkit-odata",
- "cf-modkit-security",
- "cf-modkit-utils",
- "chrono",
- "dashmap",
- "dirs",
- "figment",
- "rust_decimal",
- "ryu",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "xxhash-rust",
-]
-
-[[package]]
-name = "cf-modkit-db-macros"
-version = "0.6.2"
-dependencies = [
- "heck 0.5.0",
- "proc-macro-error2",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "cf-modkit-errors"
-version = "0.7.0"
-dependencies = [
- "axum 0.8.9",
- "http",
- "serde",
- "serde_json",
- "tracing",
- "utoipa",
-]
-
-[[package]]
-name = "cf-modkit-errors-macro"
-version = "0.6.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "cf-modkit-macros"
-version = "0.6.2"
-dependencies = [
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "strsim",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "cf-modkit-odata"
-version = "0.7.1"
-dependencies = [
- "base64",
- "bigdecimal",
- "cf-modkit-errors",
- "cf-modkit-errors-macro",
- "chrono",
- "chrono-tz",
- "hex",
- "http",
- "peg",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
-name = "cf-modkit-sdk"
-version = "0.6.4"
-dependencies = [
- "cf-modkit-odata",
- "cf-modkit-security",
- "futures-core",
- "pin-project-lite",
-]
-
-[[package]]
-name = "cf-modkit-security"
-version = "0.7.0"
-dependencies = [
- "anyhow",
- "postcard",
- "secrecy",
- "serde",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
-name = "cf-modkit-utils"
-version = "0.6.3"
-dependencies = [
- "humantime",
- "regex",
- "secrecy",
- "serde",
- "zeroize",
-]
-
-[[package]]
-name = "cf-system-sdk-directory"
-version = "0.1.34"
-dependencies = [
- "anyhow",
- "async-trait",
-]
-
-[[package]]
-name = "cf-system-sdks"
-version = "0.1.34"
-dependencies = [
- "cf-system-sdk-directory",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -935,6 +721,220 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyberware-modkit"
+version = "0.6.10"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "async-trait",
+ "axum 0.8.9",
+ "cyberware-modkit-canonical-errors",
+ "cyberware-modkit-db",
+ "cyberware-modkit-errors",
+ "cyberware-modkit-macros",
+ "cyberware-modkit-odata",
+ "cyberware-modkit-sdk",
+ "cyberware-modkit-utils",
+ "cyberware-system-sdks",
+ "dashmap",
+ "figment",
+ "futures-core",
+ "futures-util",
+ "gts",
+ "gts-macros",
+ "http",
+ "inventory",
+ "nix 0.31.2",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "parking_lot",
+ "rustls",
+ "schemars",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tonic",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "urlencoding",
+ "utoipa",
+ "uuid",
+ "zip",
+]
+
+[[package]]
+name = "cyberware-modkit-canonical-errors"
+version = "0.7.3"
+dependencies = [
+ "axum 0.8.9",
+ "cyberware-modkit-canonical-errors-macro",
+ "http",
+ "serde",
+ "serde_json",
+ "tracing",
+ "utoipa",
+]
+
+[[package]]
+name = "cyberware-modkit-canonical-errors-macro"
+version = "0.6.1"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "cyberware-modkit-db"
+version = "0.8.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bigdecimal",
+ "chrono",
+ "cyberware-modkit-db-macros",
+ "cyberware-modkit-odata",
+ "cyberware-modkit-security",
+ "cyberware-modkit-utils",
+ "dashmap",
+ "dirs",
+ "figment",
+ "rust_decimal",
+ "ryu",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "cyberware-modkit-db-macros"
+version = "0.6.2"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "cyberware-modkit-errors"
+version = "0.7.0"
+dependencies = [
+ "axum 0.8.9",
+ "http",
+ "serde",
+ "serde_json",
+ "tracing",
+ "utoipa",
+]
+
+[[package]]
+name = "cyberware-modkit-errors-macro"
+version = "0.6.3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "cyberware-modkit-macros"
+version = "0.6.2"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "cyberware-modkit-odata"
+version = "0.8.0"
+dependencies = [
+ "base64",
+ "bigdecimal",
+ "chrono",
+ "chrono-tz",
+ "cyberware-modkit-errors",
+ "cyberware-modkit-errors-macro",
+ "hex",
+ "http",
+ "peg",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "cyberware-modkit-sdk"
+version = "0.6.5"
+dependencies = [
+ "cyberware-modkit-odata",
+ "cyberware-modkit-security",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "cyberware-modkit-security"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "postcard",
+ "secrecy",
+ "serde",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "cyberware-modkit-utils"
+version = "0.6.3"
+dependencies = [
+ "humantime",
+ "regex",
+ "secrecy",
+ "serde",
+ "zeroize",
+]
+
+[[package]]
+name = "cyberware-system-sdk-directory"
+version = "0.1.35"
+dependencies = [
+ "anyhow",
+ "async-trait",
+]
+
+[[package]]
+name = "cyberware-system-sdks"
+version = "0.1.35"
+dependencies = [
+ "cyberware-system-sdk-directory",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1026,9 +1026,9 @@ dependencies = [
 name = "de0104_no_api_dto_in_contract"
 version = "0.1.0"
 dependencies = [
- "cf-modkit",
- "cf-modkit-macros",
  "clippy_utils",
+ "cyberware-modkit",
+ "cyberware-modkit-macros",
  "dylint_linting",
  "dylint_testing",
  "lint_utils",
@@ -1098,8 +1098,8 @@ dependencies = [
 name = "de0205_operation_builder"
 version = "0.1.0"
 dependencies = [
- "cf-modkit",
  "clippy_utils",
+ "cyberware-modkit",
  "dylint_linting",
  "dylint_testing",
  "lint_utils",
@@ -1139,9 +1139,9 @@ dependencies = [
 name = "de0309_must_have_domain_model"
 version = "0.1.0"
 dependencies = [
- "cf-modkit",
- "cf-modkit-macros",
  "clippy_utils",
+ "cyberware-modkit",
+ "cyberware-modkit-macros",
  "dylint_linting",
  "dylint_testing",
  "lint_utils",
@@ -1917,9 +1917,9 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "gts"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "349ca150e5a2a61cfe91dda57e841fffa122b876e73f8522b6810630fccebed1"
+checksum = "2a5643b7f259cc57b8822d78e7de34e6e31079a36ffb0a75ee8f685fd53595e5"
 dependencies = [
  "gts-id",
  "jsonschema",
@@ -1936,18 +1936,18 @@ dependencies = [
 
 [[package]]
 name = "gts-id"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "097854f3aade247a143b6f2e8e6f1e7159cf11b0dc01f7d5fbe2d4cefca2cd7b"
+checksum = "c9d8c6ff0c4fcdf993d2279f44a9edf1e66060fe55c59d5ce06b63a6fafaeafa"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "gts-macros"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc810e788e605a74035282e6bbf88b79c4e312460a9561e8866d938d5597333a"
+checksum = "8fb502ca3db36348a24ccefcf7fa4eac1210c32544c718682cd5838503963004"
 dependencies = [
  "gts-id",
  "proc-macro2",

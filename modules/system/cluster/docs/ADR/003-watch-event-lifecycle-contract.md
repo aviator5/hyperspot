@@ -53,7 +53,7 @@ All five scenarios share the same root: **watch is inherently unreliable across 
 
 ## Decision Drivers
 
-- CyberFabric's cluster module is remote-only — every watcher crosses a network boundary.
+- CyberWare's cluster module is remote-only — every watcher crosses a network boundary.
 - SDK-default backends (`CacheBasedServiceDiscovery`, `CasBasedLeaderElection`, `CasBasedDistributedLock` — see ADR-001) depend on watch. Silent lag or reset would silently break these primitives.
 - Rust's `Result`-based error propagation via `?` is idiomatic — any signal that looks like an error will be propagated as one, which is wrong for transient lag signals.
 - Every target backend has a native notion of "you missed events" (etcd compaction, K8s 410 Gone, NATS KV sequence gap, Postgres NOTIFY overflow marker, Redis Pub/Sub backpressure). The trait should expose this uniformly.

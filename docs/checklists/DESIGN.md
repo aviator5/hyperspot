@@ -1029,7 +1029,7 @@ When reviewing PRs that add or change design documents, additionally focus on:
 - [ ] Trade-off analysis — are alternatives considered and justified?
 - [ ] API contract consistency with existing endpoints and conventions
 - [ ] Security considerations — authentication, authorization, data protection
-- [ ] Compliance with `docs/spec-templates/cf-sdlc/DESIGN/template.md` template structure
+- [ ] Compliance with `docs/spec-templates/cyberware-sdlc/DESIGN/template.md` template structure
 - [ ] Identify antipatterns — god objects, leaky abstractions, tight coupling
 - [ ] Compare proposed design with existing industry patterns in SaaS platforms
 - [ ] Compare proposed design with IEEE, ISO, and other industry standards where applicable

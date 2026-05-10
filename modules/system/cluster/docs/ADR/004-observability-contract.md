@@ -30,7 +30,7 @@ date: 2026-04-02
 
 ## Context and Problem Statement
 
-The cluster module is platform-tier infrastructure that every CyberFabric module depends on. When a cluster operation misbehaves — a lock that never releases, an election that flaps, a cache that times out — the first tool operators reach for is observability data: traces, metrics, and logs. The quality and consistency of that data determines how fast an incident is triaged.
+The cluster module is platform-tier infrastructure that every CyberWare module depends on. When a cluster operation misbehaves — a lock that never releases, an election that flaps, a cache that times out — the first tool operators reach for is observability data: traces, metrics, and logs. The quality and consistency of that data determines how fast an incident is triaged.
 
 Three failure modes recur when infrastructure libraries don't treat observability as a first-class contract:
 

@@ -1,5 +1,5 @@
 # Updated: 2026-04-07 by Constructor Tech
-# Dylint Configuration for CyberFabric
+# Dylint Configuration for CyberWare
 
 [workspace.metadata.dylint]
 # Path to the local dylint linters

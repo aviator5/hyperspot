@@ -1,5 +1,5 @@
 [package]
-name = "cf-types-registry"
+name = "cyberware-types-registry"
 version = "0.1.22"
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 description = "Types Registry module: GTS entity registration, storage, and REST API"
 repository.workspace = true
 readme = "README.md"
-keywords = ["cyberfabric", "cyberfabric-system"]
+keywords = ["cyberfabric", "cyberware", "cyberfabric-system"]
 categories = ["development-tools"]
 
 [lints]
@@ -19,7 +19,7 @@ doctest = false
 
 [dependencies]
 # SDK - public API, models, and errors
-types-registry-sdk = { package = "cf-types-registry-sdk", version = "0.2.2", path = "../types-registry-sdk" }
+types-registry-sdk = { package = "cyberware-types-registry-sdk", version = "0.2.2", path = "../types-registry-sdk" }
 
 # GTS types (from git dependency)
 gts = { workspace = true }

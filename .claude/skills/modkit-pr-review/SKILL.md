@@ -17,7 +17,7 @@ Posts findings as inline review comments directly on the PR.
 ## Inputs
 
 - `<PR_NUMBER>` — required, the GitHub PR number (e.g. `123`)
-- `--repo <owner/repo>` — optional, the GitHub repository (e.g. `cyberfabric/cyberfabric-core`)
+- `--repo <owner/repo>` — optional, the GitHub repository (e.g. `cyberfabric/cyberware-rust`)
 
 ## Resolving the target repository
 

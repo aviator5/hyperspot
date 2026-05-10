@@ -7,7 +7,7 @@
 //!
 //! REST routes are deliberately out of scope for this module file —
 //! they land in a subsequent PR once the `InTenantSubtree` predicate
-//! makes the storage-level subtree clamp safe (cyberfabric-core#1813).
+//! makes the storage-level subtree clamp safe (cyberware-rust#1813).
 //!
 //! Lifecycle ordering:
 //!

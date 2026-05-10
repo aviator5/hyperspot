@@ -1,4 +1,4 @@
-# Configuration for running CyberFabric Server with authentication disabled
+# Configuration for running CyberWare Example Server with authentication disabled
 # This mode automatically injects SecurityCtx::root_ctx() for all requests
 # WARNING: Only use for single-user on-premise installations
 
@@ -15,7 +15,7 @@ api_gateway:
   # When auth is disabled, these JWT settings are ignored
   # jwks_uri: "https://auth.example.com/.well-known/jwks.json"
   # issuer: "https://auth.example.com"
-  # audience: "cyberfabric-api"
+  # audience: "cyberware-api"
 
   # Routes without explicit role annotations will not require authentication
   # (irrelevant when auth_disabled is true, but kept for reference)

@@ -1,6 +1,6 @@
 # Types Registry Module
 
-GTS entity registration, storage, validation, and REST API endpoints for CyberFabric.
+GTS entity registration, storage, validation, and REST API endpoints for CyberWare.
 
 ## Overview
 

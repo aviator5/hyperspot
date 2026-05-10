@@ -43,7 +43,7 @@ let api_key = std::env::var("API_KEY")
 
 ## Secure ORM
 
-CyberFabric provides a secure-by-default ORM layer that enforces access control at compile time using the typestate pattern. This prevents unscoped database queries from executing and ensures tenant isolation.
+CyberWare provides a secure-by-default ORM layer that enforces access control at compile time using the typestate pattern. This prevents unscoped database queries from executing and ensures tenant isolation.
 
 For secure ORM usage, see `docs/modkit_unified_system/06_authn_authz_secure_orm.md`.
 

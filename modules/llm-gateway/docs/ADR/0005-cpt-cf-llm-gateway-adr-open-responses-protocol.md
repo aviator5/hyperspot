@@ -15,7 +15,7 @@ date: 2026-03-12
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
   - [OpenAI Chat Completions API](#openai-chat-completions-api)
-  - [Custom CyberFabric API](#custom-cyberfabric-api)
+  - [Custom CyberWare API](#custom-cyberware-api)
   - [Vendor-specific API (OpenAI, Anthropic, or other)](#vendor-specific-api-openai-anthropic-or-other)
   - [Open Responses Protocol](#open-responses-protocol)
 - [More Information](#more-information)
@@ -44,7 +44,7 @@ The legacy OpenAI Chat Completions API (`/v1/chat/completions`) has become a de 
 ## Considered Options
 
 * OpenAI Chat Completions API
-* Custom CyberFabric API
+* Custom CyberWare API
 * Vendor-specific API (OpenAI, Anthropic, or other)
 * Open Responses Protocol
 
@@ -84,9 +84,9 @@ The legacy `/v1/chat/completions` endpoint format that has become a de facto ind
 * Bad, because providers are migrating new models to richer response APIs, making this format increasingly incomplete
 * Bad, because extending it requires non-standard modifications that break client assumptions
 
-### Custom CyberFabric API
+### Custom CyberWare API
 
-A bespoke protocol designed specifically for CyberFabric Gateway's requirements, with full control over request/response structure.
+A bespoke protocol designed specifically for CyberWare Gateway's requirements, with full control over request/response structure.
 
 * Good, because complete control over API design — can implement any feature needed
 * Good, because can be optimized for Gateway-specific patterns (provider routing, fallback, hooks)
@@ -94,7 +94,7 @@ A bespoke protocol designed specifically for CyberFabric Gateway's requirements,
 * Bad, because requires custom clients for every consumer — high integration cost
 * Bad, because no existing ecosystem tooling, SDKs, or documentation to leverage
 * Bad, because ongoing maintenance burden to design, document, and evolve the specification
-* Bad, because creates vendor lock-in to CyberFabric — consumers cannot reuse their API integration elsewhere
+* Bad, because creates vendor lock-in to CyberWare — consumers cannot reuse their API integration elsewhere
 
 ### Vendor-specific API (OpenAI, Anthropic, or other)
 

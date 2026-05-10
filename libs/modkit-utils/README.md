@@ -1,10 +1,10 @@
 # ModKit Utils
 
-Small utility helpers used by CyberFabric / ModKit.
+Small utility helpers used by CyberWare / ModKit.
 
 ## Overview
 
-The `cf-modkit-utils` crate currently provides optional serde support for `humantime`.
+The `cyberware-modkit-utils` crate currently provides optional serde support for `humantime`.
 
 ## Usage
 

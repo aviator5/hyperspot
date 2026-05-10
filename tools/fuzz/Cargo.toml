@@ -1,5 +1,5 @@
 [package]
-name = "cyberfabric-fuzz"
+name = "cyberware-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -11,7 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 
 # Dependencies for fuzzing internal crates
-modkit-odata = { package = "cf-modkit-odata", path = "../../libs/modkit-odata", features = [] }
+modkit-odata = { package = "cyberware-modkit-odata", path = "../../libs/modkit-odata", features = [] }
 
 [[bin]]
 name = "fuzz_odata_filter"

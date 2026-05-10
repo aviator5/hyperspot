@@ -65,7 +65,7 @@ fn hub_with_registry_and_plugin(
 
 #[tokio::test]
 async fn get_returns_registry_unavailable_when_hub_empty() {
-    let svc = Service::new(empty_hub(), "cyberfabric".into());
+    let svc = Service::new(empty_hub(), "cyberware".into());
     let key = SecretRef::new("my-key").unwrap();
     let err = svc.get(&test_ctx(), &key).await.unwrap_err();
     assert!(

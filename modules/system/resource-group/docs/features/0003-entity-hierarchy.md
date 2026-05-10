@@ -447,11 +447,11 @@ REST-level tests for endpoints not covered by existing `api_rest_test.rs`:
 
 ### Module-Level Summary
 
-~325 tests (308 in `cf-resource-group` + 17 in `cf-resource-group-sdk`). Fast (< 5s total). Zero sleeps. Every test atomic.
+~325 tests (308 in `cyberware-resource-group` + 17 in `cyberware-resource-group-sdk`). Fast (< 5s total). Zero sleeps. Every test atomic.
 
 Unit tests guard **deterministic domain logic** — the same logic that runs identically regardless of whether it's called via HTTP or directly in Rust. If a test needs a real PostgreSQL or a real HTTP connection, it belongs in Feature 0007 (E2E), not here.
 
-This feature covers the unit and integration test plan for the `resource-group` module. The current test suite contains 318 tests (302 in `cf-resource-group` across 10 test files + inline `#[cfg(test)]` modules, 16 in `cf-resource-group-sdk`) totaling ~9,400 lines of test code. All tests pass with 0 failures.
+This feature covers the unit and integration test plan for the `resource-group` module. The current test suite contains 318 tests (302 in `cyberware-resource-group` across 10 test files + inline `#[cfg(test)]` modules, 16 in `cyberware-resource-group-sdk`) totaling ~9,400 lines of test code. All tests pass with 0 failures.
 
 The plan was originally based on a gap analysis against acceptance criteria defined in features 0001-0005 and ADR-001 (GTS Type System). The analysis incorporates:
 - Acceptance criteria from features 0001-0005 and ADR-001
@@ -466,7 +466,7 @@ The plan was originally based on a gap analysis against acceptance criteria defi
 
 #### What IS Covered
 
-**cf-resource-group** (302 tests):
+**cyberware-resource-group** (302 tests):
 
 | File | Tests | Covers |
 |------|-------|--------|
@@ -481,7 +481,7 @@ The plan was originally based on a gap analysis against acceptance criteria defi
 | `tenant_filtering_db_test.rs` | 7 | Tenant isolation (list/get/hierarchy/update/delete cross-tenant), InGroup predicate, membership data storage |
 | `tenant_scoping_test.rs` | 10 | AccessScope construction (for_tenant, for_tenants, allow_all, deny_all, tenant_only, for_resource) |
 
-**cf-resource-group-sdk** (16 tests):
+**cyberware-resource-group-sdk** (16 tests):
 
 | File | Tests | Covers |
 |------|-------|--------|
@@ -1155,7 +1155,7 @@ These test domain invariants that prevent data corruption or violate core busine
 
 ### Acceptance Criteria
 
-- [x] All ~325 unit tests pass (`cargo test -p cf-resource-group -p cf-resource-group-sdk`) — 325 tests, 0 failed (as of 2026-03-29)
+- [x] All ~325 unit tests pass (`cargo test -p cyberware-resource-group -p cyberware-resource-group-sdk`) — 325 tests, 0 failed (as of 2026-03-29)
 - [x] Full suite completes in < 5 seconds
 - [x] Zero `sleep`, `timeout`, or `tokio::time` usage in tests
 - [x] Every domain invariant from features 0001-0005 is covered by at least one test

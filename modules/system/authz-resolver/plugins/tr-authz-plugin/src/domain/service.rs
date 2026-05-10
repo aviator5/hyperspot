@@ -97,7 +97,7 @@ impl Service {
         // yield wrong allow/deny decisions. The plugin must keep its full-tree
         // visibility either way.
         //
-        // TODO(https://github.com/cyberfabric/cyberfabric-core/issues/1597):
+        // TODO(https://github.com/cyberfabric/cyberware-rust/issues/1597):
         // once the platform S2S authentication subsystem and the gRPC + mTLS
         // transport land, replace `SecurityContext::anonymous()` here with the
         // S2S-issued service context identifying this caller as

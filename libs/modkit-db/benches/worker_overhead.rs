@@ -6,7 +6,7 @@
 //! handling, notifier wakeup, semaphore acquire — with no-op actions.
 //! This isolates infrastructure overhead from action (business logic) cost.
 //!
-//! Run: `cargo bench -p cf-modkit-db --features preview-outbox --bench worker_overhead`
+//! Run: `cargo bench -p cyberware-modkit-db --features preview-outbox --bench worker_overhead`
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

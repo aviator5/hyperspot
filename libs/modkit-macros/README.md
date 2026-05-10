@@ -8,7 +8,7 @@ In most crates you should import macros from `modkit` (it re-exports them):
 use modkit::{module, lifecycle};
 ```
 
-If you depend on `cf-modkit-macros` directly, the Rust crate name is `modkit_macros`:
+If you depend on `cyberware-modkit-macros` directly, the Rust crate name is `modkit_macros`:
 
 ```rust
 use modkit_macros::{module, lifecycle, grpc_client};
