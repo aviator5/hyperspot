@@ -1,6 +1,6 @@
 # AuthN Resolver SDK
 
-SDK crate for the AuthN Resolver module, providing public API contracts for authentication in CyberWare.
+SDK crate for the AuthN Resolver module, providing public API contracts for authentication in Cyber Ware.
 
 ## Overview
 

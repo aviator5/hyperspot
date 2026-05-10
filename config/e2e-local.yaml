@@ -1,10 +1,10 @@
 # Updated: 2026-04-16 by Constructor Tech
-# CyberWare Server Configuration
+# Cyber Ware Server Configuration
 #
 # Database Architecture Overview:
 # ===============================
 #
-# CyberWare uses a centralized DbManager that:
+# Cyber Ware uses a centralized DbManager that:
 # 1. Loads global database server templates from `database.servers`
 # 2. For each module, merges server template with module-specific overrides
 # 3. Creates isolated database connections per module
@@ -101,9 +101,9 @@ modules:
 
       # OpenAPI Documentation Configuration
       openapi:
-        title: "CyberWare Server API"
+        title: "Cyber Ware Server API"
         version: "0.1.0"
-        description: "CyberWare Server API Documentation"
+        description: "Cyber Ware Server API Documentation"
       defaults:
         body_limit_bytes: 64000000
         rate_limit:

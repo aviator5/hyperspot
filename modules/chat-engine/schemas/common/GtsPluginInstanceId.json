@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "gts://gtx.cf.chat_engine.entities.plugin_instance_id.v1~",
   "title": "GTS Plugin Instance ID",
-  "description": "CyberWare ModKit plugin instance GTS ID identifying a registered ChatEngineBackendPlugin implementation",
+  "description": "Cyber Ware ModKit plugin instance GTS ID identifying a registered ChatEngineBackendPlugin implementation",
   "type": "string",
   "pattern": "^gtx\\.cf\\.core\\.modkit\\.plugin\\.v[0-9]+~[a-z0-9._-]+~[a-z0-9._-]+$",
   "examples": [

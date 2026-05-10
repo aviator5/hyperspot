@@ -111,7 +111,7 @@ Encode the allowed metric names for each source service in SDK initialization co
 * Good, because startup is fast if config is local (no network call at init time)
 * Bad, because authorization policy is not centrally managed — operators must keep per-service configs in sync with PDP policies manually
 * Bad, because policy changes require redeploying source services to take effect — no dynamic policy enforcement
-* Bad, because deviates from the platform-wide PDP pattern used across all other CyberWare modules
+* Bad, because deviates from the platform-wide PDP pattern used across all other Cyber Ware modules
 
 ### Two-phase PDP: `authorize_emit()` before transaction + in-memory constraint evaluation at `emit()`
 

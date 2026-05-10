@@ -61,19 +61,19 @@ REQUIREMENT LANGUAGE:
 
 ### 1.1 Purpose
 
-Cluster is the platform-level coordination service that gives every CyberWare module a uniform way to share state and coordinate across instances. It offers four kinds of coordination — a distributed cache, leader election, distributed locks, and service discovery — and lets each be served by whichever backend (in-process, Postgres, Redis, K8s, NATS, etcd) the operator chooses for a given deployment. Consumers ask for the coordination they need; the platform validates that the operator's deployment can actually deliver it; if not, startup fails with a clear message rather than silently misbehaving in production.
+Cluster is the platform-level coordination service that gives every Cyber Ware module a uniform way to share state and coordinate across instances. It offers four kinds of coordination — a distributed cache, leader election, distributed locks, and service discovery — and lets each be served by whichever backend (in-process, Postgres, Redis, K8s, NATS, etcd) the operator chooses for a given deployment. Consumers ask for the coordination they need; the platform validates that the operator's deployment can actually deliver it; if not, startup fails with a clear message rather than silently misbehaving in production.
 
 The product exists because, today, every module that needs cross-instance coordination either reinvents it from scratch or simply ships a single-instance version. Cluster removes that gap by making coordination a first-class platform capability with consistent semantics across modules and a stable contract that survives backend changes.
 
 ### 1.2 Background / Problem Statement
 
-CyberWare modules increasingly need cross-instance coordination — the event broker has to assign topic shards to workers without two instances claiming the same shard, OAGW has to enforce per-tenant rate limits across replicas, mini-chat has to elect a single leader per chat room, and a future out-of-process (OOP) deployment will need to route requests to the specific delivery instance currently serving a given topic. Today these needs are met inconsistently: one team built K8s-Lease leader election inside mini-chat, another built file-based advisory locks inside `modkit-db`, the nodes-registry exists as an in-memory bag of IDs. None of them is reusable across modules, none of them composes with the others, and none of them works the same way in dev (where there's no K8s) and production.
+Cyber Ware modules increasingly need cross-instance coordination — the event broker has to assign topic shards to workers without two instances claiming the same shard, OAGW has to enforce per-tenant rate limits across replicas, mini-chat has to elect a single leader per chat room, and a future out-of-process (OOP) deployment will need to route requests to the specific delivery instance currently serving a given topic. Today these needs are met inconsistently: one team built K8s-Lease leader election inside mini-chat, another built file-based advisory locks inside `modkit-db`, the nodes-registry exists as an in-memory bag of IDs. None of them is reusable across modules, none of them composes with the others, and none of them works the same way in dev (where there's no K8s) and production.
 
-A unified cluster module gives every CyberWare module the same four coordination primitives — distributed cache, leader election, distributed lock, and service discovery — with the same observable behavior, regardless of whether the deployment runs locally on a developer laptop, on a multi-instance VM cluster with Postgres, or in production on Kubernetes with Redis. The same code that an event broker writes against the cluster module works in every deployment shape — the operator picks the backend, the consumer doesn't change. This eliminates an entire class of "works in dev, breaks in prod" bugs and lets the platform's plugin model own coordination instead of having every module reinvent it.
+A unified cluster module gives every Cyber Ware module the same four coordination primitives — distributed cache, leader election, distributed lock, and service discovery — with the same observable behavior, regardless of whether the deployment runs locally on a developer laptop, on a multi-instance VM cluster with Postgres, or in production on Kubernetes with Redis. The same code that an event broker writes against the cluster module works in every deployment shape — the operator picks the backend, the consumer doesn't change. This eliminates an entire class of "works in dev, breaks in prod" bugs and lets the platform's plugin model own coordination instead of having every module reinvent it.
 
 ### 1.3 Goals (Business Outcomes)
 
-- **Eliminate duplicated coordination code** — a single platform module replaces the per-module fragments (mini-chat's K8s leader election, modkit-db's file locks, the nodes-registry). Target: zero per-module reimplementations of cache / leader election / lock / service discovery in CyberWare within two release cycles of cluster GA.
+- **Eliminate duplicated coordination code** — a single platform module replaces the per-module fragments (mini-chat's K8s leader election, modkit-db's file locks, the nodes-registry). Target: zero per-module reimplementations of cache / leader election / lock / service discovery in Cyber Ware within two release cycles of cluster GA.
 - **Enable reliable multi-instance deployments** — modules that today run in single-instance mode (because they cannot coordinate state across replicas) can be deployed at any replica count once they adopt cluster. Target: at least two modules (event broker, OAGW) running multi-instance in production within one release cycle of cluster GA.
 - **Support zero-infrastructure dev/test** — every cluster-aware behavior can be exercised on a developer laptop without spinning up Postgres, Redis, K8s, or any other backend. Target: full module test suites pass against the in-process backend with no external dependencies.
 - **Allow per-deployment backend selection without consumer code changes** — the same module binary works against different backends in different environments by changing operator configuration only. Target: zero recompilations required to switch a deployment from Postgres to Redis-plus-K8s.
@@ -162,7 +162,7 @@ A unified cluster module gives every CyberWare module the same four coordination
 
 ### 3.1 Deployment Shapes
 
-The cluster module is designed to work across the full range of CyberWare deployments:
+The cluster module is designed to work across the full range of Cyber Ware deployments:
 
 - **Developer laptop / unit test** — one process, no external dependencies, no network. Cluster runs entirely in-process. Every cluster-aware module behavior is exercisable without infrastructure.
 - **Single-host multi-process** — a few processes on one machine, coordinating through a shared backend (typically Postgres). No K8s, no Redis. Cluster delivers full functionality with one optional database dependency.
@@ -177,7 +177,7 @@ A consumer module's code does not change between these shapes. The operator pick
 - The in-process backend has no external dependencies and is the default for development.
 - Each backend other than in-process has its own infrastructure prerequisites (Postgres requires a database; K8s requires API-server access with appropriate permissions; Redis requires network reachability). These belong to the per-backend plugin and the operator's deployment plan, not to the cluster module itself.
 - Within one profile, each primitive can be served by a different backend. There is no requirement to use a single backend for all four primitives.
-- The module host is responsible for bringing cluster up before any consumer module can resolve a primitive. CyberWare's existing module-dependency mechanism enforces this at the module level — the cluster module host is registered as a dependency of every consumer module.
+- The module host is responsible for bringing cluster up before any consumer module can resolve a primitive. Cyber Ware's existing module-dependency mechanism enforces this at the module level — the cluster module host is registered as a dependency of every consumer module.
 
 ## 4. Scope
 
@@ -338,7 +338,7 @@ The system **MUST** provide both non-blocking lock acquisition (returns a conten
 <!-- cpt-cf-id-content -->
 Consumers **MUST** release locks explicitly. If a consumer panics, crashes, or forgets to release, the backend's TTL bounds the leak — the lock is automatically released after the TTL elapses. Consumers **MUST** be able to extend an active lock's TTL for long-running operations; attempting to extend an already-expired lock **MUST** return a specific error so the consumer knows it lost the lock and needs to abort whatever it was doing.
 
-**Rationale**: Cluster operations are remote and CyberWare is fully async — automatic release on Rust `Drop` cannot reliably perform network I/O without creating subtle correctness bugs. Explicit release forces consumers to think about cleanup; TTL bounds the worst case when they don't.
+**Rationale**: Cluster operations are remote and Cyber Ware is fully async — automatic release on Rust `Drop` cannot reliably perform network I/O without creating subtle correctness bugs. Explicit release forces consumers to think about cleanup; TTL bounds the worst case when they don't.
 **Actors**: `cpt-cf-clst-actor-oagw`, `cpt-cf-clst-actor-platform-module`
 <!-- cpt-cf-id-content -->
 
@@ -445,7 +445,7 @@ A plugin author **MUST** be able to ship a working integration by implementing o
 <!-- cpt-cf-id-content -->
 Consumer modules **MUST** reference profiles by a typed identifier defined once in their crate, not by passing the profile name as a string at every call site. The profile name string **MUST** appear in exactly two places per consumer module: the crate's typed declaration and the operator's deployment YAML. There **MUST NOT** be a third place where the string is re-typed.
 
-**Rationale**: CyberWare forbids magic strings in code paths. Typo-prone string profile names are a class of bug the platform should rule out by construction. Typed identifiers fail the build on typo; bare strings fail at startup or worse.
+**Rationale**: Cyber Ware forbids magic strings in code paths. Typo-prone string profile names are a class of bug the platform should rule out by construction. Typed identifiers fail the build on typo; bare strings fail at startup or worse.
 **Actors**: `cpt-cf-clst-actor-platform-module`
 <!-- cpt-cf-id-content -->
 
@@ -678,7 +678,7 @@ The following non-functional concerns are deliberately NOT in scope for this cha
 
 ### 7.1 Public API Surface
 
-The cluster module exposes a public API consumed by CyberWare modules and a separate plugin-facing interface implemented by per-backend plugins. The two surfaces evolve on independent versioning schedules per the plugin-contract-stability NFR — a plugin built against the initial plugin-facing interface continues working against future minor versions of the consumer-facing API.
+The cluster module exposes a public API consumed by Cyber Ware modules and a separate plugin-facing interface implemented by per-backend plugins. The two surfaces evolve on independent versioning schedules per the plugin-contract-stability NFR — a plugin built against the initial plugin-facing interface continues working against future minor versions of the consumer-facing API.
 
 #### Consumer API
 

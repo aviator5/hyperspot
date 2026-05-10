@@ -25,11 +25,11 @@
 
 ## Overview
 
-This document describes Cyber Fabric's approach to authentication (AuthN) and authorization (AuthZ).
+This document describes Cyber Ware's approach to authentication (AuthN) and authorization (AuthZ).
 
-**Authentication** verifies the identity of the subject making a request. Cyber Fabric uses the **AuthN Resolver** module to integrate with vendor's Identity Provider (IdP), validate access tokens, and extract subject identity into a `SecurityContext`.
+**Authentication** verifies the identity of the subject making a request. Cyber Ware uses the **AuthN Resolver** module to integrate with vendor's Identity Provider (IdP), validate access tokens, and extract subject identity into a `SecurityContext`.
 
-**Authorization** determines what the authenticated subject can do. Cyber Fabric uses the **AuthZ Resolver** module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: Cyber Fabric modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks.
+**Authorization** determines what the authenticated subject can do. Cyber Ware uses the **AuthZ Resolver** module (acting as PDP) to obtain access decisions and query-level constraints. The core challenge: Cyber Ware modules need to enforce authorization at the **query level** (SQL WHERE clauses), not just perform point-in-time access checks.
 
 See [ADR 0001](./ADR/0001-pdp-pep-authorization-model.md) for the authorization model and [ADR 0002](./ADR/0002-split-authn-authz-resolvers.md) for the rationale behind separating AuthN and AuthZ.
 
@@ -40,7 +40,7 @@ This document uses the PDP/PEP authorization model (per NIST SP 800-162):
 - **PDP (Policy Decision Point)** — evaluates policies and returns access decisions with constraints
 - **PEP (Policy Enforcement Point)** — enforces PDP decisions at resource access points
 
-In Cyber Fabric's architecture:
+In Cyber Ware's architecture:
 - **AuthN Resolver** validates tokens and produces SecurityContext (separate concern from PDP)
 - **AuthZ Resolver** (via vendor-specific plugin) serves as the **PDP**
 - **Domain modules** act as **PEPs**, applying constraints to database queries
@@ -114,10 +114,10 @@ sequenceDiagram
 
 ### AuthN Resolver and AuthZ Resolver: Module + Plugin Architecture
 
-Since IdP and PDP are vendor-specific, Cyber Fabric cannot implement authentication and authorization directly. Instead, we use the **module + plugin** pattern with two separate resolvers:
+Since IdP and PDP are vendor-specific, Cyber Ware cannot implement authentication and authorization directly. Instead, we use the **module + plugin** pattern with two separate resolvers:
 
-- **AuthN Resolver** — a Cyber Fabric module with plugins that defines a unified interface for authentication operations (token validation, introspection, SecurityContext production)
-- **AuthZ Resolver** — a Cyber Fabric module with plugins that defines a unified interface for authorization operations (PDP functionality, policy evaluation, constraint generation)
+- **AuthN Resolver** — a Cyber Ware module with plugins that defines a unified interface for authentication operations (token validation, introspection, SecurityContext production)
+- **AuthZ Resolver** — a Cyber Ware module with plugins that defines a unified interface for authorization operations (PDP functionality, policy evaluation, constraint generation)
 - **Vendor Plugins** — implement the AuthN and/or AuthZ interfaces, integrating with vendor's IdP and Authorization API
 
 This separation provides:
@@ -132,7 +132,7 @@ Each vendor develops their own AuthN and AuthZ plugins (or a unified plugin impl
 
 **AuthN Plugin:**
 
-The AuthN Resolver plugin bridges Cyber Fabric to the vendor's IdP. The plugin is responsible for:
+The AuthN Resolver plugin bridges Cyber Ware to the vendor's IdP. The plugin is responsible for:
 - **IdP communication** — calling introspection endpoints, handling IdP-specific protocols
 - **Claim enrichment** — if the IdP doesn't include `subject_type` or `subject_tenant_id` in tokens, the plugin fetches this information from vendor services
 - **Response mapping** — converting IdP-specific responses to `SecurityContext`
@@ -140,7 +140,7 @@ The AuthN Resolver plugin bridges Cyber Fabric to the vendor's IdP. The plugin i
 
 **AuthZ Plugin:**
 
-The AuthZ Resolver plugin bridges Cyber Fabric to the vendor's Authorization Service (PDP). The plugin is responsible for:
+The AuthZ Resolver plugin bridges Cyber Ware to the vendor's Authorization Service (PDP). The plugin is responsible for:
 - **Policy evaluation** — calling vendor's authorization API with subject, action, resource, context
 - **Constraint generation** — translating vendor's policy decisions into SQL-compilable constraints
 - **Hierarchy queries** — using Tenant Resolver and RG Resolver to query tenant and group hierarchies for constraint generation
@@ -148,7 +148,7 @@ The AuthZ Resolver plugin bridges Cyber Fabric to the vendor's Authorization Ser
 
 **Policy Storage and Retrieval (Out of Scope):**
 
-How authorization rules are stored, represented, and retrieved within the PDP is entirely a vendor implementation detail. Cyber Fabric defines only the PDP-PEP contract (request/response format via AuthZEN-extended API).
+How authorization rules are stored, represented, and retrieved within the PDP is entirely a vendor implementation detail. Cyber Ware defines only the PDP-PEP contract (request/response format via AuthZEN-extended API).
 
 Vendors may use any policy model and storage mechanism:
 - **RBAC** — role-permission tables, role hierarchies
@@ -179,7 +179,7 @@ flowchart TB
         AuthzSvc["Authz Service"]
     end
 
-    subgraph Cyber Fabric
+    subgraph Cyber Ware
         subgraph TenantResolver["Tenant Resolver"]
             TenantGW["Module"]
             TenantPlugin["Plugin"]
@@ -297,11 +297,11 @@ Token scopes provide capability narrowing for third-party applications. They act
 | First-party | UI, CLI | `["*"]` | No restrictions, full user permissions |
 | Third-party | Partner integrations | `["read:events"]` | Limited to granted scopes |
 
-**Detection:** AuthN Resolver plugin determines app type during introspection and sets `token_scopes` accordingly. Cyber Fabric does not maintain a trusted client list.
+**Detection:** AuthN Resolver plugin determines app type during introspection and sets `token_scopes` accordingly. Cyber Ware does not maintain a trusted client list.
 
 ### Vendor Neutrality
 
-Cyber Fabric accepts scopes as opaque strings (`Vec<String>`). Different vendors use
+Cyber Ware accepts scopes as opaque strings (`Vec<String>`). Different vendors use
 different formats:
 - Google-style: `https://api.vendor.com/auth/tasks.read`
 - Simple strings: `read_all`, `admin`
@@ -496,7 +496,7 @@ SecurityContext {
 
 ### Plugin Responsibilities
 
-The AuthN Resolver plugin bridges Cyber Fabric to the vendor's IdP. Plugin responsibilities:
+The AuthN Resolver plugin bridges Cyber Ware to the vendor's IdP. Plugin responsibilities:
 
 1. **Token Validation** — Implement vendor-specific validation logic (JWT signature verification, introspection, custom protocols)
 2. **Claim Extraction** — Extract subject identity from token claims or introspection response
@@ -576,7 +576,7 @@ For **point operations**, Access Evaluation API could technically work, but requ
 
 AuthZEN's Resource Search API answers: "What resources can subject S perform action A on?" — returning a list of resource IDs.
 
-This **assumes the PDP has access to resource data**. In Cyber Fabric's architecture, resources live in the PEP's database — the PDP cannot enumerate what it doesn't have.
+This **assumes the PDP has access to resource data**. In Cyber Ware's architecture, resources live in the PEP's database — the PDP cannot enumerate what it doesn't have.
 
 This creates an architectural mismatch:
 - **PDP** knows "who can access what" (authorization policies)
@@ -1054,7 +1054,7 @@ All predicates filter resources based on their properties. The `resource_propert
 
 The Rust SQL compilation library supports **extensible predicate types**:
 
-- **Standard predicates** — Cyber Fabric's built-in modules use only the standard predicates listed below (`eq`, `in`, `in_tenant_subtree`, `in_group`, `in_group_subtree`)
+- **Standard predicates** — Cyber Ware's built-in modules use only the standard predicates listed below (`eq`, `in`, `in_tenant_subtree`, `in_group`, `in_group_subtree`)
 - **Custom predicates** — Vendors can extend the system by:
   1. Registering new predicate types with the SQL compilation library
   2. Providing SQL compilation handlers for these predicates
@@ -1297,7 +1297,7 @@ Do not add projections speculatively — each projection creates an additional d
 
 ### Table Schemas (Local Projections)
 
-These tables are maintained locally by Cyber Fabric modules (Tenant Resolver, Resource Group module) and used by PEPs to execute constraint queries efficiently without calling back to the vendor platform.
+These tables are maintained locally by Cyber Ware modules (Tenant Resolver, Resource Group module) and used by PEPs to execute constraint queries efficiently without calling back to the vendor platform.
 
 **Projectable to domain services:** `tenant_closure`, `resource_group`, `resource_group_closure`, `resource_group_membership` (progressively — see [Capabilities and Projection Tables](#capabilities-and-projection-tables) for guidance on when to project each table).
 
@@ -1436,7 +1436,7 @@ These questions require further design work.
 
 3. **Local projections sync** - How to keep projection tables (`tenant_closure`, `resource_group_closure`) in sync with vendor's source of truth? Possible approaches: event-based sync (requires event broker), CDC-based (Debezium-like), or periodic polling via Resolver APIs. Each has trade-offs in consistency, latency, and infrastructure complexity. Note: `resource_group_membership` projection is not recommended (see [Capabilities and Projection Tables](#capabilities-and-projection-tables)) but is not forbidden if the use case demands it.
 
-4. **Resource Group Service** - Should Cyber Fabric have its own Resource Group Service, or is Resource Group Resolver (module bridging to vendor's service) sufficient? Having a Cyber Fabric-native service has pros and cons. Needs design.
+4. **Resource Group Service** - Should Cyber Ware have its own Resource Group Service, or is Resource Group Resolver (module bridging to vendor's service) sufficient? Having a Cyber Ware-native service has pros and cons. Needs design.
 
 5. **Authorization decision caching** - See [Authorization Decision Caching](#authorization-decision-caching) section for detailed open questions: cache key structure, cache-control protocol, invalidation strategy, token expiration handling.
 
@@ -1451,10 +1451,10 @@ These questions require further design work.
 
 9. ~~**S2S token issuance**~~ — **Resolved.** See [S2S Authentication (Service-to-Service)](#s2s-authentication-service-to-service).
 
-10. **Multi-Factor Authentication (MFA) support** — How should Cyber Fabric handle MFA across both AuthN and AuthZ layers? Industry standards and best practices to study:
+10. **Multi-Factor Authentication (MFA) support** — How should Cyber Ware handle MFA across both AuthN and AuthZ layers? Industry standards and best practices to study:
     - **AuthN side:**
       - **OIDC `acr` / `amr` claims** — [OpenID Connect Core §2 (acr, amr)](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) defines Authentication Context Class Reference (`acr`) and Authentication Methods References (`amr`) claims. Should AuthN Resolver extract and propagate these in `SecurityContext`?
-      - **NIST SP 800-63B** — Authenticator Assurance Levels (AAL1/AAL2/AAL3). Should Cyber Fabric be aware of AAL and map `acr` values to AAL levels?
+      - **NIST SP 800-63B** — Authenticator Assurance Levels (AAL1/AAL2/AAL3). Should Cyber Ware be aware of AAL and map `acr` values to AAL levels?
       - **Step-up authentication** — [RFC 9470: OAuth 2.0 Step-Up Authentication Challenge Protocol](https://datatracker.ietf.org/doc/html/rfc9470) defines how a resource server can signal that a higher authentication level is required. Should AuthN Middleware or PEP be able to trigger step-up challenges (e.g., `WWW-Authenticate: Bearer ... acr_values="..."`)? How does this interact with the current single-method `authenticate()` interface?
       - **SecurityContext changes** — Should `SecurityContext` include `acr`, `amr`, or an abstracted `authentication_assurance_level` field?
     - **AuthZ side:**
@@ -1462,7 +1462,7 @@ These questions require further design work.
       - **Constraint-level MFA** — Can MFA requirements be expressed as constraints, or is this a pre-constraint check (deny before constraint evaluation)?
       - **Dynamic step-up** — If PDP determines MFA is needed but the current session lacks it, what should the PEP response be? HTTP 401 with step-up challenge vs 403?
     - **Open sub-questions:**
-      - Should MFA enforcement be purely IdP-side (transparent to Cyber Fabric), or does Cyber Fabric need explicit awareness?
+      - Should MFA enforcement be purely IdP-side (transparent to Cyber Ware), or does Cyber Ware need explicit awareness?
       - How do industry multi-tenant platforms (Azure AD Conditional Access, AWS IAM, Google Cloud IAP) handle MFA in the context of delegated authorization?
       - What is the interaction between MFA and token scopes? Should third-party apps be able to request MFA-elevated scopes?
 
@@ -1495,4 +1495,4 @@ These questions require further design work.
 - [TENANT_MODEL.md](./TENANT_MODEL.md) — Tenant topology, barriers, closure tables
 - [RESOURCE_GROUP_MODEL.md](./RESOURCE_GROUP_MODEL.md) — Resource group topology, membership, hierarchy
 - [AUTHZ_USAGE_SCENARIOS.md](./AUTHZ_USAGE_SCENARIOS.md) — Authorization usage scenarios
-- [Cyber Fabric GTS (Global Type System)](../../../modules/system/types-registry/)
+- [Cyber Ware GTS (Global Type System)](../../../modules/system/types-registry/)

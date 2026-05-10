@@ -7,7 +7,7 @@
 
 ## Context and Problem Statement
 
-Internal CyberWare modules (workflow engines, agents, background jobs) need to make HTTP requests to external services (OpenAI, Anthropic, external APIs) but are **not allowed direct internet access** for security and observability reasons. All outbound requests must route through OAGW.
+Internal Cyber Ware modules (workflow engines, agents, background jobs) need to make HTTP requests to external services (OpenAI, Anthropic, external APIs) but are **not allowed direct internet access** for security and observability reasons. All outbound requests must route through OAGW.
 
 **Problem**: Internal modules and third-party SDKs (like `async-openai`, `anthropic-sdk-rust`) expect a standard HTTP client interface. We need a **drop-in replacement client library** that:
 

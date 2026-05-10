@@ -1,6 +1,6 @@
 # Tenant Model
 
-This document describes Cyber Fabric's multi-tenancy model, tenant topology, and isolation mechanisms.
+This document describes Cyber Ware's multi-tenancy model, tenant topology, and isolation mechanisms.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ This document describes Cyber Fabric's multi-tenancy model, tenant topology, and
 
 ## Overview
 
-Cyber Fabric uses a **hierarchical multi-tenancy** model where tenants form a single-root tree. Every tenant except the root has exactly one parent, and all tenants descend from a single shared root. Tenants can have child tenants, creating organizational structures like:
+Cyber Ware uses a **hierarchical multi-tenancy** model where tenants form a single-root tree. Every tenant except the root has exactly one parent, and all tenants descend from a single shared root. Tenants can have child tenants, creating organizational structures like:
 
 ```
 Root
@@ -195,7 +195,7 @@ Many operations need to query "all resources in tenant T and its children". This
 | Explicit ID list from PDP | Simple SQL | Doesn't scale (thousands of IDs) |
 | Closure table | O(1) JOIN, scales well | Requires sync, storage overhead |
 
-Cyber Fabric recommends **closure tables** for production deployments with hierarchical tenants.
+Cyber Ware recommends **closure tables** for production deployments with hierarchical tenants.
 
 **Tenant scope parameters (in `context.tenant_context`):**
 

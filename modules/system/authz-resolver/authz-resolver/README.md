@@ -1,6 +1,6 @@
 # AuthZ Resolver
 
-Main module for authorization in CyberWare. Discovers AuthZ plugins via GTS types-registry and routes policy evaluation to the selected plugin (PDP).
+Main module for authorization in Cyber Ware. Discovers AuthZ plugins via GTS types-registry and routes policy evaluation to the selected plugin (PDP).
 
 ## Overview
 

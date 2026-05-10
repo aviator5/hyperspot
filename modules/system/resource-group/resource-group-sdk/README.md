@@ -1,6 +1,6 @@
 # Resource Group SDK
 
-SDK crate for the Resource Group module, providing public API contracts for hierarchical resource group management with the GTS type system in CyberWare.
+SDK crate for the Resource Group module, providing public API contracts for hierarchical resource group management with the GTS type system in Cyber Ware.
 
 ## Overview
 

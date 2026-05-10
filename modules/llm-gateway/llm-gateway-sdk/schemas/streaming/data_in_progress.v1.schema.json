@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "gts://gts.cf.llmgw.streaming.event.v1~x.llmgw.streaming.data_in_progress.v1~",
-  "title": "CyberWare data output in-progress event",
-  "description": "A streaming event indicating a binary data output item has started processing (e.g., image generation in progress). CyberWare extension event.",
+  "title": "Cyber Ware data output in-progress event",
+  "description": "A streaming event indicating a binary data output item has started processing (e.g., image generation in progress). Cyber Ware extension event.",
   "allOf": [
     { "$ref": "gts://gts.cf.llmgw.streaming.event.v1~" },
     {

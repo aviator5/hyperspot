@@ -89,7 +89,7 @@ The module supports two usage profiles with one API surface:
 - `catalog` profile: store and query arbitrary resource group structures and memberships.
 - `ownership-graph` profile: expose deterministic hierarchy/membership reads that can be consumed by external decision systems (for example AuthZ plugin logic).
 
-Cyber Fabric ships a ready-to-use RG provider in `modules/system/resource-group`.
+Cyber Ware ships a ready-to-use RG provider in `modules/system/resource-group`.
 Deployments can either:
 
 - use this built-in provider directly, or
@@ -101,7 +101,7 @@ RG is data infrastructure only. It does not evaluate authorization policies and 
 
 ### 1.2 Background / Problem Statement
 
-CyberWare needs one consistent way to model hierarchical ownership and resource grouping. Without a shared module, each domain service re-implements tree logic, cycle prevention, traversal, and membership semantics.
+Cyber Ware needs one consistent way to model hierarchical ownership and resource grouping. Without a shared module, each domain service re-implements tree logic, cycle prevention, traversal, and membership semantics.
 
 Authorization flows additionally need a stable source for ownership hierarchy and group membership context. This source must be independent from policy logic and reusable outside AuthZ use cases.
 
@@ -750,7 +750,7 @@ Data lifecycle follows platform defaults. Tenant deprovisioning **MUST** cascade
 ### NFR Exclusions
 
 - **Usability (UX)**: Not applicable — RG is a backend infrastructure module with no user-facing UI. Consumers interact via REST API and SDK traits.
-- **Operations (OPS)**: Not applicable — RG follows standard CyberWare deployment and monitoring patterns. No module-specific operational requirements beyond platform defaults.
+- **Operations (OPS)**: Not applicable — RG follows standard Cyber Ware deployment and monitoring patterns. No module-specific operational requirements beyond platform defaults.
 - **Compliance (COMPL)**: Not applicable — RG does not directly handle PII or regulated data. Compliance requirements are owned by consuming modules and platform-level controls.
 - **Safety (SAFE)**: Not applicable — RG is a data infrastructure module with no physical interaction or safety-critical operations.
 - **Maintainability / Documentation (MAINT)**: Not applicable at PRD level — SDK trait documentation and REST API OpenAPI specification follow platform documentation standards. No module-specific documentation requirements beyond platform defaults.

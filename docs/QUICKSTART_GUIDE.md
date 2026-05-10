@@ -1,6 +1,6 @@
-# CyberWare Server - Quickstart Guide
+# Cyber Ware Server - Quickstart Guide
 
-Start CyberWare example server and verify it works. For project overview, see [README.md](../README.md).
+Start Cyber Ware example server and verify it works. For project overview, see [README.md](../README.md).
 
 ---
 

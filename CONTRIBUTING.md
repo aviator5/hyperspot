@@ -1,6 +1,6 @@
-# Contributing to Cyber Fabric
+# Contributing to Cyber Ware
 
-Thank you for your interest in contributing to Cyber Fabric! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Cyber Ware! This document provides guidelines and information for contributors.
 
 We welcome contributions in:
 
@@ -304,7 +304,7 @@ See [docs/pr-review/README.md](./docs/pr-review/README.md) for full setup (GitHu
 
 ## 3. Versioning
 
-This topic defines how Cyber Fabric versions crates and handles breaking changes.
+This topic defines how Cyber Ware versions crates and handles breaking changes.
 
 ## Scope
 
@@ -463,4 +463,4 @@ Before merging changes that affect public crates/contracts:
 
 ---
 
-Thank you for contributing to Cyber Fabric!
+Thank you for contributing to Cyber Ware!

@@ -42,11 +42,11 @@ Created:  2026-04-01 by Diffora
 
 ### 1.1 Architectural Vision
 
-AM is the foundational multi-tenancy source-of-truth module for the Cyber Fabric platform. It owns the tenant hierarchy, tenant type enforcement, barrier metadata, delegated IdP user operations, and extensible tenant metadata. AM follows the standard ModKit module pattern under `modules/system/account-management/`: a planned SDK crate (`account-management-sdk`) exposes transport-agnostic traits and models, and a planned implementation crate (`account-management`) provides the module lifecycle, REST API, domain logic, and infrastructure adapters.
+AM is the foundational multi-tenancy source-of-truth module for the Cyber Ware platform. It owns the tenant hierarchy, tenant type enforcement, barrier metadata, delegated IdP user operations, and extensible tenant metadata. AM follows the standard ModKit module pattern under `modules/system/account-management/`: a planned SDK crate (`account-management-sdk`) exposes transport-agnostic traits and models, and a planned implementation crate (`account-management`) provides the module lifecycle, REST API, domain logic, and infrastructure adapters.
 
 The architecture separates data ownership from enforcement. AM stores and validates the tenant tree structure, barrier flags, and type constraints. It does not evaluate authorization policies, generate SQL predicates, or validate bearer tokens on the per-request path. Tenant Resolver and AuthZ Resolver consume AM source-of-truth data for runtime enforcement. This separation keeps AM focused on administrative correctness while letting specialized resolvers optimize the hot path independently.
 
-IdP integration uses the CyberWare gateway + plugin pattern, analogous to AuthN Resolver (see `cpt-cf-account-management-adr-idp-contract-separation`). AM defines an `IdpProviderPluginClient` trait for tenant and user administrative operations (provider availability check, tenant provisioning/deprovisioning, user provision/deprovision, tenant-scoped query). The plugin is discovered via GTS types-registry and resolved through `ClientHub`. The platform ships a default provider plugin; vendors substitute their own implementation behind the same trait. The IdP provider plugin is intentionally separate from the AuthN Resolver plugin — the two target different concerns (admin operations vs hot-path token validation) with different performance profiles and protocols. The contract is one-directional: AM calls IdP, IdP does not call AM.
+IdP integration uses the Cyber Ware gateway + plugin pattern, analogous to AuthN Resolver (see `cpt-cf-account-management-adr-idp-contract-separation`). AM defines an `IdpProviderPluginClient` trait for tenant and user administrative operations (provider availability check, tenant provisioning/deprovisioning, user provision/deprovision, tenant-scoped query). The plugin is discovered via GTS types-registry and resolved through `ClientHub`. The platform ships a default provider plugin; vendors substitute their own implementation behind the same trait. The IdP provider plugin is intentionally separate from the AuthN Resolver plugin — the two target different concerns (admin operations vs hot-path token validation) with different performance profiles and protocols. The contract is one-directional: AM calls IdP, IdP does not call AM.
 
 User group management is handled by the [Resource Group](../../resource-group/docs/PRD.md) module. AM registers a dedicated Resource Group type for user groups during module initialization; consumers call `ResourceGroupClient` directly for group lifecycle, membership, and hierarchy operations.
 
@@ -145,7 +145,7 @@ The following architecture decisions are adopted in this DESIGN:
 
 | Decision Area | Adopted Approach | ADR |
 |---------------|-----------------|-----|
-| IdP contract design | Separate IdP provider plugin (`IdpProviderPluginClient`) from AuthN Resolver plugin, both following CyberWare gateway + plugin pattern with independent GTS schemas. | `cpt-cf-account-management-adr-idp-contract-separation` — [ADR-0001](ADR/0001-cpt-cf-account-management-adr-idp-contract-separation.md) |
+| IdP contract design | Separate IdP provider plugin (`IdpProviderPluginClient`) from AuthN Resolver plugin, both following Cyber Ware gateway + plugin pattern with independent GTS schemas. | `cpt-cf-account-management-adr-idp-contract-separation` — [ADR-0001](ADR/0001-cpt-cf-account-management-adr-idp-contract-separation.md) |
 | Metadata inheritance | Walk-up resolution at read time via `parent_id` ancestor chain. The walk stops at self-managed barriers and otherwise continues to the root; no write amplification, always consistent. | `cpt-cf-account-management-adr-metadata-inheritance` — [ADR-0002](ADR/0002-cpt-cf-account-management-adr-metadata-inheritance.md) |
 | Conversion approval | Stateful `ConversionRequest` entity with a configurable approval window (default 72h), partial unique index for at-most-one pending row per tenant, background expiry and soft-delete retention jobs. Symmetric collection-based REST API (`/conversions` child-scope, `/child-conversions` parent-scope, each with `{request_id}`) lets each side initiate via `POST` and resolve via `PATCH` from its own AuthZ scope. Lifecycle enum is five-valued (`pending`/`approved`/`cancelled`/`rejected`/`expired`) with explicit actor-per-status semantics. | `cpt-cf-account-management-adr-conversion-approval` — [ADR-0003](ADR/0003-cpt-cf-account-management-adr-conversion-approval.md) |
 | User identity source of truth | IdP is the single source of truth for user identity data (credentials, profile, authentication state, user existence). AM does not maintain a local user table, projection, or cache. | `cpt-cf-account-management-adr-idp-user-identity-source-of-truth` — [ADR-0005](ADR/0005-cpt-cf-account-management-adr-idp-user-identity-source-of-truth.md) |
@@ -236,7 +236,7 @@ AM does not maintain a local user table, user projection, or cached user-tenant 
 
 - [ ] `p2` - **ID**: `cpt-cf-account-management-constraint-security-context`
 
-All AM API endpoints require a valid `SecurityContext` propagated by the Cyber Fabric framework. `PolicyEnforcer` PEP pattern is applied on every REST handler. AM does not construct, validate, or modify `SecurityContext` — it consumes the context provided by the framework.
+All AM API endpoints require a valid `SecurityContext` propagated by the Cyber Ware framework. `PolicyEnforcer` PEP pattern is applied on every REST handler. AM does not construct, validate, or modify `SecurityContext` — it consumes the context provided by the framework.
 
 **ADRs**: None yet — framework convention.
 
@@ -252,7 +252,7 @@ Tenant creation and type validation require the GTS Types Registry to be availab
 
 - [ ] `p2` - **ID**: `cpt-cf-account-management-constraint-no-authz-eval`
 
-AM does not evaluate allow/deny decisions, interpret authorization policies, validate bearer tokens, or generate SQL predicates for tenant scoping. These responsibilities belong to AuthZ Resolver, Tenant Resolver, and the Cyber Fabric framework respectively.
+AM does not evaluate allow/deny decisions, interpret authorization policies, validate bearer tokens, or generate SQL predicates for tenant scoping. These responsibilities belong to AuthZ Resolver, Tenant Resolver, and the Cyber Ware framework respectively.
 
 **ADRs**: None yet — platform architecture boundary.
 
@@ -782,7 +782,7 @@ This interface exposes raw and resolved tenant metadata keyed by registered GTS 
 - [ ] `p1` - **ID**: `cpt-cf-account-management-interface-idp-plugin`
 
 - **Contracts**: `cpt-cf-account-management-contract-idp-provider`, `cpt-cf-account-management-contract-gts-registry`
-- **Technology**: CyberWare plugin (Rust trait + GTS discovery + ClientHub registration)
+- **Technology**: Cyber Ware plugin (Rust trait + GTS discovery + ClientHub registration)
 - **Location**: `modules/system/account-management/account-management-sdk/src/idp.rs`
 - **ADR**: `cpt-cf-account-management-adr-idp-contract-separation`
 

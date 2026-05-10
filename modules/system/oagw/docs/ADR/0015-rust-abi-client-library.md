@@ -69,7 +69,7 @@ decision-makers: OAGW Team
 
 ## Context and Problem Statement
 
-Internal CyberWare modules (workflow engines, agents, background jobs) need to make HTTP requests to external services but are not allowed direct internet access for security and observability reasons. All outbound requests must route through OAGW. A drop-in replacement client library is needed that: (1) routes requests through OAGW's `/proxy/{alias}/*` endpoint, (2) supports shared-process mode (direct function calls) and remote mode (HTTP requests), (3) handles multiple response types (plain HTTP, SSE, streaming), (4) supports multiple protocols (HTTP/1.1, HTTP/2, WebSocket, WebTransport), (5) works as HTTP backend for third-party Rust SDKs, and (6) uses explicit alias routing where the caller specifies the OAGW upstream alias in the API.
+Internal Cyber Ware modules (workflow engines, agents, background jobs) need to make HTTP requests to external services but are not allowed direct internet access for security and observability reasons. All outbound requests must route through OAGW. A drop-in replacement client library is needed that: (1) routes requests through OAGW's `/proxy/{alias}/*` endpoint, (2) supports shared-process mode (direct function calls) and remote mode (HTTP requests), (3) handles multiple response types (plain HTTP, SSE, streaming), (4) supports multiple protocols (HTTP/1.1, HTTP/2, WebSocket, WebTransport), (5) works as HTTP backend for third-party Rust SDKs, and (6) uses explicit alias routing where the caller specifies the OAGW upstream alias in the API.
 
 **Current gaps**:
 

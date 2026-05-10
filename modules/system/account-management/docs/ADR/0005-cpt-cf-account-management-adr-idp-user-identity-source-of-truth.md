@@ -30,7 +30,7 @@ decision-makers: Virtuozzo
 
 AM coordinates user lifecycle operations (provisioning, deprovisioning, tenant-scoped queries) and needs access to user identity information — credentials, profile attributes, authentication state, and user existence. The platform must decide where this data is authoritatively stored: in the IdP, in AM's own database, or in both. This decision has significant implications for data consistency, operational complexity, GDPR compliance, and system availability during IdP outages.
 
-The Cyber Fabric platform uses a pluggable IdP integration model (see `cpt-cf-account-management-adr-idp-contract-separation`). Different deployments may use Keycloak, Azure AD, Okta, or custom identity providers. AM must work consistently regardless of which IdP backs the deployment.
+The Cyber Ware platform uses a pluggable IdP integration model (see `cpt-cf-account-management-adr-idp-contract-separation`). Different deployments may use Keycloak, Azure AD, Okta, or custom identity providers. AM must work consistently regardless of which IdP backs the deployment.
 
 ## Decision Drivers
 

@@ -4,7 +4,7 @@
 
 ## Versioning conventions
 
-This document describes the CyberWare components and their roles in typical scenarios. Every feature or scenario step has an inline indicator of the priority/phase tag (p1-p5) and implementation status of given functionality:
+This document describes the Cyber Ware components and their roles in typical scenarios. Every feature or scenario step has an inline indicator of the priority/phase tag (p1-p5) and implementation status of given functionality:
 
 - [ ] - not implemented
 - [x] - implemented
@@ -13,7 +13,7 @@ The objective of such notation is to provide a clear overview of the current sta
 
 ## Type System
 
-CyberWare modules use the [Global Type System](https://github.com/GlobalTypeSystem/gts-rust) ([specification](https://github.com/GlobalTypeSystem/gts-spec)) to implement a powerful **extension point architecture** where virtually everything in the system can be extended without modifying core code.
+Cyber Ware modules use the [Global Type System](https://github.com/GlobalTypeSystem/gts-rust) ([specification](https://github.com/GlobalTypeSystem/gts-spec)) to implement a powerful **extension point architecture** where virtually everything in the system can be extended without modifying core code.
 
 The GTS naming conventions provide simple, human-readable, globally unique identifier and referencing system for data type definitions (e.g., JSON Schemas) and global data instances (e.g., JSON objects).
 
@@ -23,7 +23,7 @@ The GTS naming conventions provide simple, human-readable, globally unique ident
 
 ![architecture.drawio.png](img/architecture.drawio.png)
 
-The diagram above illustrates the principal CyberWare module architecture. The deployed component set depends on the target environment and build configuration; for example it can be a single executable for the desktop build or multiple containers for a cloud server.
+The diagram above illustrates the principal Cyber Ware module architecture. The deployed component set depends on the target environment and build configuration; for example it can be a single executable for the desktop build or multiple containers for a cloud server.
 
 Each module encapsulates a well-defined piece of business logic and exposes **versioned contracts** to its consumers via Rust-native interfaces, HTTP APIs, or gRPC. In addition, modules can define their own **plugin interfaces** that allow pluggable implementations of processing and storage concerns, enabling extensibility without coupling core logic to concrete backends. Additionally, modules can define **adapter interfaces** for compile-time selection of an implementation.
 
@@ -33,14 +33,14 @@ All interaction between modules and between modules and their plugins happens st
 
 All modules can be divided into several categories:
 - **API Ingress** - the public ingress layer for external traffic; currently represented by API gateway
-- **Business Logic Modules** - modules implementing the main SaaS service logic built on top of CyberWare ModKit and system modules
+- **Business Logic Modules** - modules implementing the main SaaS service logic built on top of Cyber Ware ModKit and system modules
 - **Gen AI Modules** - foundational generative AI capabilities such as chat, model management, agents, memory, search, crawling, scheduling, and MCP integration
 - **Serverless** - functions/workflows, runtimes, durable state, settings, and cluster coordination modules
 - **Core Functionality** - shared platform capabilities such as audit, usage collection, jobs, registries, file handling, quotas, notifications, analytics, and approvals
 - **Core Platform Integration Modules** - interfaces for other modules and adapters for real Core Platform services (see below)
 - **Core Platform Services** - external services that implement Core Platform functionality, such as tenancy management, access policies, licensing, credentials, and outbound egress control
 
-The **Core Platform Integration Modules** layer abstracts integration with core platform services, such as IdP, policy management, licensing, and credentials management that that can be out of scope of CyberWare. This keeps CyberWare reusable: it can run as a standalone platform, or it can integrate into an existing enterprise platform by wiring adapters to the platform’s services.
+The **Core Platform Integration Modules** layer abstracts integration with core platform services, such as IdP, policy management, licensing, and credentials management that that can be out of scope of Cyber Ware. This keeps Cyber Ware reusable: it can run as a standalone platform, or it can integrate into an existing enterprise platform by wiring adapters to the platform’s services.
 
 ## Dependency rules
 - Authentication/authorization: all **external HTTP** traffic is enforced by `api-gateway` middleware, and secure ORM access is scoped by `SecurityContext`. In-process calls must propagate `SecurityContext` and use SDK/clients; bypassing middlewares is not permitted for gateway paths.
@@ -52,7 +52,7 @@ The **Core Platform Integration Modules** layer abstracts integration with core 
 
 ## API Ingress
 
-API Gateway is the single public entry point into CyberWare for all external clients. It terminates protocols, exposes versioned REST APIs with OpenAPI documentation, and applies a consistent middleware stack for authentication, authorization hooks, rate limiting, validation, and observability. API Gateway is responsible for request shaping and policy enforcement, but contains no business logic.
+API Gateway is the single public entry point into Cyber Ware for all external clients. It terminates protocols, exposes versioned REST APIs with OpenAPI documentation, and applies a consistent middleware stack for authentication, authorization hooks, rate limiting, validation, and observability. API Gateway is responsible for request shaping and policy enforcement, but contains no business logic.
 
 Once a request is validated, it is routed to the appropriate module via stable contracts. All domain decisions and state changes occur downstream, allowing gateway to remain simple, auditable, and scalable while internal modules evolve independently.
 
@@ -61,7 +61,7 @@ API Gateway → Auth Resolver → Policy Manager → License Resolver → Execut
 
 ### API Gateway
 #### Responsibility
-Provide the single public API entrypoint for CyberWare, including request routing, auth hooks, versioned REST surface, and OpenAPI publication.
+Provide the single public API entrypoint for Cyber Ware, including request routing, auth hooks, versioned REST surface, and OpenAPI publication.
 #### High Level Scenarios
 - [x] p1 - route versioned HTTP APIs to modules and expose OpenAPI
 - [x] p1 - enforce request limits, timeouts, and basic middleware
@@ -76,13 +76,13 @@ Provide the single public API entrypoint for CyberWare, including request routin
 
 ## Business Logic Modules
 
-**Business Logic Modules** are the primary user-facing SaaS capabilities built on top of CyberWare. They compose Gen AI Modules, Serverless modules, Core Functionality modules, and Core Platform integrations into domain-specific product workflows while keeping product semantics isolated from shared platform infrastructure.
+**Business Logic Modules** are the primary user-facing SaaS capabilities built on top of Cyber Ware. They compose Gen AI Modules, Serverless modules, Core Functionality modules, and Core Platform integrations into domain-specific product workflows while keeping product semantics isolated from shared platform infrastructure.
 
 The architecture diagram uses placeholder business modules `A-E` to illustrate that multiple independent product domains can coexist on the same platform contracts. Each business module owns its domain models, user journeys, and business rules, while shared platform modules provide reusable execution, AI, governance, and integration capabilities.
 
 ## Gen AI Modules
 
-**Gen AI Modules** provide the core AI capabilities of CyberWare and represent the primary value layer for building AI-powered SaaS applications. These modules encapsulate domain-specific GenAI functionality such as conversational orchestration, model inference, retrieval-augmented generation (RAG), agent execution, prompt management, and tool invocation. They are responsible for transforming user intent and contextual data into AI-generated outputs while enforcing platform-level constraints such as tenancy, security, policy, and usage limits.
+**Gen AI Modules** provide the core AI capabilities of Cyber Ware and represent the primary value layer for building AI-powered SaaS applications. These modules encapsulate domain-specific GenAI functionality such as conversational orchestration, model inference, retrieval-augmented generation (RAG), agent execution, prompt management, and tool invocation. They are responsible for transforming user intent and contextual data into AI-generated outputs while enforcing platform-level constraints such as tenancy, security, policy, and usage limits.
 
 These modules are designed to be highly composable and extensible: they rely on Serverless and Core Functionality modules (e.g., settings, jobs, usage collection, audit) and integrate with external AI providers or local runtimes through well-defined gateways. Gen AI Modules do not directly manage enterprise governance concerns (licensing, identity, credentials); instead, they delegate those responsibilities to shared platform modules and core platform adapters to remain focused on AI behavior and orchestration logic.
 
@@ -401,7 +401,7 @@ Provide platform-wide cross-instance coordination primitives with uniform semant
 
 ## Core Functionality
 
-**Core Functionality** modules provide the cross-cutting platform capabilities required to run CyberWare as a secure, observable, and operationally consistent system. They implement system-wide concerns such as notifications, approvals, analytics, auditability, usage collection, background job execution, eventing, node discovery, file handling, quotas, and type registration.
+**Core Functionality** modules provide the cross-cutting platform capabilities required to run Cyber Ware as a secure, observable, and operationally consistent system. They implement system-wide concerns such as notifications, approvals, analytics, auditability, usage collection, background job execution, eventing, node discovery, file handling, quotas, and type registration.
 
 Core Functionality modules provide reusable operational services that Business Logic, Gen AI, and Serverless modules consume through stable contracts, ensuring consistency, compliance, and operational correctness across the platform.
 
@@ -491,7 +491,7 @@ Provide metrics collection, aggregation, monitoring views, and operational analy
 
 ### Nodes Registry
 #### Responsibility
-Maintain registry of CyberWare nodes/deployments and their capabilities for discovery and operational management.
+Maintain registry of Cyber Ware nodes/deployments and their capabilities for discovery and operational management.
 #### High Level Scenarios
 - [x] p1 - register nodes and list node inventory
 - [ ] p2 - node health and heartbeat tracking
@@ -624,9 +624,9 @@ Fetch remote files and stage them for parsing, storage, and workflow execution u
 
 ## Core Platform Integration Modules
 
-**Core Platform Integration Modules** provide a thin abstraction layer between CyberWare and external or enterprise-grade platform services such as identity providers, license managers, credential stores, and outbound traffic governance systems. These modules expose minimal, stable interfaces that CyberWare modules can depend on without being coupled to a specific vendor, protocol, or deployment environment.
+**Core Platform Integration Modules** provide a thin abstraction layer between Cyber Ware and external or enterprise-grade platform services such as identity providers, license managers, credential stores, and outbound traffic governance systems. These modules expose minimal, stable interfaces that Cyber Ware modules can depend on without being coupled to a specific vendor, protocol, or deployment environment.
 
-The primary role of these adapter modules is decoupling: they allow CyberWare to operate either as a standalone platform (using local implementations) or as a component embedded into a larger enterprise ecosystem. Adapter modules do not own authoritative state or business rules; instead, they translate CyberWare’s internal contracts into calls to external core platform services, handling protocol adaptation, caching, and integration-specific concerns.
+The primary role of these adapter modules is decoupling: they allow Cyber Ware to operate either as a standalone platform (using local implementations) or as a component embedded into a larger enterprise ecosystem. Adapter modules do not own authoritative state or business rules; instead, they translate Cyber Ware’s internal contracts into calls to external core platform services, handling protocol adaptation, caching, and integration-specific concerns.
 
 ### Tenant Resolver
 #### Responsibility
@@ -701,13 +701,13 @@ Introduces an abstraction layer behind the real Outbound API Gateway. The main g
 
 ## Core Platform Services
 
-Core Platform Services are authoritative, enterprise-level services that may exist outside of CyberWare and act as systems of record for critical governance domains such as accounts, identity, access policies, licensing, credentials, and outbound egress control. These components typically belong to an organization’s broader platform or SaaS ecosystem and may already be deployed, certified, and governed independently of CyberWare.
+Core Platform Services are authoritative, enterprise-level services that may exist outside of Cyber Ware and act as systems of record for critical governance domains such as accounts, identity, access policies, licensing, credentials, and outbound egress control. These components typically belong to an organization’s broader platform or SaaS ecosystem and may already be deployed, certified, and governed independently of Cyber Ware.
 
-CyberWare does not aim to be the system of record for these capabilities at enterprise level, but allows to integrate with external components operating in an integrated environment. It relies on adapter modules to interact with these external components through well-defined contracts. This approach allows CyberWare to inherit enterprise-grade security, compliance, and governance guarantees while remaining portable, reusable, and safe to embed into existing platforms without duplicating or conflicting with core business infrastructure.
+Cyber Ware does not aim to be the system of record for these capabilities at enterprise level, but allows to integrate with external components operating in an integrated environment. It relies on adapter modules to interact with these external components through well-defined contracts. This approach allows Cyber Ware to inherit enterprise-grade security, compliance, and governance guarantees while remaining portable, reusable, and safe to embed into existing platforms without duplicating or conflicting with core business infrastructure.
 
 ### Account Manager
 #### Responsibility
-Core platform service managing accounts and tenant relationships (system of record when CyberWare runs standalone).
+Core platform service managing accounts and tenant relationships (system of record when Cyber Ware runs standalone).
 #### High Level Scenarios
 - [ ] p1 - create and manage accounts/tenants and users
 - [ ] p2 - hierarchical multi-tenancy
@@ -804,7 +804,7 @@ sequenceDiagram
     participant LICM as License Manager
   end
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant I as API gateway (api-gateway)
     participant LIC as License resolver
     participant M as Target module (REST handler)
@@ -903,7 +903,7 @@ sequenceDiagram
     participant HK as Hook endpoint (external)
   end
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant CE as Chat engine
     participant SET as Settings service
     participant TR as Types Registry
@@ -1010,7 +1010,7 @@ sequenceDiagram
   participant U as User
   participant C as Client UI
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant I as API gateway
     participant FS as File Storage
     participant CE as Chat Engine
@@ -1071,7 +1071,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  box "CyberWare"
+  box "Cyber Ware"
     participant JM as Jobs Manager
     participant FP as File Parser
     participant FS as File Storage
@@ -1119,7 +1119,7 @@ Retrieve relevant context from indexed documents using hybrid search (vector + k
 ```mermaid
 sequenceDiagram
   autonumber
-  box "CyberWare"
+  box "Cyber Ware"
     participant CE as Chat Engine
     participant SET as Settings Service
     participant HK as Hook invocation
@@ -1169,7 +1169,7 @@ When WebSearch is enabled, query external search engines for real-time informati
 ```mermaid
 sequenceDiagram
   autonumber
-  box "CyberWare"
+  box "Cyber Ware"
     participant CE as Chat Engine
     participant HK as Hook invocation
     participant WS as Web Search Gateway
@@ -1214,7 +1214,7 @@ Prepare the full agent state before LLM invocation.
 ```mermaid
 sequenceDiagram
   autonumber
-  box "CyberWare"
+  box "Cyber Ware"
     participant CE as Chat Engine
     participant TR as Types Registry
     participant PR as Prompts Registry
@@ -1278,7 +1278,7 @@ sequenceDiagram
     participant EXT as External Tool/Service
   end
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant CE as Chat Engine
     participant HK as Hook invocation
     participant LLM as LLM Gateway
@@ -1371,7 +1371,7 @@ sequenceDiagram
   autonumber
   participant C as Client UI
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant I as API Gateway
     participant CE as Chat Engine
     participant LLM as LLM Gateway
@@ -1461,7 +1461,7 @@ sequenceDiagram
   participant U as User
   participant C as Client UI
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant I as API gateway
     participant CE as Chat engine
     participant FP as File parser gateway
@@ -1523,7 +1523,7 @@ sequenceDiagram
   autonumber
   participant C as Client UI
 
-  box "CyberWare"
+  box "Cyber Ware"
     participant I as API Gateway
     participant CE as Chat Engine
     participant HK as Hook invocation

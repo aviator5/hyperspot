@@ -1227,7 +1227,7 @@ Ownership-graph tenant enforcement:
 
 - **Usability (UX)**: Not applicable — RG is a backend infrastructure module; no frontend architecture or user-facing UI.
 - **Compliance (COMPL)**: Not applicable — compliance controls are platform-level; RG does not own regulated data directly. Consuming modules and AuthZ are responsible for compliance architecture.
-- **Operations (OPS)**: RG follows standard CyberWare deployment, logging, and monitoring patterns. No RG-specific deployment topology, observability, or SLO architecture beyond platform defaults.
+- **Operations (OPS)**: RG follows standard Cyber Ware deployment, logging, and monitoring patterns. No RG-specific deployment topology, observability, or SLO architecture beyond platform defaults.
 - **Event Architecture (INT-003)**: Not applicable in v1 — RG does not publish domain events. Consumers read current state via SDK traits. Domain events (group lifecycle, membership changes) are a candidate for future versions if consumer demand arises.
 
 ### Performance Architecture
@@ -1264,8 +1264,8 @@ RG relies on database-level performance rather than application-level caching:
 | Hierarchy DoS | Creating extremely deep/wide trees | Query latency degradation, resource exhaustion | `max_depth`/`max_width` query profile enforcement |
 | Unauthorized subtree access | Accessing hierarchy outside caller tenant scope | Information disclosure | SecureORM `WHERE tenant_id IN (...)` on all reads |
 | Unauthorized type manipulation | Modifying type rules to weaken hierarchy constraints | Weakened access control boundaries | Type update validates against existing hierarchy; AuthZ on type endpoints |
-- **Audit logging**: RG delegates to platform-level request audit logging. No RG-specific audit trail beyond standard CyberWare access logs and database-level `created_at`/`updated_at` timestamps. See PRD section 6.7.
-- **Authorization permissions**: RG REST API endpoints are protected by `PolicyEnforcer` (standard CyberWare AuthZ flow). Permission mapping for RG operations is configured in the AuthZ policy, not hardcoded in RG. RG does not define its own permission matrix — it relies on the platform AuthZ policy configuration. The table below lists expected permissions (`resource.type` + `action.name` as per AuthZ PDP request model — see [AuthZ DESIGN §Scope Determination](../../../docs/arch/authorization/DESIGN.md)) and the REST operations where `PolicyEnforcer` is invoked:
+- **Audit logging**: RG delegates to platform-level request audit logging. No RG-specific audit trail beyond standard Cyber Ware access logs and database-level `created_at`/`updated_at` timestamps. See PRD section 6.7.
+- **Authorization permissions**: RG REST API endpoints are protected by `PolicyEnforcer` (standard Cyber Ware AuthZ flow). Permission mapping for RG operations is configured in the AuthZ policy, not hardcoded in RG. RG does not define its own permission matrix — it relies on the platform AuthZ policy configuration. The table below lists expected permissions (`resource.type` + `action.name` as per AuthZ PDP request model — see [AuthZ DESIGN §Scope Determination](../../../docs/arch/authorization/DESIGN.md)) and the REST operations where `PolicyEnforcer` is invoked:
 
 | Resource (`resource.type`) | Action (`action.name`) | REST Operation | Method | Path | Auth Mode |
 | -------------------------- | ---------------------- | -------------- | ------ | ---- | --------- |
@@ -1286,7 +1286,7 @@ RG relies on database-level performance rather than application-level caching:
 | `gts.cf.core.rg.group_membership.v1~` | `delete` | `deleteMembership` | DELETE | `/memberships/{group_id}/{resource_type}/{resource_id}` | JWT |
 
 Notes:
-  - `resource.type` and `action.name` are illustrative names following CyberWare AuthZ conventions. Actual GTS type paths and action names are configured in the AuthZ policy.
+  - `resource.type` and `action.name` are illustrative names following Cyber Ware AuthZ conventions. Actual GTS type paths and action names are configured in the AuthZ policy.
   - Standard action vocabulary: `list` (collection), `read` (single resource), `create`, `update`, `delete` — aligned with [AuthZ usage scenarios](../../../docs/arch/authorization/AUTHZ_USAGE_SCENARIOS.md).
   - The AuthZ plugin reads hierarchy in-process via `ResourceGroupReadHierarchy` registered in `ClientHub` and **bypasses `PolicyEnforcer` invocation** on those reads (`AccessScope::allow_all()`); the plugin still produces AuthZ tenant/subtree constraints from the returned hierarchy — see [RG Authentication Modes: JWT vs MTLS](#rg-authentication-modes-jwt-vs-mtls).
   - MTLS-authenticated requests (AuthZ plugin only) **also** bypass `PolicyEnforcer` entirely — `p2`, **deferred / not implemented yet**, planned for the future microservice split — see [RG Authentication Modes: JWT vs MTLS](#rg-authentication-modes-jwt-vs-mtls).
@@ -1312,7 +1312,7 @@ REST API uses path-based versioning (`/api/resource-group/v1/`). SDK trait contr
 
 ### Observability
 
-RG follows standard CyberWare observability patterns:
+RG follows standard Cyber Ware observability patterns:
 
 - **Logging**: structured request/response logging via platform middleware (request ID, tenant ID, operation, latency). Domain-level events (type created, group moved, membership added) logged at INFO level. Error paths logged at WARN/ERROR with deterministic error category.
 - **Metrics**: standard HTTP endpoint metrics (request count, latency histogram, error rate) exposed via platform metrics infrastructure. No RG-specific custom metrics in v1.

@@ -13,10 +13,10 @@ use std::path::PathBuf;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-/// `CyberWare` Server - modular platform for AI services
+/// `Cyber Ware` Server - modular platform for AI services
 #[derive(Parser)]
 #[command(name = "cyberware-example-server")]
-#[command(about = "CyberWare Server - modular platform for XaaS services")]
+#[command(about = "Cyber Ware Server - modular platform for XaaS services")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[allow(clippy::struct_excessive_bools)]
 struct Cli {

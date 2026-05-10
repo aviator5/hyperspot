@@ -198,7 +198,7 @@ Represents an AI model in the catalog.
 - **Display**: name, description
 - **Lifecycle**: lifecycle_status (GTS type for access control)
 - **Infrastructure** (for local/managed LLMs):
-  - `managed`: boolean — whether CyberWare can load/unload this model
+  - `managed`: boolean — whether Cyber Ware can load/unload this model
   - `architecture`: string — model architecture (e.g., `qwen`, `llama`, `mistral`, `gpt`)
   - `size_bytes`: integer — model size in bytes (for capacity planning)
   - `format`: string — model format (e.g., `gguf`, `mlx`, `safetensors`, `api-only`)

@@ -72,7 +72,7 @@ exceptions = [
   # kreuzberg >=4.8.0 changed from MIT to Elastic License 2.0 (EL-2.0).
   # EL-2.0 is not on the default allow-list but is acceptable here because:
   #   1. kreuzberg is an in-process library dependency, not a hosted service we resell.
-  #   2. CyberWare's document parsing is incidental to the platform's core value
+  #   2. Cyber Ware's document parsing is incidental to the platform's core value
   #      proposition; it is NOT a product sold primarily as a document-parsing service
   #      competing with kreuzberg.
   #   3. The pin `=4.9.4` prevents silent upgrades; any future version bump must be

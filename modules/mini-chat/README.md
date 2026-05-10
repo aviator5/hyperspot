@@ -1,6 +1,6 @@
 # Mini-Chat Module
 
-AI chat module for Cyber Fabric. Provides a REST API for managing chats, messages (with SSE streaming), models, reactions, and attachments.
+AI chat module for Cyber Ware. Provides a REST API for managing chats, messages (with SSE streaming), models, reactions, and attachments.
 
 ## Directory Structure
 

@@ -1,6 +1,6 @@
 # CredStore SDK
 
-SDK crate for the CredStore module, providing public API contracts for credential storage in CyberWare.
+SDK crate for the CredStore module, providing public API contracts for credential storage in Cyber Ware.
 
 ## Overview
 

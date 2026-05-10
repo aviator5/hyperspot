@@ -1,6 +1,6 @@
 # ModKit Security
 
-Security context and authorization primitives for CyberWare / ModKit.
+Security context and authorization primitives for Cyber Ware / ModKit.
 
 ## Overview
 

@@ -36,11 +36,11 @@
 
 ### 1.1 Architectural Vision
 
-OAGW is a centralized outbound API gateway that manages all outbound API requests from CyberWare to external services. It provides routing, authentication, rate limiting, and monitoring through a unified proxy layer that enforces security and observability policies.
+OAGW is a centralized outbound API gateway that manages all outbound API requests from Cyber Ware to external services. It provides routing, authentication, rate limiting, and monitoring through a unified proxy layer that enforces security and observability policies.
 
 The architecture follows a **Control Plane / Data Plane** separation within a single module, where the Control Plane manages configuration data (upstreams, routes, plugins) and the Data Plane orchestrates proxy requests to external services. Both services are implemented as domain traits within a single `oagw` crate, using DDD-Light layering (`domain/infra/api`).
 
-This design satisfies the requirements for centralized outbound traffic management, multi-tenant hierarchical configuration, and extensible plugin-based request processing while remaining practical to implement within CyberWare's modular monolith architecture.
+This design satisfies the requirements for centralized outbound traffic management, multi-tenant hierarchical configuration, and extensible plugin-based request processing while remaining practical to implement within Cyber Ware's modular monolith architecture.
 
 ### 1.2 Architecture Drivers
 
@@ -55,7 +55,7 @@ This design satisfies the requirements for centralized outbound traffic manageme
 | Configuration layering | `cpt-cf-oagw-fr-config-layering` | Upstream < Route < Tenant merge priority |
 | Alias resolution | `cpt-cf-oagw-fr-alias-resolution` | Path-based routing with alias shadowing |
 | Credential isolation | `cpt-cf-oagw-nfr-credential-isolation` | Auth via `cred_store` references, no direct secret storage |
-| ModKit integration | CyberWare middleware | Single-executable deployment, trait-based DI, secure ORM |
+| ModKit integration | Cyber Ware middleware | Single-executable deployment, trait-based DI, secure ORM |
 
 **Architecture Decision Records**:
 
@@ -155,7 +155,7 @@ graph TB
 
 **ID**: `cpt-cf-oagw-constraint-modkit-deploy`
 
-Single-executable deployment via ModKit (CyberWare middleware requirement).
+Single-executable deployment via ModKit (Cyber Ware middleware requirement).
 
 **ID**: `cpt-cf-oagw-constraint-no-direct-internet`
 

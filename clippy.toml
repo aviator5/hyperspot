@@ -1,4 +1,4 @@
-# Clippy configuration for CyberWare
+# Clippy configuration for Cyber Ware
 avoid-breaking-exported-api = false
 
 check-inconsistent-struct-field-initializers = true

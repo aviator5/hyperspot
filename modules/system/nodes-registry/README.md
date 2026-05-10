@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Nodes Registry module manages node information in the CyberWare deployment. A node represents a deployment unit (host, VM, container) where CyberWare components are running.
+The Nodes Registry module manages node information in the Cyber Ware deployment. A node represents a deployment unit (host, VM, container) where Cyber Ware components are running.
 
 Each node contains:
 - **System Information (sysinfo)**: OS, CPU, memory, GPU, battery, host details with all IP addresses

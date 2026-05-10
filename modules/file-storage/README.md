@@ -1,6 +1,6 @@
 # FileStorage
 
-Universal file storage and management service for the CyberWare middleware.
+Universal file storage and management service for the Cyber Ware middleware.
 
 ## Overview
 
@@ -23,7 +23,7 @@ modules and users. It replaces ad-hoc per-module file handling with a centralize
 | Actor               | Description                                                                   |
 |---------------------|-------------------------------------------------------------------------------|
 | Platform User       | Authenticated user managing files via UI or API                               |
-| CyberWare Modules | Any module requiring file operations (e.g., LLM Gateway, document management) |
+| Cyber Ware Modules | Any module requiring file operations (e.g., LLM Gateway, document management) |
 
 ### Dependencies
 

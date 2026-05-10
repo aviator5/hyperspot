@@ -1,10 +1,10 @@
 # Updated: 2026-04-16 by Constructor Tech
-# CyberWare Example Server Configuration
+# Cyber Ware Example Server Configuration
 #
 # Database Architecture Overview:
 # ===============================
 #
-# CyberWare example server uses a centralized DbManager that:
+# Cyber Ware example server uses a centralized DbManager that:
 # 1. Loads global database server templates from `database.servers`
 # 2. For each module, merges server template with module-specific overrides
 # 3. Creates isolated database connections per module
@@ -94,9 +94,9 @@ modules:
       prefix_path: "/cf"
       # OpenAPI Documentation Configuration
       openapi:
-        title: "CyberWare Example Server API"
+        title: "Cyber Ware Example Server API"
         version: "0.1.0"
-        description: "CyberWare Example Server API Documentation"
+        description: "Cyber Ware Example Server API Documentation"
       defaults:
         body_limit_bytes: 64000000
         rate_limit:

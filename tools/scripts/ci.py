@@ -219,7 +219,7 @@ def cmd_check(args):
 
 
 def cmd_quickstart(_args):
-    step("Starting CyberWare in quickstart mode")
+    step("Starting Cyber Ware in quickstart mode")
     data_dir = os.path.join(PROJECT_ROOT, "data")
     if not os.path.isdir(data_dir):
         os.makedirs(data_dir, exist_ok=True)
@@ -795,7 +795,7 @@ def cmd_all(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="CyberWare CI utility (Python, cross-platform)",
+        description="Cyber Ware CI utility (Python, cross-platform)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

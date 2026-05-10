@@ -6,7 +6,7 @@
 
 Model Registry provides a centralized catalog of AI models with tenant-level availability and approval workflows. The service is the authoritative source for model metadata, capabilities, provider cost data, and tenant access control. LLM Gateway queries the registry to resolve model identifiers to provider endpoints and verify tenant access.
 
-The architecture follows the CyberWare SDK pattern with clear separation between public API surface (`model-registry-sdk`) and implementation (`model-registry`). The system is optimized for high read throughput (1000:1 read:write ratio) with distributed caching (Redis default, pluggable backend). All provider API calls route through Outbound API Gateway for credential injection and circuit breaking.
+The architecture follows the Cyber Ware SDK pattern with clear separation between public API surface (`model-registry-sdk`) and implementation (`model-registry`). The system is optimized for high read throughput (1000:1 read:write ratio) with distributed caching (Redis default, pluggable backend). All provider API calls route through Outbound API Gateway for credential injection and circuit breaking.
 
 The design emphasizes tenant isolation with hierarchical inheritance. Providers and approvals inherit down the tenant tree additively, with child tenants able to shadow inherited providers. Cache isolation ensures tenant data separation with TTL-based invalidation.
 
@@ -480,7 +480,7 @@ sequenceDiagram
 | gts_type | VARCHAR(255) | NOT NULL | GTS type identifier |
 | base_url | VARCHAR(2048) | NOT NULL | Provider API endpoint |
 | status | VARCHAR(20) | NOT NULL, DEFAULT 'active' | active, disabled |
-| managed | BOOLEAN | NOT NULL, DEFAULT false | Whether CyberWare can manage this provider (e.g. install/unload models on ollama, lm_studio) |
+| managed | BOOLEAN | NOT NULL, DEFAULT false | Whether Cyber Ware can manage this provider (e.g. install/unload models on ollama, lm_studio) |
 | metadata | JSONB | | Provider-specific metadata, GTS-typed (e.g. `gts.cf.genai.models.provider.v1~x.genai.local.provider.v1~` for local providers with capabilities like `install_model`, `import_model`, `streaming`) |
 | discovery_enabled | BOOLEAN | NOT NULL, DEFAULT false | Discovery feature flag |
 | discovery_interval_seconds | INTEGER | | Discovery interval |

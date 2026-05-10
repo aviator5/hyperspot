@@ -1,6 +1,6 @@
-# Security in Cyber Fabric
+# Security in Cyber Ware
 
-Cyber Fabric takes a **defense-in-depth** approach to security, combining Rust's compile-time safety guarantees with layered static analysis, runtime enforcement, continuous scanning, and structured development processes. This document summarizes the security measures in place across the project.
+Cyber Ware takes a **defense-in-depth** approach to security, combining Rust's compile-time safety guarantees with layered static analysis, runtime enforcement, continuous scanning, and structured development processes. This document summarizes the security measures in place across the project.
 
 ---
 
@@ -19,7 +19,7 @@ Cyber Fabric takes a **defense-in-depth** approach to security, combining Rust's
 - [11. Security Scanners in CI](#11-security-scanners-in-ci)
 - [12. PR Review Bots](#12-pr-review-bots)
 - [13. Specification Templates & SDLC](#13-specification-templates--sdlc)
-- [14. Repository Scaffolding — Cyber Fabric CLI](#14-repository-scaffolding--cyber-fabric-cli)
+- [14. Repository Scaffolding — Cyber Ware CLI](#14-repository-scaffolding--cyber-fabric-cli)
 - [15. Opportunities for Improvement](#15-opportunities-for-improvement)
 
 ---
@@ -46,7 +46,7 @@ Additional Rust-specific project practices:
 
 > Source: [`libs/modkit-db-macros`](../../libs/modkit-db-macros/) · [`guidelines/SECURITY.md`](../../guidelines/SECURITY.md) · [`docs/modkit_unified_system/06_authn_authz_secure_orm.md`](../modkit_unified_system/06_authn_authz_secure_orm.md)
 
-Cyber Fabric provides a **compile-time enforced** secure ORM layer over SeaORM. The `#[derive(Scopable)]` macro ensures every database entity explicitly declares its scoping dimensions:
+Cyber Ware provides a **compile-time enforced** secure ORM layer over SeaORM. The `#[derive(Scopable)]` macro ensures every database entity explicitly declares its scoping dimensions:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Scopable)]
@@ -77,7 +77,7 @@ pub struct Model {
 
 > Source: [`docs/arch/authorization/`](../arch/authorization/) · [`modules/system/authn-resolver/`](../../modules/system/authn-resolver/) · [`modules/system/authz-resolver/`](../../modules/system/authz-resolver/) · [`modules/system/tenant-resolver/`](../../modules/system/tenant-resolver/)
 
-Cyber Fabric implements a **PDP/PEP authorization model** per NIST SP 800-162, extended with **OpenID AuthZEN 1.0** constraint semantics (see [ADR-0001](../arch/authorization/ADR/0001-pdp-pep-authorization-model.md)):
+Cyber Ware implements a **PDP/PEP authorization model** per NIST SP 800-162, extended with **OpenID AuthZEN 1.0** constraint semantics (see [ADR-0001](../arch/authorization/ADR/0001-pdp-pep-authorization-model.md)):
 
 ```
 Client → AuthN Middleware → AuthN Resolver (token validation)
@@ -183,7 +183,7 @@ Optional M:N, tenant-scoped resource grouping that acts as a **PIP** alongside t
 
 > Source: [gts-spec](https://github.com/globalTypeSystem/gts-spec/) · [`dylint_lints/de09_gts_layer/`](../../tools/dylint_lints/de09_gts_layer/) · [`modules/system/types-registry/`](../../modules/system/types-registry/)
 
-Cyber Fabric uses the **Global Type System (GTS)** as the foundation for attribute-based access control. GTS defines a hierarchical identifier scheme for data types and instances:
+Cyber Ware uses the **Global Type System (GTS)** as the foundation for attribute-based access control. GTS defines a hierarchical identifier scheme for data types and instances:
 
 ```
 gts.<vendor>.<package>.<namespace>.<type>.v<MAJOR>[.<MINOR>]~
@@ -214,7 +214,7 @@ Custom dylint rules (`DE0901`, `DE0902`) validate GTS identifier correctness at 
 
 > Source: [`modules/credstore/`](../../modules/credstore/) · [`modules/credstore/docs/DESIGN.md`](../../modules/credstore/docs/DESIGN.md)
 
-Cyber Fabric provides a **plugin-based credential storage gateway** for managing secrets across the platform. The architecture separates the gateway (routing, authorization) from storage backends (plugin implementations).
+Cyber Ware provides a **plugin-based credential storage gateway** for managing secrets across the platform. The architecture separates the gateway (routing, authorization) from storage backends (plugin implementations).
 
 ```
 Consumer → CredStoreClientV1 → Gateway Service → GTS Plugin Discovery
@@ -380,7 +380,7 @@ This switches the underlying cryptographic module from `aws-lc-sys` to `aws-lc-f
 
 > Source: [`fuzz/`](../../tools/fuzz/) · CI workflow: `.github/workflows/clusterfuzzlite.yml`
 
-Cyber Fabric uses [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) with [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/) for continuous fuzzing. Fuzzing discovers panics, logic bugs, and algorithmic complexity attacks in parsers and validators.
+Cyber Ware uses [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) with [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/) for continuous fuzzing. Fuzzing discovers panics, logic bugs, and algorithmic complexity attacks in parsers and validators.
 
 **Fuzz targets:**
 
@@ -436,7 +436,7 @@ Every pull request is reviewed by automated bots before human review:
 
 > Source: [`docs/spec-templates/`](../spec-templates/) · [`docs/spec-templates/cyberware-sdlc/`](../spec-templates/cyberware-sdlc/)
 
-Cyber Fabric follows a **spec-driven development** lifecycle where PRD and DESIGN documents are written before implementation. Security is addressed at multiple points:
+Cyber Ware follows a **spec-driven development** lifecycle where PRD and DESIGN documents are written before implementation. Security is addressed at multiple points:
 
 - **PRD template** — Non-Functional Requirements section references project-wide security baselines and automated security scans
 - **DESIGN template** — dependency rules mandate `SecurityContext` propagation across all in-process calls
@@ -444,9 +444,9 @@ Cyber Fabric follows a **spec-driven development** lifecycle where PRD and DESIG
 - **Testing strategy** — 90%+ code coverage target with explicit security testing category (unit, integration, e2e, security, performance)
 - **Git/PR record** — all changes flow through PRs with review and immutable merge/audit trail
 
-## 14. Repository Scaffolding — Cyber Fabric CLI
+## 14. Repository Scaffolding — Cyber Ware CLI
 
-Cyber Fabric provides a CLI tool for scaffolding new repositories that automatically inherit the platform's security posture:
+Cyber Ware provides a CLI tool for scaffolding new repositories that automatically inherit the platform's security posture:
 
 | Inherited Configuration | Description |
 |---|---|

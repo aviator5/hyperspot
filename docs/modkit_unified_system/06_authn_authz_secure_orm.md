@@ -1,6 +1,6 @@
 # Security: AuthN, AuthZ & Secure Database Access
 
-This document describes the complete security data-path in Cyber Fabric: how requests are authenticated (AuthN), how authorization decisions are enforced (AuthZ / PEP), how `AccessScope` is produced, and how the Secure ORM layer (`SecureConn`) applies it to every database query.
+This document describes the complete security data-path in Cyber Ware: how requests are authenticated (AuthN), how authorization decisions are enforced (AuthZ / PEP), how `AccessScope` is produced, and how the Secure ORM layer (`SecureConn`) applies it to every database query.
 
 For the full architectural design (AuthZEN model, predicate types, caching, deployment modes), see [`docs/arch/authorization/DESIGN.md`](../arch/authorization/DESIGN.md).
 
@@ -631,7 +631,7 @@ This mapping follows the fail-closed principle: denial and compilation failures 
 
 ### Static plugins
 
-For development and testing, Cyber Fabric provides static AuthN and AuthZ plugins:
+For development and testing, Cyber Ware provides static AuthN and AuthZ plugins:
 
 - **Static AuthN plugin** — accepts all tokens or maps configured tokens to identities. Modes:
   - `accept_all`: any non-empty token maps to a default identity

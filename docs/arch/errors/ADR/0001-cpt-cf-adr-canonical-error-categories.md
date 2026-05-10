@@ -9,7 +9,7 @@ date: 2026-02-28
 
 ## Context and Problem Statement
 
-CyberWare needs a finite error taxonomy that all modules use. The taxonomy must be transport-agnostic (usable for REST, gRPC, SSE) while providing enough granularity for consumers to write reliable error-handling code. How many error categories should the platform define, and which ones?
+Cyber Ware needs a finite error taxonomy that all modules use. The taxonomy must be transport-agnostic (usable for REST, gRPC, SSE) while providing enough granularity for consumers to write reliable error-handling code. How many error categories should the platform define, and which ones?
 
 ## Decision Drivers
 
@@ -32,7 +32,7 @@ Chosen option: **Option B — Google's 16 canonical error codes**, because it is
 ### Consequences
 
 * All 16 categories must be defined in the error library with their context types, HTTP status mappings, and GTS identifiers
-* The Google category name `unavailable` is represented in CyberWare as `service_unavailable` (same semantics, clearer platform naming)
+* The Google category name `unavailable` is represented in Cyber Ware as `service_unavailable` (same semantics, clearer platform naming)
 * Every module must migrate its existing ad-hoc error types to one of the 16 canonical categories — no module-specific error categories are allowed
 * HTTP status codes that fall outside the 16 categories (e.g., 301, 413) must be mapped to the closest canonical category; the mapping rules must be documented in DESIGN
 * Adding a new category in the future is a breaking change (new enum variant) — extensibility rules must be defined separately
@@ -65,7 +65,7 @@ Adopt the 16 categories from `google.rpc.Code`: `cancelled`, `unknown`, `invalid
 * Good, because 16 categories are practical for exhaustive `match`
 * Good, because well-documented with clear usage guidance per category
 * Neutral, because requires an HTTP status mapping table (one-time effort)
-* Bad, because some categories are rarely used in CyberWare's domain (`data_loss`, `cancelled`)
+* Bad, because some categories are rarely used in Cyber Ware's domain (`data_loss`, `cancelled`)
 
 ### Option C: Custom Reduced Set (5-10 Categories)
 

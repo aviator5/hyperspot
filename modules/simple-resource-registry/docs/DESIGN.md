@@ -931,7 +931,7 @@ Notes:
 
 ### 3.5 External Dependencies
 
-None. Simple Resource Registry does not communicate with external systems directly. All external interactions (if any) are mediated by other CyberWare modules.
+None. Simple Resource Registry does not communicate with external systems directly. All external interactions (if any) are mediated by other Cyber Ware modules.
 
 ### 3.6 Event and Audit Schemas (`cpt-cf-srr-fr-notification-events`, `cpt-cf-srr-fr-audit-events`)
 

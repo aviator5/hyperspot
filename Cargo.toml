@@ -4,7 +4,7 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Cyber Fabric"]
 repository = "https://github.com/cyberfabric/cyberware-rust"
-description = "CyberWare Server Example"
+description = "Cyber Ware Server Example"
 rust-version = "1.95.0"
 readme = "README.md"
 

@@ -1,6 +1,6 @@
 # Nodes Registry Module
 
-Node inventory and node system information for CyberWare
+Node inventory and node system information for Cyber Ware
 
 ## Overview
 

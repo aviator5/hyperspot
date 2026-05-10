@@ -1,6 +1,6 @@
 # Resource Group
 
-Main module for hierarchical resource group management in CyberWare. Backed by `cyberware-resource-group-sdk`, persisted via SeaORM, exposed over REST, and integrated with the AuthZ resolver and types registry.
+Main module for hierarchical resource group management in Cyber Ware. Backed by `cyberware-resource-group-sdk`, persisted via SeaORM, exposed over REST, and integrated with the AuthZ resolver and types registry.
 
 ## Overview
 

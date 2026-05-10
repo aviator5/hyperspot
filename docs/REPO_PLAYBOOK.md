@@ -1,4 +1,4 @@
-# Cyber Fabric — Repository Playbook
+# Cyber Ware — Repository Playbook
 
 Purpose: one concise map of repository artifacts that improve developer + AI productivity, with implementation coverage and planned gaps.
 
@@ -225,7 +225,7 @@ Purpose: one concise map of repository artifacts that improve developer + AI pro
 
 ## 17) Deployment & Operations
 
-> Cyber Fabric is a collection of libraries and frameworks, not a standalone deployable component. Deployment, rollback, cost management, and resource limits are the responsibility of downstream applications that consume these libraries.
+> Cyber Ware is a collection of libraries and modules, not a standalone deployable component. Deployment, rollback, cost management, and resource limits are the responsibility of downstream applications that consume these libraries.
 
 | Item | Status / Phase / ID | Implemented (where) | Planned |
 |---|---|---|---|

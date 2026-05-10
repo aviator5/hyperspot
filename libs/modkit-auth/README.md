@@ -1,6 +1,6 @@
 # ModKit Auth
 
-Authentication infrastructure for CyberWare / ModKit.
+Authentication infrastructure for Cyber Ware / ModKit.
 
 ## Overview
 

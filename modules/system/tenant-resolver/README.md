@@ -1,10 +1,10 @@
 # Tenant Resolver
 
-Tenant hierarchy and information resolution for CyberWare's multi-tenancy layer.
+Tenant hierarchy and information resolution for Cyber Ware's multi-tenancy layer.
 
 ## Overview
 
-The tenant model that CyberWare operates on is described in [TENANT_MODEL.md](../../../docs/arch/authorization/TENANT_MODEL.md).
+The tenant model that Cyber Ware operates on is described in [TENANT_MODEL.md](../../../docs/arch/authorization/TENANT_MODEL.md).
 
 The **tenant_resolver** module provides a hierarchical tenant model with:
 
@@ -171,7 +171,7 @@ See [`error.rs`](tenant_resolver-sdk/src/error.rs): `TenantNotFound`, `Unauthori
 
 Plugins implement [`TenantResolverPluginClient`](tenant_resolver-sdk/src/plugin_api.rs) and register via GTS.
 
-CyberWare includes two plugins out of the box:
+Cyber Ware includes two plugins out of the box:
 - [`static_tr_plugin`](plugins/static_tr_plugin/) — Config-based plugin with hierarchical tenant support
 - [`single_tenant_tr_plugin`](plugins/single_tenant_tr_plugin/) — Zero-config plugin for single-tenant deployments
 

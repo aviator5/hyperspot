@@ -4,7 +4,7 @@
 
 ### 1.1 Architectural Vision
 
-The canonical error system provides a single, universal error type (`CanonicalError`) that all CyberWare modules use to express failures. It replaces the ad-hoc `Problem::new()` / `ErrDef` / `declare_errors!` / `ErrorCode` patterns with a typed, transport-agnostic model.
+The canonical error system provides a single, universal error type (`CanonicalError`) that all Cyber Ware modules use to express failures. It replaces the ad-hoc `Problem::new()` / `ErrDef` / `declare_errors!` / `ErrorCode` patterns with a typed, transport-agnostic model.
 
 **Canonical errors** are a closed set of 16 error categories (based on Google's canonical error codes). Each category has:
 - A typed context struct carrying machine-readable error details

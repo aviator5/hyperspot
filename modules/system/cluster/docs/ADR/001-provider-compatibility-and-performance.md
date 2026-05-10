@@ -30,7 +30,7 @@ date: 2026-03-31
 
 ## Context and Problem Statement
 
-The cluster abstraction must map cleanly to multiple backends while meeting real-world performance requirements. Different CyberWare modules have radically different coordination workloads:
+The cluster abstraction must map cleanly to multiple backends while meeting real-world performance requirements. Different Cyber Ware modules have radically different coordination workloads:
 
 - **Event broker**: Up to 1000 subscriber leases per instance, renewed every few seconds. Multi-instance deployments multiply this — 10 instances = 10,000 concurrent leases.
 - **OAGW**: Distributed rate-limit counters (cache CAS) and a handful of configuration locks. Low lock count, high-frequency cache updates.
@@ -130,7 +130,7 @@ Trade-off: consumers must hold the version from `get()` if they want to write ba
 
 **Performance envelope**: ~10k-50k cache ops/sec (depends on pool size and hardware). Advisory lock acquire: ~0.01-0.05ms server-side. LISTEN/NOTIFY handles thousands of notifications/sec but has global commit lock under concurrent writers.
 
-- Good, because zero new infrastructure — every CyberWare deployment has Postgres
+- Good, because zero new infrastructure — every Cyber Ware deployment has Postgres
 - Good, because advisory locks are server-enforced, ACID, auto-release on disconnect
 - Good, because a single connection can hold thousands of advisory locks simultaneously (~164KB for 1000 locks)
 - Good, because version-based CAS maps natively to `UPDATE WHERE version = $expected` — zero Lua

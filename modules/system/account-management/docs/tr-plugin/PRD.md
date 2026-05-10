@@ -56,7 +56,7 @@ Created: 2026-04-21 by Diffora
 
 ### 1.1 Purpose
 
-The Tenant Resolver Plugin (TRP) is the default implementation of the Cyber Fabric [Tenant Resolver](../../../tenant-resolver/) plugin contract. It answers hierarchy and barrier questions on the authorization hot path — `get_tenant`, `get_root_tenant`, `get_tenants`, `get_ancestors`, `get_descendants`, `is_ancestor` — as a **query facade** over the tenant hierarchy owned by [Account Management (AM)](../PRD.md).
+The Tenant Resolver Plugin (TRP) is the default implementation of the Cyber Ware [Tenant Resolver](../../../tenant-resolver/) plugin contract. It answers hierarchy and barrier questions on the authorization hot path — `get_tenant`, `get_root_tenant`, `get_tenants`, `get_ancestors`, `get_descendants`, `is_ancestor` — as a **query facade** over the tenant hierarchy owned by [Account Management (AM)](../PRD.md).
 
 TRP exists so that every authorization decision that needs subtree scoping or barrier enforcement can be answered in single-digit milliseconds against AM's transactionally consistent `(tenants, tenant_closure)` pair, without introducing a second copy of hierarchy state or a synchronization window between AM writes and policy enforcement. The plugin owns the SDK surface; AM owns the data.
 
@@ -128,7 +128,7 @@ Barrier enforcement is a **security** property: a parent must not see into a sub
 
 **ID**: `cpt-cf-tr-plugin-actor-operator`
 
-- **Role**: Operates the Cyber Fabric control plane; owns the plugin's connection-pool configuration, the read-only database role provisioning, and the plugin's observability thresholds and alerts.
+- **Role**: Operates the Cyber Ware control plane; owns the plugin's connection-pool configuration, the read-only database role provisioning, and the plugin's observability thresholds and alerts.
 - **Needs**: Size and tune the connection pool against gateway concurrency; provision and rotate the plugin's read-only database role; observe query latency, pool saturation, error rates, barrier-enforcement metrics, and tenant-not-found rates.
 
 ### 2.2 System Actors
@@ -165,7 +165,7 @@ Barrier enforcement is a **security** property: a parent must not see into a sub
 
 ## 3. Operational Concept & Environment
 
-The plugin is a Cyber Fabric module hosted inside the Tenant Resolver gateway process. It participates in the platform module lifecycle (start → ready → stop) and uses the shared `ClientHub` for gateway registration. This section records only module-specific deviations from project defaults.
+The plugin is a Cyber Ware module hosted inside the Tenant Resolver gateway process. It participates in the platform module lifecycle (start → ready → stop) and uses the shared `ClientHub` for gateway registration. This section records only module-specific deviations from project defaults.
 
 ### 3.1 Core Boundary
 

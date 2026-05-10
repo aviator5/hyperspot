@@ -12,12 +12,12 @@
 # End-to-end: AuthZ request → tr-authz-plugin → TenantResolverClient
 #             → rg-tr-plugin → ResourceGroupReadHierarchy → RG storage.
 #
-# CyberWare Server Configuration
+# Cyber Ware Server Configuration
 #
 # Database Architecture Overview:
 # ===============================
 #
-# CyberWare Server uses a centralized DbManager that:
+# Cyber Ware Server uses a centralized DbManager that:
 # 1. Loads global database server templates from `database.servers`
 # 2. For each module, merges server template with module-specific overrides
 # 3. Creates isolated database connections per module
@@ -114,9 +114,9 @@ modules:
 
       # OpenAPI Documentation Configuration
       openapi:
-        title: "CyberWare Example Server API"
+        title: "Cyber Ware Example Server API"
         version: "0.1.0"
-        description: "CyberWare Example Server API Documentation"
+        description: "Cyber Ware Example Server API Documentation"
       defaults:
         body_limit_bytes: 64000000
         rate_limit:
@@ -134,7 +134,7 @@ modules:
 
   static-tr-plugin:
     config:
-      vendor: "cyberware"
+      vendor: "cyberfabric"
       priority: 20
       tenants:
         # Root tenant used by oagw + credstore e2e tests
@@ -175,7 +175,7 @@ modules:
 
   tenant-resolver:
     config:
-      vendor: "cyberware"
+      vendor: "cyberfabric"
 
   static-credstore-plugin:
     config:
@@ -234,11 +234,11 @@ modules:
 
   authz-resolver:
     config:
-      vendor: "cyberware"
+      vendor: "cyberfabric"
 
   static-authn-plugin:
     config:
-      vendor: "cyberware"
+      vendor: "cyberfabric"
       priority: 100
       mode: static_tokens
       tokens:
@@ -266,12 +266,12 @@ modules:
 
   tr-authz-plugin:
     config:
-      vendor: "cyberware"
+      vendor: "cyberfabric"
       priority: 90  # Below static-authz-plugin default (100), so tr-authz is selected
 
   rg-tr-plugin:
     config:
-      vendor: "cyberware"
+      vendor: "cyberfabric"
       priority: 10  # Below static-tr-plugin (20), so rg-tr is the winning TR plugin
 
   mini-chat:

@@ -218,7 +218,7 @@ The platform requires a unified way to automate long-running and multi-step busi
 **ID**: `cpt-cf-serverless-runtime-actor-outbound-api-gw`
 
 <!-- cpt:paragraph:actor-role -->
-**Role**: Manages all outbound API requests from CyberWare to external services. Provides the runtime capability for workflows and functions to make outbound HTTP calls, enforcing policies such as rate limiting, authentication injection, circuit breaking, and audit logging for all external communication.
+**Role**: Manages all outbound API requests from Cyber Ware to external services. Provides the runtime capability for workflows and functions to make outbound HTTP calls, enforcing policies such as rate limiting, authentication injection, circuit breaking, and audit logging for all external communication.
 <!-- cpt:paragraph:actor-role -->
 <!-- cpt:id:actor -->
 <!-- cpt:####:actor-title repeat="many" -->
@@ -299,9 +299,9 @@ The platform requires a unified way to automate long-running and multi-step busi
 
 ## Operational Concept & Environment
 
-The Serverless Runtime operates as a module within the CyberWare modular monolith. It is deployed alongside other platform modules and shares the platform's identity, authorization, event, and observability infrastructure. The runtime executes tenant-provided and adapter-provided functions and workflows within the platform's security boundary.
+The Serverless Runtime operates as a module within the Cyber Ware modular monolith. It is deployed alongside other platform modules and shares the platform's identity, authorization, event, and observability infrastructure. The runtime executes tenant-provided and adapter-provided functions and workflows within the platform's security boundary.
 
-**Deployment context**: The runtime runs within the CyberWare server process. Executor implementations (e.g., Starlark) are embedded as native modules. Infrastructure Adapters connect externally and register definitions via hot-plug APIs.
+**Deployment context**: The runtime runs within the Cyber Ware server process. Executor implementations (e.g., Starlark) are embedded as native modules. Infrastructure Adapters connect externally and register definitions via hot-plug APIs.
 
 **Operational environment**: Multi-tenant SaaS platform with tenant isolation enforced at the execution, data, and governance layers. Each tenant has independent quotas, policies, and retention settings.
 

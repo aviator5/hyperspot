@@ -33,7 +33,7 @@ Simple Resource Registry must work across diverse deployment targets — edge de
 * Must support edge (SQLite), cloud (PostgreSQL, MariaDB), and enterprise (existing vendor stores, including NoSQL storages) without API changes
 * Platform vendors must be able to provide their own storage backends to bridge the registry to existing platform components
 * Multiple backends must coexist simultaneously — different resource types may live in different stores
-* Must align with the established ModKit plugin pattern used across CyberWare
+* Must align with the established ModKit plugin pattern used across Cyber Ware
 * Plugin implementations must remain thin — security, authorization, and event emission are centralized in the main module
 * Must allow adding new backends without modifying the main module code
 
@@ -45,14 +45,14 @@ Simple Resource Registry must work across diverse deployment targets — edge de
 
 ## Decision Outcome
 
-Chosen option: "Plugin-based architecture with GTS-based discovery", because it enables vendor-extensible, multi-backend coexistence while aligning with the ModKit plugin pattern already established across CyberWare. The `ResourceStoragePluginClient` trait provides a minimal contract that keeps plugins thin, while GTS-based discovery and scoped ClientHub registration enable runtime resolution of the correct backend per resource type.
+Chosen option: "Plugin-based architecture with GTS-based discovery", because it enables vendor-extensible, multi-backend coexistence while aligning with the ModKit plugin pattern already established across Cyber Ware. The `ResourceStoragePluginClient` trait provides a minimal contract that keeps plugins thin, while GTS-based discovery and scoped ClientHub registration enable runtime resolution of the correct backend per resource type.
 
 ### Consequences
 
 * Good, because vendors can implement custom backends to bridge existing platform storage without forking the module
 * Good, because multiple backends coexist — relational DB for transactional workloads, search engines for full-text queries, vendor stores for existing data
 * Good, because the same API serves all backends — consumers are unaware of which backend stores their resources
-* Good, because aligns with ModKit plugin pattern — consistent with other CyberWare modules
+* Good, because aligns with ModKit plugin pattern — consistent with other Cyber Ware modules
 * Bad, because plugin interface becomes a stability contract — breaking changes require coordination across all plugin implementors
 * Bad, because adds indirection (router → plugin resolution → scoped client lookup) compared to direct storage access
 * Bad, because each plugin must independently implement idempotency deduplication and other storage-level concerns

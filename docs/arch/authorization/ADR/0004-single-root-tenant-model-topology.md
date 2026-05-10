@@ -8,7 +8,7 @@ decision-makers: Cyber Fabric Architects Committee
 
 ## Context and Problem Statement
 
-Cyber Fabric models its tenants hierarchically. Modules rely on that hierarchy for ownership scoping, subtree queries in the Secure ORM, barrier enforcement, and resolution of "act as" semantics in service-to-service (S2S) flows. Before committing to a particular shape we must choose the canonical topology and record the reasoning.
+Cyber Ware models its tenants hierarchically. Modules rely on that hierarchy for ownership scoping, subtree queries in the Secure ORM, barrier enforcement, and resolution of "act as" semantics in service-to-service (S2S) flows. Before committing to a particular shape we must choose the canonical topology and record the reasoning.
 
 Three shapes were considered:
 
@@ -19,7 +19,7 @@ Three shapes were considered:
 The choice affects several concrete engineering concerns:
 
 - **S2S tenant-scoped OAuth credentials.** Some services do not expose tenant-less objects — every object they manage has a tenant owner — yet they still need to perform calls under the top-level tenant while obeying the standard tenant-scoped authorization machinery. Such calls are authenticated via an OAuth client registered at the vendor's IdP. The number of roots determines the number of OAuth clients that must be provisioned and routed between. (Operations on tenant-less objects use a different flow and are outside the scope of this decision.)
-- **Deployment shape.** The platform must work both for multi-tenant vendor deployments and for single-user consumer products built on Cyber Fabric. The same tenant topology must be interpretable in both.
+- **Deployment shape.** The platform must work both for multi-tenant vendor deployments and for single-user consumer products built on Cyber Ware. The same tenant topology must be interpretable in both.
 - **Reasoning and tooling cost.** Closure tables, barriers, and `get_ancestors` / `get_descendants` semantics are substantially simpler for a tree than for a DAG.
 
 ## Decision Drivers
@@ -29,7 +29,7 @@ The choice affects several concrete engineering concerns:
 - **Operator mental model** — The topology should be easy to reason about for both platform operators and module authors.
 - **Avoid DAG complexity** — Closure-table maintenance, conflicting barriers, and ancestry queries on a DAG add substantial complexity without a concrete use case demanding them today.
 - **Autonomy of business sub-trees** — Multi-tenant deployments must be able to host independent organizations with strong isolation.
-- **Support consumer / single-user deployments** — Products built on Cyber Fabric for a single end user must not be forced to invent an artificial second tenant just to satisfy topology rules.
+- **Support consumer / single-user deployments** — Products built on Cyber Ware for a single end user must not be forced to invent an artificial second tenant just to satisfy topology rules.
 
 ## Considered Options
 

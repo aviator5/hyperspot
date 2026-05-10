@@ -77,13 +77,13 @@ REQUIREMENT LANGUAGE:
 
 ### 1.1 Purpose
 
-The Outbound API Gateway (OAGW) manages all outbound API requests from CyberWare to external services. It acts as a centralized proxy layer that handles credential injection, rate limiting, header transformation, and security enforcement for every external call made by the platform.
+The Outbound API Gateway (OAGW) manages all outbound API requests from Cyber Ware to external services. It acts as a centralized proxy layer that handles credential injection, rate limiting, header transformation, and security enforcement for every external call made by the platform.
 
 OAGW provides a unified interface for application modules to reach external APIs without managing credentials, connection details, or security policies directly. Modules send requests to OAGW's proxy endpoint, and OAGW resolves the target upstream, injects authentication, applies policies, and forwards the request.
 
 ### 1.2 Background / Problem Statement
 
-CyberWare modules need to communicate with external third-party services (e.g., OpenAI, Stripe, payment gateways). Without a centralized gateway, each module must independently manage credentials, rate limits, error handling, and security policies for outbound calls. This leads to credential sprawl, inconsistent error handling, and no unified observability.
+Cyber Ware modules need to communicate with external third-party services (e.g., OpenAI, Stripe, payment gateways). Without a centralized gateway, each module must independently manage credentials, rate limits, error handling, and security policies for outbound calls. This leads to credential sprawl, inconsistent error handling, and no unified observability.
 
 OAGW solves these problems by providing a single outbound proxy layer with pluggable authentication, configurable rate limiting, header transformation, and security policies. All external calls flow through OAGW, ensuring consistent credential isolation, audit trails, and policy enforcement across the platform.
 
@@ -160,7 +160,7 @@ OAGW solves these problems by providing a single outbound proxy layer with plugg
 
 ### 3.1 Module-Specific Environment Constraints
 
-None. OAGW follows standard CyberWare ModKit module conventions.
+None. OAGW follows standard Cyber Ware ModKit module conventions.
 
 ## 4. Scope
 
@@ -541,7 +541,7 @@ Custom Starlark plugins **MUST** run in a sandbox with no network I/O, no file I
 All resources (upstreams, routes, plugins) **MUST** be tenant-scoped. Tenant isolation **MUST** be enforced at the data layer.
 
 - **Threshold**: Zero cross-tenant data access
-- **Rationale**: CyberWare is a multi-tenant platform; strict tenant isolation is a fundamental security requirement.
+- **Rationale**: Cyber Ware is a multi-tenant platform; strict tenant isolation is a fundamental security requirement.
 - **Architecture Allocation**: See DESIGN.md § NFR Allocation for how this is realized
 
 ### 6.2 NFR Exclusions
@@ -740,10 +740,10 @@ None. All project-default NFRs apply to this module.
 
 ## 11. Assumptions
 
-- CyberWare `cred_store` module is available and supports UUID-based secret retrieval
+- Cyber Ware `cred_store` module is available and supports UUID-based secret retrieval
 - ModKit framework provides module lifecycle, dependency injection, and REST API hosting
 - Tenant hierarchy is resolved by the platform (tenant-resolver module); OAGW receives tenant_id from SecurityContext
-- External upstream services are reachable via HTTP/HTTPS from the CyberWare deployment environment
+- External upstream services are reachable via HTTP/HTTPS from the Cyber Ware deployment environment
 
 ## 12. Risks
 

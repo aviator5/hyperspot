@@ -1,6 +1,6 @@
 # ModKit Canonical Errors
 
-Canonical error types for CyberWare modules, based on the [Google AIP-193](https://google.aip.dev/193) error model.
+Canonical error types for Cyber Ware modules, based on the [Google AIP-193](https://google.aip.dev/193) error model.
 
 ## Overview
 

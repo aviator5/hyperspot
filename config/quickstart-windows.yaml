@@ -1,9 +1,9 @@
-# CyberWare Example Server Configuration
+# Cyber Ware Example Server Configuration
 #
 # Database Architecture Overview:
 # ===============================
 #
-# CyberWare Example Server uses a centralized DbManager that:
+# Cyber Ware Example Server uses a centralized DbManager that:
 # 1. Loads global database server templates from `database.servers`
 # 2. For each module, merges server template with module-specific overrides
 # 3. Creates isolated database connections per module
@@ -99,9 +99,9 @@ modules:
 
       # OpenAPI Documentation Configuration
       openapi:
-        title: "CyberWare Example Server API"
+        title: "Cyber Ware Example Server API"
         version: "0.1.0"
-        description: "CyberWare Example Server API Documentation"
+        description: "Cyber Ware Example Server API Documentation"
 
       # Authentication Configuration
       auth_disabled: true

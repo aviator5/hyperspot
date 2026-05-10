@@ -704,7 +704,7 @@ Feature numbering reflects logical grouping, not implementation order. Recommend
 
 The following items are intentionally excluded from this decomposition cycle:
 
-- **Monitoring & Alerting infrastructure** — deferred to CyberWare middleware-level observability; Chat Engine emits metrics and structured logs but does not own dashboards or alert rules.
+- **Monitoring & Alerting infrastructure** — deferred to Cyber Ware middleware-level observability; Chat Engine emits metrics and structured logs but does not own dashboards or alert rules.
 - **Client SDK** — client-side libraries are out of scope for the backend decomposition; API contracts defined in DESIGN.md are sufficient for client teams.
 - **Admin UI / Management Console** — session type registration and retention policy configuration are API-only in this cycle.
 

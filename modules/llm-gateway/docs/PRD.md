@@ -98,7 +98,7 @@ LLM Gateway addresses these problems by providing a single integration point tha
 | GTS | Generic Type System — JSON Schema-based type definitions |
 | FileStorage | Platform module for storing and retrieving binary files (images, audio, video, documents) |
 | Model Registry | Platform module that resolves model identifiers to provider and endpoint information per tenant |
-| Hook Plugin | CyberWare plugin architecture extension point for per-request processing. Multiple plugins can be enabled per tenant and are invoked in order. Pre-call plugins run before the provider adapter and can modify or block requests. Post-call plugins run after the full response is available and are observe-only — the response has already been delivered or is delivered unconditionally, so there is nothing to modify or block. |
+| Hook Plugin | Cyber Ware plugin architecture extension point for per-request processing. Multiple plugins can be enabled per tenant and are invoked in order. Pre-call plugins run before the provider adapter and can modify or block requests. Post-call plugins run after the full response is available and are observe-only — the response has already been delivered or is delivered unconditionally, so there is nothing to modify or block. |
 
 ## 2. Actors
 

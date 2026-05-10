@@ -40,7 +40,7 @@ Updated:  2026-03-06 by Constructor Tech
 
 ### 1.1 Purpose
 
-**Purpose**: Chat Engine is a Gateway module (CyberWare ModKit) that manages session lifecycle and message routing between clients and Backend Plugin modules. It provides a unified interface for building conversational applications by abstracting session management, message history persistence, and flexible message processing — allowing application developers to focus on user experiences and backend plugin developers to focus on message processing logic.
+**Purpose**: Chat Engine is a Gateway module (Cyber Ware ModKit) that manages session lifecycle and message routing between clients and Backend Plugin modules. It provides a unified interface for building conversational applications by abstracting session management, message history persistence, and flexible message processing — allowing application developers to focus on user experiences and backend plugin developers to focus on message processing logic.
 
 The core value proposition is enabling flexible, stateful conversation management with support for advanced features like message regeneration, conversation branching, and variant exploration. By decoupling conversation infrastructure from processing logic, Chat Engine enables rapid experimentation with different backend implementations and conversation patterns — supporting use cases from automated assistants to human-in-the-loop support systems — without requiring changes to client applications.
 
@@ -88,7 +88,7 @@ The core value proposition is enabling flexible, stateful conversation managemen
 |------|------------|
 | **Session** | A persistent conversation context with a unique ID, owned by a client and associated with a session type |
 | **Session Type** | A configuration profile that maps a session to a backend plugin and declares available capabilities (the maximum set the plugin can provide) |
-| **Backend Plugin** | A CyberWare ModKit plugin module implementing `ChatEngineBackendPlugin` trait; co-located in the same CyberWare process and called directly via `ClientHub`. External HTTP backends are supported via the `chat-engine-webhook-adapter` plugin. See ADR-0022. |
+| **Backend Plugin** | A Cyber Ware ModKit plugin module implementing `ChatEngineBackendPlugin` trait; co-located in the same Cyber Ware process and called directly via `ClientHub`. External HTTP backends are supported via the `chat-engine-webhook-adapter` plugin. See ADR-0022. |
 | **Message Tree** | A tree structure where each message references a parent message; sibling nodes with the same parent are variants |
 | **Message Variant** | An alternative response at the same position in the conversation tree — created by regeneration or branching |
 | **Capability** | A typed feature declared by the backend plugin (`bool`, `enum`, `str`, `int`). `SessionType.available_capabilities` is the maximum set the plugin supports; `Session.enabled_capabilities` is the confirmed set for a specific session. Per-message settings are passed as `CapabilityValue` (id + value). |
@@ -123,7 +123,7 @@ The core value proposition is enabling flexible, stateful conversation managemen
 **ID**: `cpt-cf-chat-engine-actor-backend-developer`
 
 <!-- fdd-id-content -->
-**Role**: Implements CyberWare ModKit plugin modules that satisfy the `ChatEngineBackendPlugin` trait. Registers the plugin in `types-registry` and declares its capabilities. May call external processing services, retrieval systems, or human-in-the-loop workflows internally. Optionally wraps an external HTTP endpoint using the `chat-engine-webhook-adapter` plugin.
+**Role**: Implements Cyber Ware ModKit plugin modules that satisfy the `ChatEngineBackendPlugin` trait. Registers the plugin in `types-registry` and declares its capabilities. May call external processing services, retrieval systems, or human-in-the-loop workflows internally. Optionally wraps an external HTTP endpoint using the `chat-engine-webhook-adapter` plugin.
 <!-- fdd-id-content -->
 
 ### 2.2 System Actors
@@ -141,11 +141,11 @@ The core value proposition is enabling flexible, stateful conversation managemen
 **ID**: `cpt-cf-chat-engine-actor-backend-plugin`
 
 <!-- fdd-id-content -->
-**Role**: CyberWare ModKit plugin module that implements the `ChatEngineBackendPlugin` trait and registers itself in the platform `types-registry`. Receives full session context, message history, and declared capabilities from Chat Engine. Implements custom message processing logic (LLM calls, RAG, rule-based responses, etc.).
+**Role**: Cyber Ware ModKit plugin module that implements the `ChatEngineBackendPlugin` trait and registers itself in the platform `types-registry`. Receives full session context, message history, and declared capabilities from Chat Engine. Implements custom message processing logic (LLM calls, RAG, rule-based responses, etc.).
 
-Plugin modules are co-located within the same CyberWare server process and called directly via `ClientHub` — no HTTP round-trip, no auth negotiation, no retry logic required at the Chat Engine level. Plugin vendors who need to delegate to an external HTTP endpoint use the first-party **`chat-engine-webhook-adapter`** plugin, which internally handles auth, retry, circuit breaker, and throttling.
+Plugin modules are co-located within the same Cyber Ware server process and called directly via `ClientHub` — no HTTP round-trip, no auth negotiation, no retry logic required at the Chat Engine level. Plugin vendors who need to delegate to an external HTTP endpoint use the first-party **`chat-engine-webhook-adapter`** plugin, which internally handles auth, retry, circuit breaker, and throttling.
 
-**See**: ADR-0022 (CyberWare Plugin System for Backend Integration)
+**See**: ADR-0022 (Cyber Ware Plugin System for Backend Integration)
 <!-- fdd-id-content -->
 
 #### File Storage Service
@@ -178,7 +178,7 @@ Plugin modules are co-located within the same CyberWare server process and calle
 
 ## 3. Operational Concept & Environment
 
-> Chat Engine operates as a stateless ModKit gateway module within the CyberWare middleware. No module-specific environment constraints beyond platform defaults.
+> Chat Engine operates as a stateless ModKit gateway module within the Cyber Ware middleware. No module-specific environment constraints beyond platform defaults.
 
 ### 3.1 Module-Specific Environment Constraints
 
@@ -1305,9 +1305,9 @@ The following checklist categories are **not applicable** to this PRD. Each is e
 | **Inclusivity (UX-PRD-005)** | N/A | Chat Engine has no user interface. Inclusivity concerns apply to client applications. |
 | **Market Positioning (BIZ-PRD-002)** | N/A | Chat Engine is an internal platform module, not a market-facing product. Competitive analysis and market positioning are not applicable. |
 | **Documentation Requirements (MAINT-PRD-001)** | Addressed in NFR-017 | Developer documentation, API spec, and webhook contract documentation are covered under `cpt-cf-chat-engine-nfr-developer-experience`. |
-| **Support Requirements (MAINT-PRD-002)** | Deferred | Support tier SLAs are defined at the CyberWare middleware level, not per-module. Chat Engine inherits platform-wide support policies. |
-| **Deployment Requirements (OPS-PRD-001)** | Deferred | Deployment environment, release cadence, and rollback policies are defined in the CyberWare middleware-level PRD and infrastructure documentation. Chat Engine inherits these. |
-| **Monitoring Requirements (OPS-PRD-002)** | Deferred | Alerting, dashboards, and log retention are governed by the CyberWare middleware observability standards. Chat Engine must emit standard structured logs and metrics — specifics defined in DESIGN. |
+| **Support Requirements (MAINT-PRD-002)** | Deferred | Support tier SLAs are defined at the Cyber Ware middleware level, not per-module. Chat Engine inherits platform-wide support policies. |
+| **Deployment Requirements (OPS-PRD-001)** | Deferred | Deployment environment, release cadence, and rollback policies are defined in the Cyber Ware middleware-level PRD and infrastructure documentation. Chat Engine inherits these. |
+| **Monitoring Requirements (OPS-PRD-002)** | Deferred | Alerting, dashboards, and log retention are governed by the Cyber Ware middleware observability standards. Chat Engine must emit standard structured logs and metrics — specifics defined in DESIGN. |
 | **Industry Standards (COMPL-PRD-002)** | Partial | Applicable standards are referenced inline: GDPR (Art. 17, 25), CCPA, and ACID transaction guarantees. No formal certification (ISO 27001, SOC 2) is currently required. |
 | **WebSocket Protocol** (FR-015) | Excluded | Excluded per ADR-0006 — HTTP streaming with NDJSON chosen over WebSocket for client communication. WebSocket adds connection state, sticky sessions, and deployment complexity incompatible with stateless scaling architecture. |
 | **WebSocket Performance** (NFR-011) | Excluded | Excluded per ADR-0006 — WebSocket protocol not adopted; performance NFRs not applicable. |

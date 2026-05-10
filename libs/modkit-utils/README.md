@@ -1,6 +1,6 @@
 # ModKit Utils
 
-Small utility helpers used by CyberWare / ModKit.
+Small utility helpers used by Cyber Ware / ModKit.
 
 ## Overview
 

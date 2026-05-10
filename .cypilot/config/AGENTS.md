@@ -1,4 +1,4 @@
-# Cypilot Adapter: CyberWare
+# Cypilot Adapter: Cyber Ware
 
 **Version**: 1.0
 **Last Updated**: 2026-02-05
@@ -19,9 +19,9 @@ Use `{cypilot_path}/config` as the base path for all relative Cypilot Adapter fi
 
 ## Project Overview
 
-This repository is a **modular monolith** built on top of **CyberWare**.
+This repository is a **modular monolith** built on top of **Cyber Ware**.
 
-- **CyberWare base**: core apps/libraries live under `apps/`, `libs/`, etc.
+- **Cyber Ware base**: core apps/libraries live under `apps/`, `libs/`, etc.
 - **Subsystems / modules**: each subsystem is a module under `modules/<module_name>/`.
 - **Cypilot registry convention**: subsystems are registered as `children[]` of the root `cyberware` system in `{cypilot_path}/config/artifacts.toml`.
 - **Docs convention**: each module keeps its artifacts under `modules/<module_name>/docs/`.

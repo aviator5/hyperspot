@@ -1,6 +1,6 @@
 # Types Registry Module
 
-GTS entity registration, storage, validation, and REST API endpoints for CyberWare.
+GTS entity registration, storage, validation, and REST API endpoints for Cyber Ware.
 
 ## Overview
 

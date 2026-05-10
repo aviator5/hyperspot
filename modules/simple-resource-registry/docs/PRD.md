@@ -43,7 +43,7 @@
 
 ### 1.1 Purpose
 
-Simple Resource Registry is a universal, environment-agnostic CRUD storage layer for resource types that are too simple to justify their own CyberWare module. It exposes a single, consistent API for creating, reading, updating, and deleting typed resources, using a fixed envelope (identity, ownership, timestamps) plus a flexible JSON payload validated against GTS type definitions. The registry is designed to run on any deployment target — edge devices (SQLite), cloud infrastructure (PostgreSQL, MariaDB), and enterprise on-premises environments — adapting its storage backend to the deployment constraints without changing the consumer-facing API.
+Simple Resource Registry is a universal, environment-agnostic CRUD storage layer for resource types that are too simple to justify their own Cyber Ware module. It exposes a single, consistent API for creating, reading, updating, and deleting typed resources, using a fixed envelope (identity, ownership, timestamps) plus a flexible JSON payload validated against GTS type definitions. The registry is designed to run on any deployment target — edge devices (SQLite), cloud infrastructure (PostgreSQL, MariaDB), and enterprise on-premises environments — adapting its storage backend to the deployment constraints without changing the consumer-facing API.
 
 The module solves a recurring problem in modular SaaS platforms: many features need secure, schema-aware object storage with proper authorization (by tenant, owner/user, and resource type), but do not require the complexity of a full domain-specific service. Instead of building custom modules or relying on ad-hoc storage with inconsistent security and governance, one can use the Simple Resource Registry for cases such as simple objects storage, workflow-generated objects, projections of external system entities, partial models used for internal consistency, tenant-level configuration data, and auxiliary artifacts produced by agent execution.
 
@@ -53,7 +53,7 @@ Optionally, the registry can emit lifecycle notification events (created, update
 
 ### 1.2 Background / Problem Statement
 
-In a modular SaaS platform like CyberWare, first-class domain objects (chat messages, model definitions, events, settings, files) are managed by dedicated modules with rich APIs and domain-specific behavior. However, many resource types lack the complexity to justify a dedicated module — they need simple CRUD semantics with tenant isolation and standard governance hooks (audit, events).
+In a modular SaaS platform like Cyber Ware, first-class domain objects (chat messages, model definitions, events, settings, files) are managed by dedicated modules with rich APIs and domain-specific behavior. However, many resource types lack the complexity to justify a dedicated module — they need simple CRUD semantics with tenant isolation and standard governance hooks (audit, events).
 
 Without a generic registry, teams face two poor choices: either build a new module for every simple resource type (high cost, code duplication) or store resources in ad-hoc locations (inconsistent APIs, missing security controls, no traceability). Simple Resource Registry eliminates this by providing a single, extensible storage layer that any module or workflow can use for structured data that conforms to a GTS-registered type.
 
@@ -92,7 +92,7 @@ The storage layer is abstracted behind a well-defined interface, allowing the sa
 
 **ID**: `cpt-cf-srr-actor-platform-user`
 
-**Role**: Authenticated user interacting with CyberWare applications or UI components that store and retrieve resources through the Simple Resource Registry.
+**Role**: Authenticated user interacting with Cyber Ware applications or UI components that store and retrieve resources through the Simple Resource Registry.
 **Needs**: Reliable and secure storage of application data. Predictable behavior and access control aligned with tenant and user permissions. Ability to create, view, update, and delete resources through UI workflows
 
 #### API Client
@@ -108,11 +108,11 @@ The storage layer is abstracted behind a well-defined interface, allowing the sa
 
 **ID**: `cpt-cf-srr-actor-consumer-module`
 
-**Role**: Internal CyberWare module that creates, reads, updates, or deletes resources via the SDK client (e.g., Workflows engine storing custom objects, Agent Runtime storing execution artifacts).
+**Role**: Internal Cyber Ware module that creates, reads, updates, or deletes resources via the SDK client (e.g., Workflows engine storing custom objects, Agent Runtime storing execution artifacts).
 
 ## 3. Operational Concept & Environment
 
-No module-specific environment constraints beyond project defaults. The module operates within the standard CyberWare ModKit lifecycle and uses the platform's shared database infrastructure.
+No module-specific environment constraints beyond project defaults. The module operates within the standard Cyber Ware ModKit lifecycle and uses the platform's shared database infrastructure.
 
 ## 4. Scope
 
@@ -169,7 +169,7 @@ The system **MUST** define a base GTS resource type schema with major-version-on
 - Behavioral traits: is_per_owner_resource, is_create_event_needed, is_delete_event_needed, is_update_event_needed, is_create_audit_event_needed, is_update_audit_event_needed, is_delete_audit_event_needed
 - Hard-delete retention configuration: deleted_resource_retention_days (integer or null; default 30 if null; 0 means immediate hard-delete on soft-delete)
 
-Platform users, API clients, and CyberWare modules can define derived types and register them using the Types Registry APIs. To access resources of a given type, the caller (module, user, or API client) must include the corresponding permissions for that type in its token claims.
+Platform users, API clients, and Cyber Ware modules can define derived types and register them using the Types Registry APIs. To access resources of a given type, the caller (module, user, or API client) must include the corresponding permissions for that type in its token claims.
 
 **Rationale**: GTS type system ensures consistency, discoverability, and validation for all resource types. Embedding the deleted-resource retention policy in the type definition keeps it co-located with other behavioral configuration.
 
@@ -230,7 +230,7 @@ The system **MUST** allow authenticated users to soft-delete a resource by setti
 
 The system **MUST** ship with a default storage backend that uses a relational database as its persistence layer. The default backend **MUST** store schema fields as dedicated queryable columns and the payload as a JSON column. The default backend **MUST** support OData query operations on schema fields and **MUST** work on PostgreSQL, MariaDB, and SQLite without requiring database-specific configuration.
 
-**Rationale**: Relational databases are the standard CyberWare storage tier, providing ACID guarantees and existing infrastructure across all deployment targets (edge, cloud, enterprise). OData support enables standard filtering and pagination.
+**Rationale**: Relational databases are the standard Cyber Ware storage tier, providing ACID guarantees and existing infrastructure across all deployment targets (edge, cloud, enterprise). OData support enables standard filtering and pagination.
 
 #### OData Query Support for Schema Fields
 
@@ -541,7 +541,7 @@ The system **MUST** support storing up to 100 million total resources across all
 ## 11. Assumptions
 
 - GTS type definitions for derived resource types are registered in Types Registry before resources of that type are created
-- A default storage backend is available and configured as part of the standard CyberWare deployment
+- A default storage backend is available and configured as part of the standard Cyber Ware deployment
 - SecurityContext is always available for authenticated requests (enforced by API Gateway middleware)
 - Payload validation against GTS schemas is performed at the application level, not at the database level
 

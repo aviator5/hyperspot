@@ -1,8 +1,8 @@
-# CyberWare SDLC Kit (Cypilot-compatible)
+# Cyber Ware SDLC Kit (Cypilot-compatible)
 
 **ID**: `cf-sdlc`
 **Format**: `Cypilot`
-**Purpose**: Use CyberWare’s documentation templates (`docs/spec-templates/*`) and expert checklists (`docs/checklists/*`).
+**Purpose**: Use Cyber Ware’s documentation templates (`docs/spec-templates/*`) and expert checklists (`docs/checklists/*`).
 
 ## Artifact kinds
 

@@ -2,7 +2,7 @@
 
 # E2E Testing Guide
 
-This directory contains end-to-end tests for the CyberWare example server.
+This directory contains end-to-end tests for the Cyber Ware example server.
 
 ## Prerequisites
 

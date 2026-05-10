@@ -449,7 +449,7 @@ impl YourModuleClientV1 for YourModuleLocalClient {
 }
 ```
 
-## Module Registration in CyberWare Server
+## Module Registration in Cyber Ware Server
 
 Every new module MUST be registered in **two places** to be discoverable at runtime:
 

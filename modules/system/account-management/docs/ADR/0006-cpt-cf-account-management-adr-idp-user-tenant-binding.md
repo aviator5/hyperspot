@@ -28,7 +28,7 @@ decision-makers: Virtuozzo
 
 ## Context and Problem Statement
 
-Every user in the Cyber Fabric platform belongs to exactly one tenant. This user-tenant binding is foundational to the authorization model: the AuthN Resolver extracts the tenant identity from the bearer token to establish the caller's `SecurityContext`, and the AuthZ Resolver uses that tenant identity for policy evaluation and tenant-scoped access control. The platform must decide where the canonical user-tenant binding is stored: in the IdP (as a tenant identity attribute on the user record), in AM's database (as a local association table), or in both systems.
+Every user in the Cyber Ware platform belongs to exactly one tenant. This user-tenant binding is foundational to the authorization model: the AuthN Resolver extracts the tenant identity from the bearer token to establish the caller's `SecurityContext`, and the AuthZ Resolver uses that tenant identity for policy evaluation and tenant-scoped access control. The platform must decide where the canonical user-tenant binding is stored: in the IdP (as a tenant identity attribute on the user record), in AM's database (as a local association table), or in both systems.
 
 This decision is closely related to but distinct from ADR-0005 (`cpt-cf-account-management-adr-idp-user-identity-source-of-truth`), which addresses user identity data broadly. This ADR focuses specifically on the user-tenant relationship — a piece of data that sits at the intersection of identity management and tenant hierarchy administration.
 
@@ -99,7 +99,7 @@ The `IdpProviderPluginClient::create_user` contract requires the provider to set
 
 ## More Information
 
-The user-tenant binding is a security-critical data point: it determines the caller's tenant context for authorization. The CyberWare authorization flow is:
+The user-tenant binding is a security-critical data point: it determines the caller's tenant context for authorization. The Cyber Ware authorization flow is:
 1. User authenticates → IdP issues a bearer token containing the tenant identity claim.
 2. AuthN Resolver validates the token and extracts the tenant identity → establishes `SecurityContext`.
 3. AuthZ Resolver evaluates policies using the tenant context from `SecurityContext`.

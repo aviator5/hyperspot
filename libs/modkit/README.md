@@ -1,6 +1,6 @@
 # ModKit
 
-Declarative module system and common runtime utilities used across CyberWare.
+Declarative module system and common runtime utilities used across Cyber Ware.
 
 ## Overview
 

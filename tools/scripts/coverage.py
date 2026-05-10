@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Code coverage collection script for CyberWare.
+Code coverage collection script for Cyber Ware.
 Supports unit tests, e2e tests, and combined coverage.
 """
 import argparse
@@ -1192,7 +1192,7 @@ def main():
     ensure_tool("cargo-llvm-cov", "cargo install cargo-llvm-cov")
 
     parser = argparse.ArgumentParser(
-        description="Generate code coverage reports for CyberWare",
+        description="Generate code coverage reports for Cyber Ware",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

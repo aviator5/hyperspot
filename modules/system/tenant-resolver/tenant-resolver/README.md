@@ -1,6 +1,6 @@
 # Tenant Resolver
 
-Main module for tenant resolution in CyberWare. Discovers plugins via GTS types-registry and routes tenant operations to the selected plugin.
+Main module for tenant resolution in Cyber Ware. Discovers plugins via GTS types-registry and routes tenant operations to the selected plugin.
 
 ## Overview
 

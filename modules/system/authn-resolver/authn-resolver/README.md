@@ -1,6 +1,6 @@
 # AuthN Resolver
 
-Main module for authentication in CyberWare. Discovers AuthN plugins via GTS types-registry and routes token validation to the selected plugin.
+Main module for authentication in Cyber Ware. Discovers AuthN plugins via GTS types-registry and routes token validation to the selected plugin.
 
 ## Overview
 

@@ -37,7 +37,7 @@ decision-makers: OAGW Team
 
 OAGW is being designed as a greenfield project without existing code. We need to establish the architectural foundation for how components are organized and how separation of concerns is achieved.
 
-OAGW needs a component architecture that separates concerns between configuration management (Control Plane) and request processing (Data Plane) while remaining practical to implement within CyberWare's modular monolith architecture. The question is whether to use separate crates or a single module with internal isolation.
+OAGW needs a component architecture that separates concerns between configuration management (Control Plane) and request processing (Data Plane) while remaining practical to implement within Cyber Ware's modular monolith architecture. The question is whether to use separate crates or a single module with internal isolation.
 
 **Key Requirements**:
 
@@ -48,7 +48,7 @@ OAGW needs a component architecture that separates concerns between configuratio
 ## Decision Drivers
 
 * Clear separation between configuration management and request processing
-* Practical implementation within CyberWare's modular monolith
+* Practical implementation within Cyber Ware's modular monolith
 * Testability: Each service should be testable in isolation via trait mocking
 * Performance: Direct in-process function calls with zero serialization overhead
 * Maintainability: Clear boundaries and responsibilities via domain trait interfaces
@@ -178,7 +178,7 @@ No CP/DP separation; single crate with no CP/DP trait distinction — all logic 
 The CP/DP separation mirrors industry patterns (Envoy, Kong, Istio) where the control plane manages configuration and the data plane handles traffic. In OAGW's case, both run in-process but the trait boundary enables future separation.
 
 Related architectural patterns:
-- CyberWare ModKit module conventions (single crate per module)
+- Cyber Ware ModKit module conventions (single crate per module)
 - DDD-Light layering (`domain/infra/api`)
 
 ## Related ADRs
@@ -190,7 +190,7 @@ Related architectural patterns:
 ## References
 
 - Modkit framework documentation (module lifecycle and dependency injection)
-- CyberWare module patterns: `tenant_resolver`, `types_registry`
+- Cyber Ware module patterns: `tenant_resolver`, `types_registry`
 
 ## Traceability
 

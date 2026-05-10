@@ -1,6 +1,6 @@
 # ModKit OData
 
-OData query building and parsing utilities used by CyberWare / ModKit.
+OData query building and parsing utilities used by Cyber Ware / ModKit.
 
 ## Overview
 

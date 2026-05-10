@@ -32,7 +32,7 @@ modules:
       cors_enabled: false
 
       openapi:
-        title: "CyberWare Server API - Scope Enforcement E2E"
+        title: "Cyber Ware Server API - Scope Enforcement E2E"
         version: "0.1.0"
 
       defaults:

@@ -1,6 +1,6 @@
 # ModKit DB
 
-Database abstractions for CyberWare / ModKit with optional SeaORM integration.
+Database abstractions for Cyber Ware / ModKit with optional SeaORM integration.
 
 ## Overview
 

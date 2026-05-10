@@ -1,6 +1,6 @@
 # Tenant Resolver SDK
 
-SDK crate for the Tenant Resolver module, providing public API contracts for multi-tenant hierarchy resolution in CyberWare.
+SDK crate for the Tenant Resolver module, providing public API contracts for multi-tenant hierarchy resolution in Cyber Ware.
 
 ## Overview
 

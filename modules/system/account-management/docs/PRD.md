@@ -73,15 +73,15 @@ Created:  2026-03-30 by Virtuozzo
 
 ### 1.1 Purpose
 
-AM is the foundational multi-tenancy source-of-truth module for the Cyber Fabric platform. It provides hierarchical tenant management, tenant isolation metadata, delegated administration, and a pluggable Identity Provider (IdP) integration contract for administrative user lifecycle operations.
+AM is the foundational multi-tenancy source-of-truth module for the Cyber Ware platform. It provides hierarchical tenant management, tenant isolation metadata, delegated administration, and a pluggable Identity Provider (IdP) integration contract for administrative user lifecycle operations.
 
 AM enables diverse organizational models — from cloud hosting (Provider / Reseller / Customer) to enterprise divisions and managed-service providers — within a single deployment, supporting both managed (delegated administration) and self-managed (barrier-isolated) tenant modes in the same hierarchy.
 
-Here, a deployment means one installed/running Cyber Fabric environment with a single AM root tenant and one configured tenant-type topology. Different organizational shapes are modeled as tenant hierarchies inside that deployment, not as separate platform installations.
+Here, a deployment means one installed/running Cyber Ware environment with a single AM root tenant and one configured tenant-type topology. Different organizational shapes are modeled as tenant hierarchies inside that deployment, not as separate platform installations.
 
 ### 1.2 Background / Problem Statement
 
-Cyber Fabric needs a unified multi-tenancy model that supports diverse organizational structures and business models within a single deployment. Without a shared tenant hierarchy, each organizational model requires separate infrastructure or custom integration, increasing operational cost and limiting platform scalability.
+Cyber Ware needs a unified multi-tenancy model that supports diverse organizational structures and business models within a single deployment. Without a shared tenant hierarchy, each organizational model requires separate infrastructure or custom integration, increasing operational cost and limiting platform scalability.
 
 Tenant hierarchy is needed because many customers operate as parent/child organizations rather than flat accounts. It lets the platform model delegated administration, governance boundaries, inherited defaults, and future billing/reporting flows in a way that matches real customer structure.
 
@@ -295,7 +295,7 @@ AM coordinates user lifecycle operations but **does not own user identity data**
 - User authentication flows: covered by IAM PRD.
 - Tenant context propagation (SecurityContext population, cross-tenant rejection, service-to-service forwarding): framework and AuthZ Resolver responsibility.
 - Barrier-aware tenant tree traversal (ancestor chains, descendant queries with `BarrierMode`): Tenant Resolver Plugin responsibility. AM owns the underlying `tenants` + `tenant_closure` storage and the canonical closure shape, and exposes it to the Plugin via a read-only database role; barrier-aware SDK queries are served by the Plugin over that shared storage. AM's own public API exposes tenant CRUD and direct-children discovery, not barrier-aware subtree traversal.
-- AuthZ Resolver (PDP) implementation: covered by Cyber Fabric DESIGN; this module covers the tenant model consumed by PDP.
+- AuthZ Resolver (PDP) implementation: covered by Cyber Ware DESIGN; this module covers the tenant model consumed by PDP.
 - Resource provisioning and lifecycle for non-identity platform resources: outside AM scope. AM provides tenant context and ownership boundaries but does not manage downstream resource CRUD or provisioning workflows.
 - Tenant lifecycle events (CloudEvents): deferred until EVT (Events and Audit Bus) is introduced.
 
@@ -787,7 +787,7 @@ Categories AM uses today:
 - `Unimplemented` (HTTP 501) — IdP plugin does not support the requested operation
 - `Internal` (HTTP 500) — unclassified internal failure
 
-Rationale: anchoring AM's error contract to the AIP-193 canonical model means clients and operators react consistently across CyberWare modules — every module that adopts `modkit-canonical-errors` shares the same envelope shape, the same HTTP semantics, and the same `errors[]` discriminator vocabulary. Fine-grained discriminators (`INVALID_TENANT_TYPE`, `TENANT_HAS_CHILDREN`, `PENDING_EXISTS`, `SERIALIZATION_CONFLICT`, …) live inside the canonical envelope as `reason` tokens on field/precondition/quota violations rather than as a private AM-side `code` field.
+Rationale: anchoring AM's error contract to the AIP-193 canonical model means clients and operators react consistently across Cyber Ware modules — every module that adopts `modkit-canonical-errors` shares the same envelope shape, the same HTTP semantics, and the same `errors[]` discriminator vocabulary. Fine-grained discriminators (`INVALID_TENANT_TYPE`, `TENANT_HAS_CHILDREN`, `PENDING_EXISTS`, `SERIALIZATION_CONFLICT`, …) live inside the canonical envelope as `reason` tokens on field/precondition/quota violations rather than as a private AM-side `code` field.
 
 The authoritative HTTP mapping, the `errors[]` violation vocabulary, and the GTS resource-type tags are documented in [DESIGN §3.8](./DESIGN.md#38-error-codes-reference). Provider-specific diagnostics appear in audit trails or in the audit-only `diagnostic` field without changing the public envelope.
 
@@ -1026,7 +1026,7 @@ IdP implementations may align with standards such as SCIM 2.0 and OIDC where app
 - [ ] `p1` - **ID**: `cpt-cf-account-management-contract-authz-resolver`
 
 - **Direction**: provided by library (tenant context and hierarchy data for authorization decisions)
-- **Protocol/Format**: SecurityContext propagation via Cyber Fabric framework
+- **Protocol/Format**: SecurityContext propagation via Cyber Ware framework
 - **Consumed / Provided Data**: SecurityContext tenant fields, tenant hierarchy visibility, barrier state, and `schema_id`-scoped metadata authorization attributes.
 - **Availability / Fallback**: AM does not provide an authorization fallback path; if AuthZ is unavailable, access decisions remain platform-owned failures.
 - **Compatibility**: Changes to SecurityContext tenant fields require coordinated update with AuthZ Resolver Plugin.

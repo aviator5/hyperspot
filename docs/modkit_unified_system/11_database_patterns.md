@@ -1,6 +1,6 @@
 # Database Execution Patterns
 
-This document covers database execution mechanics in Cyber Fabric: the `DBRunner` abstraction, transactions, the repository pattern, and database migrations.
+This document covers database execution mechanics in Cyber Ware: the `DBRunner` abstraction, transactions, the repository pattern, and database migrations.
 
 For security-scoped database access (`SecureConn`, `AccessScope`, `PolicyEnforcer` PEP pattern), see [`06_authn_authz_secure_orm.md`](./06_authn_authz_secure_orm.md).
 

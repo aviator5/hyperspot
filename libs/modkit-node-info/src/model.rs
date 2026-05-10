@@ -1,4 +1,4 @@
-/// Node represents a deployment unit where `CyberWare` server is running
+/// Node represents a deployment unit where `Cyber Ware` server is running
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub id: uuid::Uuid,

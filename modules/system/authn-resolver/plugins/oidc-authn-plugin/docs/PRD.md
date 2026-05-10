@@ -80,13 +80,13 @@ Created:  2026-04-09 by Diffora
 
 ### 1.1 Purpose
 
-The OIDC AuthN Resolver Plugin provides authentication services for the CyberWare middleware by integrating with OpenID Connect-compliant Identity Providers (IdPs). It validates JWT access tokens, extracts identity claims, and produces the platform's `SecurityContext` structure that downstream modules consume for authorization and tenant-scoped access control.
+The OIDC AuthN Resolver Plugin provides authentication services for the Cyber Ware middleware by integrating with OpenID Connect-compliant Identity Providers (IdPs). It validates JWT access tokens, extracts identity claims, and produces the platform's `SecurityContext` structure that downstream modules consume for authorization and tenant-scoped access control.
 
-The plugin is a vendor-specific implementation of the AuthN Resolver plugin interface, following the CyberWare gateway + plugin architecture pattern. It ships as the default authentication plugin for deployments using standard OIDC-compliant IdPs.
+The plugin is a vendor-specific implementation of the AuthN Resolver plugin interface, following the Cyber Ware gateway + plugin architecture pattern. It ships as the default authentication plugin for deployments using standard OIDC-compliant IdPs.
 
 ### 1.2 Background / Problem Statement
 
-CyberWare modules need a consistent, high-performance mechanism to authenticate incoming API requests and establish caller identity. Without a centralized authentication plugin, each module would independently validate tokens, parse claims, and construct identity context — leading to duplicated logic, inconsistent claim interpretation, and security gaps.
+Cyber Ware modules need a consistent, high-performance mechanism to authenticate incoming API requests and establish caller identity. Without a centralized authentication plugin, each module would independently validate tokens, parse claims, and construct identity context — leading to duplicated logic, inconsistent claim interpretation, and security gaps.
 
 The platform requires multi-tenant authentication where tenant isolation is achieved via claims embedded in access tokens rather than per-tenant IdP instances. A single OIDC issuer can serve many tenants (each tenant identified by a claim), while multiple issuers can coexist for different tenant groups. The target is 10,000+ tenants without requiring per-tenant IdP configuration.
 
@@ -167,7 +167,7 @@ No module-specific environment constraints beyond project defaults. The plugin r
 - Configurable HTTP request timeout for all outbound IdP calls
 - Transient-failure retry with exponential backoff + jitter (network errors, HTTP 5xx, HTTP 429)
 - Per-host circuit breaker for IdP resilience (globally enable/disable)
-- Plugin registration via CyberWare ClientHub with GTS identity
+- Plugin registration via Cyber Ware ClientHub with GTS identity
 
 ### 4.2 Out of Scope
 
@@ -331,7 +331,7 @@ When `s2s_oauth.default_subject_type` is configured and the obtained S2S token d
 
 - [ ] `p1` - **ID**: `cpt-cf-authn-plugin-fr-clienthub-registration`
 
-The plugin MUST register `dyn AuthNResolverPluginClient` with CyberWare ClientHub using GTS schema identity at startup. Registration MUST include vendor key (`"cyberfabric"`), priority, and display name.
+The plugin MUST register `dyn AuthNResolverPluginClient` with Cyber Ware ClientHub using GTS schema identity at startup. Registration MUST include vendor key (`"cyberfabric"`), priority, and display name.
 
 - **Rationale**: Enables the AuthN Resolver gateway to discover and select the active plugin at runtime via ClientHub lookup.
 - **Actors**: `cpt-cf-authn-plugin-actor-api-gateway`

@@ -1,4 +1,4 @@
-# Configuration for running CyberWare Example Server with authentication disabled
+# Configuration for running Cyber Ware Example Server with authentication disabled
 # This mode automatically injects SecurityCtx::root_ctx() for all requests
 # WARNING: Only use for single-user on-premise installations
 

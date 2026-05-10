@@ -1,7 +1,7 @@
 # Testing Policy
 
 This document defines the test strategy, coverage requirements, and CI enforcement for
-Cyber Fabric.  It is the single source of truth for "what must be tested and how."
+Cyber Ware.  It is the single source of truth for "what must be tested and how."
 
 ---
 
@@ -217,7 +217,7 @@ See [`fuzz/README.md`](../tools/fuzz/README.md) for corpus management and crash 
 
 ## 8. CI / Development Commands
 
-Cyber Fabric uses a unified, cross-platform Python CI script (`scripts/ci.py`).
+Cyber Ware uses a unified, cross-platform Python CI script (`scripts/ci.py`).
 This is the **primary entry point on Windows** where `make` is not available.
 Requires Python 3.9+.
 

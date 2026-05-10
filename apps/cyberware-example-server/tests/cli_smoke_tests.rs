@@ -56,7 +56,7 @@ fn test_cli_help_command() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("cyberware-server") || stdout.contains("CyberWare"),
+        stdout.contains("cyberware-server") || stdout.contains("Cyber Ware"),
         "Should contain binary name"
     );
     assert!(
@@ -427,7 +427,7 @@ async fn test_cli_no_arguments() {
                     || stderr.contains("subcommand")
                     || stderr.contains("Error")
                     || stdout.contains("help")
-                    || stdout.contains("CyberWare Server starting"),
+                    || stdout.contains("Cyber Ware Server starting"),
                 "Should show usage, help, or run with potential error"
             );
         }

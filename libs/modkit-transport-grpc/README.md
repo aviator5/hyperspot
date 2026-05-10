@@ -1,6 +1,6 @@
 # ModKit Transport gRPC
 
-gRPC transport helpers used by CyberWare / ModKit.
+gRPC transport helpers used by Cyber Ware / ModKit.
 
 ## Overview
 

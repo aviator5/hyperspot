@@ -44,7 +44,7 @@ This shape is wrong. Self-reported health is unreliable in exactly the failure m
 
 Self-reported health is *not health*. It is a statement of intent by the observed party, not an observation by an external observer. Real systems (K8s, Consul, Eureka) all separate observation from declaration: the thing being judged does not get to judge itself. Probes (HTTP `/healthz`, TCP connect, exec) come from outside the observed instance.
 
-Cluster's audience is platform modules running inside CyberWare, not arbitrary network services. Cluster also does not own a probe runner — building one is significant API surface (probe registration, per-backend probe semantics, health combination rules across multiple probe sources, observability). The right call is to be honest about what the API actually models — *serving intent* — and stop using the word "health".
+Cluster's audience is platform modules running inside Cyber Ware, not arbitrary network services. Cluster also does not own a probe runner — building one is significant API surface (probe registration, per-backend probe semantics, health combination rules across multiple probe sources, observability). The right call is to be honest about what the API actually models — *serving intent* — and stop using the word "health".
 
 This ADR captures the rename + semantic clarification + K8s remapping that result. The decision was originally recorded during the cluster design review as APPLIED on 2026-04-09; this ADR promotes it to a versioned ADR so it sits in the durable decision-of-record set alongside the other architectural choices.
 

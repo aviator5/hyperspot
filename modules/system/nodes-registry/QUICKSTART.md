@@ -1,6 +1,6 @@
 # Nodes Registry - Quickstart
 
-Tracks and reports information about all CyberWare server instances in your deployment.
+Tracks and reports information about all Cyber Ware server instances in your deployment.
 
 **Provides:**
 - Node identification (ID, hostname, IP address)
@@ -9,7 +9,7 @@ Tracks and reports information about all CyberWare server instances in your depl
 - Registration timestamps
 
 **Use cases:**
-- Monitor distributed CyberWare deployments
+- Monitor distributed Cyber Ware deployments
 - Load balancing and resource allocation
 - Health checks and diagnostics
 

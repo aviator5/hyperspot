@@ -1,6 +1,6 @@
 # E2E Tests for nodes_registry Module
 
-This directory contains comprehensive end-to-end tests for the `nodes-registry` module, which manages node information in CyberWare deployments.
+This directory contains comprehensive end-to-end tests for the `nodes-registry` module, which manages node information in Cyber Ware deployments.
 
 ## Test Files
 

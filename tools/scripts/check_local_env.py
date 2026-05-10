@@ -102,7 +102,7 @@ def check_all_prereqs(prereq_list=None) -> bool:
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(
-        description="Check CyberWare test environment prerequisites"
+        description="Check Cyber Ware test environment prerequisites"
     )
     parser.add_argument(
         "--mode", "-m",

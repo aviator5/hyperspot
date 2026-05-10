@@ -44,7 +44,7 @@ Five plugins are shipped with this version, covering PDFs, HTML, spreadsheets, p
 
 #### Third-party Library Constraints
 
-`kreuzberg` ≥ 4.8.0 uses Elastic License 2.0 (EL-2.0). The dependency is pinned at `=4.9.4`. An explicit exception is declared in `deny.toml` with rationale: CyberWare's document parsing is not sold as a standalone competing product. Any upgrade requires re-verifying the exception still applies.
+`kreuzberg` ≥ 4.8.0 uses Elastic License 2.0 (EL-2.0). The dependency is pinned at `=4.9.4`. An explicit exception is declared in `deny.toml` with rationale: Cyber Ware's document parsing is not sold as a standalone competing product. Any upgrade requires re-verifying the exception still applies.
 
 ### 1.3 Architecture Layers
 

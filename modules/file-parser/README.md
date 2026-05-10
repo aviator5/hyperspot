@@ -1,6 +1,6 @@
 # File Parser Module
 
-File parsing module for CyberWare / ModKit.
+File parsing module for Cyber Ware / ModKit.
 
 ## Overview
 
@@ -52,7 +52,7 @@ This module depends on [`kreuzberg`](https://github.com/kreuzberg-dev/kreuzberg)
 
 > ℹ️ **EL-2.0 is permitted for this use case.** The `deny.toml` license policy includes
 > an explicit exception for `kreuzberg =4.9.4` with documented rationale:
-> CyberWare's document parsing is incidental to the platform — it is not sold as a
+> Cyber Ware's document parsing is incidental to the platform — it is not sold as a
 > standalone document-parsing product competing with kreuzberg.
 >
 > **EL-2.0 key restrictions to be aware of:**
