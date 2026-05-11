@@ -66,8 +66,18 @@ Use descriptive branch names:
 
 As an alternative, you can fork the repository to your own GitHub account.
 
+### 2.2. New Modules Development
 
-### 2.2. Make Your Changes
+Cyber Ware follows a spec-driven development (SDD) approach for large features. Module development starts with specifications that live alongside the code. When you add features, make design decisions, or introduce upstream requirements, you must use the following templates and keep them aligned with the implementation:
+
+- **[Overview & Guide](./docs/spec-templates/README.md)** — Template system overview, governance, FDD ID conventions, and document placement rules
+- **[PRD.md](./docs/spec-templates/cyberware-sdlc/PRD/template.md)** — Product Requirements Document: vision, actors, capabilities, use cases, FR/NFR
+- **[DESIGN.md](./docs/spec-templates/cyberware-sdlc/DESIGN/template.md)** — Technical Design: architecture, principles, constraints, domain model, API contracts
+- **[ADR.md](./docs/spec-templates/cyberware-sdlc/ADR/template.md)** — Architecture Decision Record: decisions, options, trade-offs, consequences
+- **[FEATURE.md](./docs/spec-templates/cyberware-sdlc/FEATURE/template.md)** — Feature Specification: flows, algorithms, states, requirements
+- **[UPSTREAM_REQS.md](./docs/spec-templates/cyberware-sdlc/UPSTREAM_REQS/template.md)** — Upstream Requirements: technical requirements from other modules to this module
+
+### 2.3. Make Your Changes
 
 Follow the coding standards and guidelines:
 
@@ -81,8 +91,7 @@ Module directories under `modules/` must use kebab-case (validated by `tools/scr
 
 Always include unit tests when introducing new code.
 
-
-### 2.3. Run Code Quality Checks
+### 2.4. Run Code Quality Checks
 
 Build and run all the quality checks:
 
@@ -110,7 +119,7 @@ make coverage-unit # Run only unit tests with code coverage
 make coverage-e2e-local # Run only e2e tests with code coverage
 ```
 
-### 2.4. Run Fuzzing Tests (Recommended)
+### 2.5. Run Fuzzing Tests (Recommended)
 
 Before submitting changes to parsers or validation logic, run fuzzing:
 
@@ -143,7 +152,7 @@ export RUST_BACKTRACE=full
 ```
 
 
-### 2.5. Sign Your Commits (DCO)
+### 2.6. Sign Your Commits (DCO)
 
 This project uses the Developer Certificate of Origin (DCO) version 1.1.
 - The DCO text is included in `guidelines/DNA/DCO.txt` (Version 1.1). This is the current and widely adopted version; please keep it as 1.1.
@@ -163,7 +172,7 @@ git config --global format.signoff true
 ```
 
 
-### 2.6. Commit Changes
+### 2.7. Commit Changes
 
 Follow a structured commit message format:
 
@@ -221,7 +230,7 @@ New functionality development:
 - Prefer soft-deletion for entities; provide hard-deletion with retention routines
 - Include unit tests (and integration tests when relevant)
 
-### 2.7. Push and Create PR
+### 2.8. Push and Create PR
 
 ```bash
 git push origin feature/your-feature-name
@@ -267,7 +276,7 @@ Brief description of the changes made.
 Closes #issue_number
 ```
 
-### 2.8. Review Process
+### 2.9. Review Process
 
 1. **Automated checks** must pass (CI/CD pipeline)
 2. **At least one approval** from maintainer required
@@ -280,7 +289,7 @@ Merge Strategy:
 - **Rebase and merge** for simple fixes
 - **Merge commit** for release branches
 
-### 2.9. Local PR Review with Cypilot
+### 2.10. Local PR Review with Cypilot
 
 After pushing your PR and waiting for the cloud AI bots (CodeRabbit, Qodo, etc.) to complete their reviews, run a local Cypilot review to catch additional issues
 before requesting human review:

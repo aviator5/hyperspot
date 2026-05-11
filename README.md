@@ -1,13 +1,17 @@
-# Cyber Ware
+# Cyber Ware (Rust)
 ![Badge](./.github/badgeHN.svg)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cyberfabric/cyberware-rust/badge)](https://scorecard.dev/viewer/?uri=github.com/cyberfabric/cyberware-rust)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12050/badge)](https://www.bestpractices.dev/projects/12050)
 
-**Cyber Ware** is a secure, modular XaaS development framework and middleware written primarily in Rust. It provides ready-to-use building blocks, domain model elements, and APIs with security-in-depth enforcement, multi-tenancy, and granular access control built into every layer.
+**Cyber Ware** is a secure, modular XaaS development framework and middleware developed by the **Cyber Fabric Foundation**. It provides ready-to-use building blocks, domain components, and APIs with defense-in-depth, multi-tenancy, and granular access control built into every layer.
 
-Cyber Ware is not a ready-to-use service — it is a set of well-integrated libraries (modules) that XaaS vendors compose into their own products. Vendors decide which modules to include, how to combine them into services, and on what infrastructure to run — from edge devices to Kubernetes clusters.
+Cyber Ware is not a ready-to-use service. Instead, it is a set of well-integrated libraries and modules that XaaS vendors can compose into their own products. Vendors decide which modules to include, how to combine them into services, and where to run them—from edge devices to Kubernetes clusters.
 
-**Five defining characteristics:**
+Cyber Ware modules span three broad categories: **Core** modules for platform foundations such as API gateway, authentication/authorization, account management, etc; **Serverless** modules for functions, workflows, and event-driven execution; and **GenAI** modules for chat, retrieval, prompt orchestration, and related AI capabilities.
+
+See [MODULES](docs/MODULES.md) for modules overview.
+
+**Five defining Cyber Ware characteristics:**
 
 1. **Secure XaaS framework with defense-in-depth** — Every API handler enforces authentication, authorization, tenant isolation, and scoped DB access by default. Security is structural, not opt-in, validated at build time using integrated dynamic lints.
 
@@ -48,22 +52,33 @@ See also [REPO_PLAYBOOK](docs/REPO_PLAYBOOK.md) with the registry of repository-
 git clone --recurse-submodules <repository-url>
 cd cyberware-rust
 
-make ci         # Run full CI pipeline
-make fmt        # Check formatting (no changes). Use 'make dev-fmt' to auto-format
-make clippy     # Lint (deny warnings). Use 'make dev-clippy' to attempt auto-fix
+make build      # Build libraries and example server binary
 make test       # Run tests
 make example    # Run modkit example module
-make check      # Full check suite
-make safety     # Extended safety checks (includes dylint/kani)
-make deny       # License and dependency checks
 ```
 
 ### Running the Server
 
-```bash
-# Quick helper
-make quickstart
+Cyber Ware repository comes with an example server illustrating the modules APIs:
 
+```bash
+# Run an example server, see the API docs @ http://127.0.0.1:8087/cf/docs
+make exammple
+
+# See API documentation:
+# $ make example
+# visit: http://127.0.0.1:8087/cf/docs
+
+# Check if server is ready (detailed JSON response)
+curl http://127.0.0.1:8087/cf/health
+
+# Kubernetes-style liveness probe (simple "ok" response)
+curl http://127.0.0.1:8087/healthz
+```
+
+Other quick start examples:
+
+```bash
 # Option 1: Run with SQLite database (recommended for development)
 cargo run --bin cyberware-example-server -- --config config/quickstart.yaml run
 
@@ -72,16 +87,6 @@ cargo run --bin cyberware-example-server -- --config config/no-db.yaml run
 
 # Option 3: Run with mock in-memory database for testing
 cargo run --bin cyberware-example-server -- --config config/quickstart.yaml --mock run
-
-# Check if server is ready (detailed JSON response)
-curl http://127.0.0.1:8087/health
-
-# Kubernetes-style liveness probe (simple "ok" response)
-curl http://127.0.0.1:8087/healthz
-
-# See API documentation:
-# $ make quickstart
-# visit: http://127.0.0.1:8087/docs
 ```
 
 ### Example Configuration (config/quickstart.yaml)
@@ -133,17 +138,6 @@ See [MODKIT UNIFIED SYSTEM](docs/modkit_unified_system/README.md) and [MODKIT_PL
 Cyber Ware applies defense-in-depth security across the entire development lifecycle — from Rust's compile-time safety guarantees and custom architectural lints, through compile-time tenant isolation and PDP/PEP authorization enforcement, to continuous fuzzing, dependency auditing, and automated security scanning in CI.
 
 See **[Security Overview](docs/security/SECURITY.md)** for the full breakdown, including: Secure ORM with compile-time tenant scoping, authentication/authorization architecture (NIST SP 800-162 PDP/PEP model), 90+ Clippy deny-level rules, custom dylint architectural lints, cargo-deny advisory checks, ClusterFuzzLite continuous fuzzing, CodeQL/Scorecard/Snyk/Aikido scanners, and AI-powered PR review bots.
-
-## Specification Templates
-
-Cyber Ware uses industry-standard specification templates (IEEE, ISO, MADR) to drive development. Specs are written *before* implementation and live alongside the code in version control.
-
-- **[Overview & Guide](docs/spec-templates/README.md)** — Template system overview, governance, FDD ID conventions, and document placement rules
-- **[PRD.md](docs/spec-templates/PRD.md)** — Product Requirements Document: vision, actors, capabilities, use cases, FR/NFR
-- **[DESIGN.md](docs/spec-templates/DESIGN.md)** — Technical Design: architecture, principles, constraints, domain model, API contracts
-- **[ADR.md](docs/spec-templates/ADR.md)** — Architecture Decision Record: decisions, options, trade-offs, consequences
-- **[FEATURE.md](docs/spec-templates/FEATURE.md)** — Feature Specification: flows, algorithms, states, requirements
-- **[UPSTREAM_REQS.md](docs/spec-templates/UPSTREAM_REQS.md)** — Upstream Requirements: technical requirements from other modules to this module
 
 ## Configuration
 
