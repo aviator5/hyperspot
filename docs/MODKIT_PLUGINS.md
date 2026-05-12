@@ -106,24 +106,24 @@ pub trait MyModulePluginClient: Send + Sync {
 Each plugin instance is identified by a **GTS (Global Type System) ID**:
 
 ```
-gts.cf.core.modkit.plugin.v1~<vendor>.<package_name>.<module_name>.plugin.v1~
+gts.cf.modkit.plugins.plugin.v1~<vendor>.<package_name>.<module_name>.plugin.v1~
 └─────────────────────────┘ └──────────────────────────────────────────────┘
     Base plugin type ID           Specific module plugin interface ID
 ```
 
-**Note:** The base plugin type `gts.cf.core.modkit.plugin.v1~` is automatically registered by
+**Note:** The base plugin type `gts.cf.modkit.plugins.plugin.v1~` is automatically registered by
 the `types_registry` module during initialization. You don't need to register it manually.
 
 Example instance IDs:
 
-- `gts.cf.core.modkit.plugin.v1~cf.core.tenant_resolver.plugin.v1~contoso.app._.plugin.v1`
-- `gts.cf.core.modkit.plugin.v1~cf.core.tenant_resolver.plugin.v1~fabrikam.app._.plugin.v1`
+- `gts.cf.modkit.plugins.plugin.v1~cf.core.tenant_resolver.plugin.v1~contoso.app._.plugin.v1`
+- `gts.cf.modkit.plugins.plugin.v1~cf.core.tenant_resolver.plugin.v1~fabrikam.app._.plugin.v1`
 
 GTS provides:
 
 - **Stable, versioned identifiers** for both schemas and instances
 - **Schema-driven validation** of instance content
-- **Registry-based discovery** of available plugins (e.g. `gts.cf.core.modkit.plugin.v1~cf.core.tenant_resolver.plugin.v1~*`)
+- **Registry-based discovery** of available plugins (e.g. `gts.cf.modkit.plugins.plugin.v1~cf.core.tenant_resolver.plugin.v1~*`)
 
 ### 3. Scoped Clients in ClientHub
 
@@ -153,7 +153,7 @@ The `types-registry` module provides:
 
 | What | Who registers             | When                             |
 |------|---------------------------|----------------------------------|
-| Core GTS types (e.g., `gts.cf.core.modkit.plugin.v1~`) | **types_registry module** | Automatically during module init |
+| Core GTS types (e.g., `gts.cf.modkit.plugins.plugin.v1~`) | **types_registry module** | Automatically during module init |
 | Plugin **schema** (GTS type definition) | **Main module**           | During module `init()`           |
 | Plugin **instance** (specific implementation) | **Each plugin**           | During plugin `init()`           |
 
@@ -182,7 +182,7 @@ registry.register(vec![schema_json]).await?;
 let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
 
 // Register instance only (schema is already registered by main module)
-let instance = BaseModkitPluginV1::<MyModulePluginSpecV1> {
+let instance = PluginV1::<MyModulePluginSpecV1> {
     id: instance_id.clone(),
     vendor: "Contoso".into(),
     priority: 10,
@@ -275,7 +275,7 @@ Define the GTS schema for plugin instances:
 // <module>-sdk/src/gts.rs
 
 use gts_macros::struct_to_gts_schema;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -284,11 +284,11 @@ use serde::{Deserialize, Serialize};
 /// For unit struct plugins (no additional properties), use an empty unit struct.
 /// The `struct_to_gts_schema` macro generates the GTS schema and helper methods.
 ///
-/// GTS ID format: `gts.cf.core.modkit.plugin.v1~<vendor>.<package>.<module>.plugin.v1~`
+/// GTS ID format: `gts.cf.modkit.plugins.plugin.v1~<vendor>.<package>.<module>.plugin.v1~`
 #[struct_to_gts_schema(
     dir_path = "schemas",
-    base = BaseModkitPluginV1,
-    schema_id = "gts.cf.core.modkit.plugin.v1~vendor.pkg.my_module.plugin.v1~",
+    base = PluginV1,
+    schema_id = "gts.cf.modkit.plugins.plugin.v1~vendor.pkg.my_module.plugin.v1~",
     description = "My Module plugin specification",
     properties = ""
 )]
@@ -454,7 +454,7 @@ Each plugin module:
 use std::sync::Arc;
 use async_trait::async_trait;
 use modkit::client_hub::ClientScope;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use modkit::{Module, ModuleCtx};
 use modkit_security::SecurityContext;
 use my_sdk::{MyModulePluginClient, MyModulePluginSpecV1};
@@ -479,7 +479,7 @@ impl Module for VendorAPlugin {
         // 2. Register plugin INSTANCE in types-registry
         //    Note: The plugin SCHEMA is registered by the main module
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<MyModulePluginSpecV1> {
+        let instance = PluginV1::<MyModulePluginSpecV1> {
             id: instance_id.clone(),
             vendor: cfg.vendor,
             priority: cfg.priority,
@@ -554,7 +554,7 @@ fn choose_plugin(vendor: &str, instances: &[GtsEntity]) -> Result<&GtsEntity, Do
 
     for ent in instances {
         // Deserialize the plugin instance content using the SDK type
-        let content: BaseModkitPluginV1<MyModulePluginSpecV1> =
+        let content: PluginV1<MyModulePluginSpecV1> =
             serde_json::from_value(ent.content.clone()).map_err(|e| {
                 tracing::error!(
                     gts_id = %ent.gts_id,
@@ -620,7 +620,7 @@ pub async fn handle_request(
     ctx: &SecurityContext,
     provider: &str,  // e.g., "openai", "anthropic"
 ) -> Result<Response, DomainError> {
-    let plugin_id = format!("gts.cf.core.modkit.plugin.v1~x.llm_provider.llm_provider.plugin.v1~{}.llm_provider._.plugin.v1", provider);
+    let plugin_id = format!("gts.cf.modkit.plugins.plugin.v1~x.llm_provider.llm_provider.plugin.v1~{}.llm_provider._.plugin.v1", provider);
     let scope = ClientScope::gts_id(&plugin_id);
     let plugin = self.hub.get_scoped::<dyn LlmPluginClient>(&scope)?;
     plugin.complete(ctx, request).await
@@ -799,7 +799,7 @@ async fn test_module_plugin_resolution() {
     hub.register::<dyn TypesRegistryClient>(mock_registry);
 
     // Register mock plugin
-    let instance_id = "gts.cf.core.modkit.plugin.v1~vendor.pkg.my_module.plugin.v1~fabrikam.test._.plugin.v1";
+    let instance_id = "gts.cf.modkit.plugins.plugin.v1~vendor.pkg.my_module.plugin.v1~fabrikam.test._.plugin.v1";
     let mock_plugin: Arc<dyn MyModulePluginClient> = Arc::new(MockPlugin::new());
     hub.register_scoped::<dyn MyModulePluginClient>(ClientScope::gts_id(instance_id), mock_plugin);
 

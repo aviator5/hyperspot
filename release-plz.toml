@@ -140,6 +140,16 @@ name = "cyberware-modkit-utils"
 changelog_update = false
 git_release_enable = false
 
+[[package]]
+name = "cyberware-modkit-gts"
+changelog_update = false
+git_release_enable = false
+
+[[package]]
+name = "cyberware-modkit-gts-macro"
+changelog_update = false
+git_release_enable = false
+
 # System SDK libraries - published to crates.io but without separate changelog/releases
 [[package]]
 name = "cyberware-system-sdks"

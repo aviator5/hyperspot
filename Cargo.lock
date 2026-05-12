@@ -1990,6 +1990,7 @@ version = "0.3.16"
 dependencies = [
  "async-trait",
  "cyberware-modkit",
+ "cyberware-modkit-gts",
  "cyberware-modkit-security",
  "gts",
  "gts-macros",
@@ -2027,6 +2028,7 @@ version = "0.3.6"
 dependencies = [
  "async-trait",
  "cyberware-modkit",
+ "cyberware-modkit-gts",
  "cyberware-modkit-security",
  "cyberware-tenant-resolver-sdk",
  "gts",
@@ -2068,6 +2070,7 @@ version = "0.1.24"
 dependencies = [
  "async-trait",
  "cyberware-modkit",
+ "cyberware-modkit-gts",
  "cyberware-modkit-security",
  "cyberware-tenant-resolver-sdk",
  "gts",
@@ -2117,7 +2120,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "types",
  "users-info",
 ]
 
@@ -2191,13 +2193,16 @@ dependencies = [
  "cyberware-modkit-canonical-errors",
  "cyberware-modkit-db",
  "cyberware-modkit-db-macros",
+ "cyberware-modkit-gts",
  "cyberware-modkit-macros",
  "cyberware-modkit-odata",
  "cyberware-modkit-security",
  "cyberware-modkit-utils",
  "cyberware-oagw-sdk",
+ "cyberware-types-registry",
  "cyberware-types-registry-sdk",
  "futures",
+ "gts",
  "heck 0.5.0",
  "http",
  "image",
@@ -2231,6 +2236,7 @@ version = "0.10.6"
 dependencies = [
  "async-trait",
  "cyberware-modkit",
+ "cyberware-modkit-gts",
  "gts",
  "gts-macros",
  "schemars 1.2.1",
@@ -2256,6 +2262,7 @@ dependencies = [
  "cyberware-modkit-canonical-errors",
  "cyberware-modkit-db",
  "cyberware-modkit-errors",
+ "cyberware-modkit-gts",
  "cyberware-modkit-macros",
  "cyberware-modkit-odata",
  "cyberware-modkit-sdk",
@@ -2304,7 +2311,6 @@ dependencies = [
  "urlencoding",
  "utoipa",
  "uuid",
- "zip 4.6.1",
 ]
 
 [[package]]
@@ -2437,6 +2443,31 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "cyberware-modkit-gts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cyberware-modkit-gts-macro",
+ "gts",
+ "gts-macros",
+ "inventory",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cyberware-modkit-gts-macro"
+version = "0.1.0"
+dependencies = [
+ "gts-macros",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
  "syn 2.0.117",
 ]
 
@@ -2784,6 +2815,7 @@ version = "0.1.3"
 dependencies = [
  "async-trait",
  "cyberware-modkit",
+ "cyberware-modkit-gts",
  "cyberware-modkit-odata",
  "cyberware-modkit-odata-macros",
  "cyberware-modkit-sdk",
@@ -3008,6 +3040,7 @@ version = "0.3.6"
 dependencies = [
  "async-trait",
  "cyberware-modkit",
+ "cyberware-modkit-gts",
  "cyberware-modkit-odata",
  "cyberware-modkit-security",
  "gts",
@@ -3048,6 +3081,7 @@ dependencies = [
  "axum",
  "cyberware-modkit",
  "cyberware-modkit-canonical-errors",
+ "cyberware-modkit-gts",
  "cyberware-modkit-macros",
  "cyberware-modkit-security",
  "cyberware-modkit-utils",
@@ -9696,34 +9730,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
-name = "types"
-version = "0.6.1"
-dependencies = [
- "anyhow",
- "arc-swap",
- "async-trait",
- "cyberware-modkit",
- "cyberware-modkit-macros",
- "cyberware-modkit-security",
- "cyberware-types-registry-sdk",
- "inventory",
- "tracing",
- "types-sdk",
-]
-
-[[package]]
-name = "types-sdk"
-version = "0.6.3"
-dependencies = [
- "async-trait",
- "cyberware-modkit-odata",
- "cyberware-modkit-security",
- "thiserror 2.0.18",
- "time",
- "uuid",
-]
-
-[[package]]
 name = "ucd-trie"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9957,7 +9963,6 @@ dependencies = [
  "cyberware-types-registry",
  "tokio",
  "tracing",
- "types",
  "users-info",
 ]
 

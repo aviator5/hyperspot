@@ -8,7 +8,6 @@ use authn_resolver as _;
 use authz_resolver as _;
 use grpc_hub as _;
 use tenant_resolver as _;
-use types as _;
 use types_registry as _;
 
 // Static plugins for standalone operation

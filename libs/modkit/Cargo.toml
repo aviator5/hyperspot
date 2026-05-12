@@ -98,7 +98,7 @@ schemars = { workspace = true, features = ["derive"] }
 # GTS support
 gts = { workspace = true }
 gts-macros = { workspace = true }
-zip = { version = "4.6", default-features = false, features = ["deflate"] }
+modkit-gts = { workspace = true }
 
 # Performance / lock-free structures
 parking_lot = { workspace = true }
@@ -125,9 +125,6 @@ tonic = { workspace = true, optional = true }
 # Unix-specific dependencies for graceful process termination
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", default-features = false, features = ["signal"] }
-
-[build-dependencies]
-zip = { version = "4.6", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tower = { workspace = true }

@@ -752,7 +752,7 @@ The plugin determines app type during authentication and sets `token_scopes` acc
 |-------------------|----------------|---------|
 | `modkit-security` | `SecurityContext`, `SecurityContextBuilder` | Platform security context type produced by the plugin |
 | `authn-resolver-sdk` | `AuthNResolverPluginClient`, `AuthNResolverClient`, `AuthenticationResult`, `ClientCredentialsRequest`, `AuthNResolverError`, `AuthNResolverPluginSpecV1` | SDK types, traits, and GTS schema definition |
-| `modkit` | `gts::BaseModkitPluginV1`, ClientHub, module lifecycle | Plugin framework, GTS integration, registration infrastructure |
+| `modkit` | `gts::PluginV1`, ClientHub, module lifecycle | Plugin framework, GTS integration, registration infrastructure |
 
 **Dependency Rules** (per project conventions):
 - No circular dependencies

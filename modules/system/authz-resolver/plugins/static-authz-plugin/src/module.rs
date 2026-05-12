@@ -7,7 +7,7 @@ use authz_resolver_sdk::{AuthZResolverPluginClient, AuthZResolverPluginSpecV1};
 use modkit::Module;
 use modkit::client_hub::ClientScope;
 use modkit::context::ModuleCtx;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use tracing::info;
 use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
@@ -41,21 +41,16 @@ impl Module for StaticAuthZPlugin {
             "Loaded plugin configuration"
         );
 
-        // Generate plugin instance ID
-        let instance_id = AuthZResolverPluginSpecV1::gts_make_instance_id(
-            "cf.builtin.static_authz_resolver.plugin.v1",
-        );
+        // Build registration payload and instance id for this plugin.
+        let (instance_id, instance_json) =
+            PluginV1::<AuthZResolverPluginSpecV1>::build_registration(
+                "cf.builtin.static_authz_resolver.plugin.v1",
+                cfg.vendor.clone(),
+                cfg.priority,
+            )?;
 
-        // Register plugin instance in types-registry
+        // Publish to types-registry.
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<AuthZResolverPluginSpecV1> {
-            id: instance_id.clone(),
-            vendor: cfg.vendor.clone(),
-            priority: cfg.priority,
-            properties: AuthZResolverPluginSpecV1,
-        };
-        let instance_json = serde_json::to_value(&instance)?;
-
         let results = registry.register(vec![instance_json]).await?;
         RegisterResult::ensure_all_ok(&results)?;
 

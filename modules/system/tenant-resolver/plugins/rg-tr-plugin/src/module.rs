@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use modkit::Module;
 use modkit::client_hub::ClientScope;
 use modkit::context::ModuleCtx;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use resource_group_sdk::api::ResourceGroupReadHierarchy;
 use tenant_resolver_sdk::{TenantResolverPluginClient, TenantResolverPluginSpecV1};
 use tracing::info;
@@ -56,7 +56,7 @@ impl Module for RgTrPlugin {
 
         // Register plugin instance in types-registry
         let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<TenantResolverPluginSpecV1> {
+        let instance = PluginV1::<TenantResolverPluginSpecV1> {
             id: instance_id.clone(),
             vendor: cfg.vendor.clone(),
             priority: cfg.priority,

@@ -18,7 +18,6 @@ modkit = { workspace = true, features = ["bootstrap"] }
 api_gateway = { package = "cyberware-api-gateway", path = "../../../../modules/system/api-gateway" }
 grpc_hub = { package = "cyberware-grpc-hub", path = "../../../../modules/system/grpc-hub" }
 types_registry = { package = "cyberware-types-registry", path = "../../../../modules/system/types-registry/types-registry" }
-types = { path = "../../../../modules/system/types" }
 authn-resolver = { package = "cyberware-authn-resolver", path = "../../../../modules/system/authn-resolver/authn-resolver" }
 authz-resolver = { package = "cyberware-authz-resolver", path = "../../../../modules/system/authz-resolver/authz-resolver" }
 tenant-resolver = { package = "cyberware-tenant-resolver", path = "../../../../modules/system/tenant-resolver/tenant-resolver" }

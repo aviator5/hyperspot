@@ -5,7 +5,7 @@ use credstore_sdk::{CredStorePluginClientV1, CredStorePluginSpecV1};
 use modkit::Module;
 use modkit::client_hub::ClientScope;
 use modkit::context::ModuleCtx;
-use modkit::gts::BaseModkitPluginV1;
+use modkit::gts::PluginV1;
 use tracing::info;
 use types_registry_sdk::{RegisterResult, TypesRegistryClient};
 
@@ -44,23 +44,18 @@ impl Module for StaticCredStorePlugin {
             "Loaded plugin configuration"
         );
 
-        // Generate plugin instance ID
-        let instance_id =
-            CredStorePluginSpecV1::gts_make_instance_id("cf.core._.static_credstore.v1");
-
-        // Create service from config (validate early, before registration)
+        // Create service from config (validate early, before registration).
         let service = Arc::new(Service::from_config(&cfg)?);
 
-        // Register plugin instance in types-registry
-        let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
-        let instance = BaseModkitPluginV1::<CredStorePluginSpecV1> {
-            id: instance_id.clone(),
-            vendor: cfg.vendor.clone(),
-            priority: cfg.priority,
-            properties: CredStorePluginSpecV1,
-        };
-        let instance_json = serde_json::to_value(&instance)?;
+        // Build registration payload and instance id for this plugin.
+        let (instance_id, instance_json) = PluginV1::<CredStorePluginSpecV1>::build_registration(
+            "cf.core._.static_credstore.v1",
+            cfg.vendor.clone(),
+            cfg.priority,
+        )?;
 
+        // Publish to types-registry.
+        let registry = ctx.client_hub().get::<dyn TypesRegistryClient>()?;
         let results = registry.register(vec![instance_json]).await?;
         RegisterResult::ensure_all_ok(&results)?;
 
